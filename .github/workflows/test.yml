@@ -1,0 +1,25 @@
+# The components' host tests, on every push and pull request.
+name: Host tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: feckless_drivers
+        run: make -C components/feckless_drivers/test
+      - name: feckless_graphics_handler
+        run: make -C components/feckless_graphics_handler/test
+      - name: One version
+        run: |
+          set -euo pipefail
+          n=$(grep -h '^version:' components/*/idf_component.yml | sort -u | wc -l)
+          grep -H '^version:' components/*/idf_component.yml
+          test "$n" -eq 1

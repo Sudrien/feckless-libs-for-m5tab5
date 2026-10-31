@@ -41,3 +41,7 @@ histories stay in the archived repositories.
   No code changes: exports.txt's names are as they were, so it is ABI v1
   still, and an app built against feckless-abi v0.2.5 loads on a
   launcher built from this.
+- **0007** Workflows: the tag workflow, from the storage handler's,
+  setting all four manifests' versions at once; and the host tests on
+  every push, with a check that the four versions are one. Run here:
+  micpcmtest 1470 checks, the graphics handler's 922, no failures.

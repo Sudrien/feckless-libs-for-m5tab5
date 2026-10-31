@@ -1,0 +1,50 @@
+# Pushing a tag vX.Y.Z sets the version: in every component's manifest
+# to X.Y.Z, commits that to the default branch, and moves the tag onto
+# the commit -- all four components at once, which feckless_abi's
+# CMakeLists.txt checks. From feckless-storage-handler-for-m5tab5's.
+name: Sync version from tag
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+
+      - name: Update idf_component.yml version
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION="${VERSION#v}"
+          for f in components/*/idf_component.yml; do
+              if grep -qE '^version:' "$f"; then
+                sed -i -E "s/^version:[[:space:]]*.*/version: \"$VERSION\"/" "$f"
+                echo "updated $f"
+              fi
+            done
+          grep -H '^version:' components/*/idf_component.yml
+
+      - name: Commit, push, and move tag
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Version already matches; nothing to commit."
+            exit 0
+          fi
+          git commit -m "Bump version to ${GITHUB_REF_NAME#v}"
+          git push origin HEAD
+          git tag -f "$GITHUB_REF_NAME"
+          git push -f origin "refs/tags/$GITHUB_REF_NAME"
