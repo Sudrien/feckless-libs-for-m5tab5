@@ -13,7 +13,7 @@ idf_component_register(
     INCLUDE_DIRS "include"
     REQUIRES esp_driver_i2c esp_wifi esp_netif esp_event esp_wifi_remote
              esp_hosted
-    PRIV_REQUIRES esp_timer lwip nvs_flash usb
+    PRIV_REQUIRES esp_timer lwip nvs_flash usb mbedtls   # mbedtls: 6003, wifi_psk()
              esp_usbh_asix iot_eth iot_usbh_ecm iot_usbh_cdc
 )
 

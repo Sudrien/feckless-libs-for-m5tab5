@@ -284,3 +284,8 @@ histories stay in the archived repositories.
   `uart_set_pin()` is a macro calling `_uart_set_pin6()`; feckless_abi.c
   supplies that on 5.5. Names added: still ABI v1. Built: Avoidant,
   0x17e160 bytes (0x5ca0 more, mostly the UART driver). Not on 5.5.
+- **6003** feckless_network_handler: `wifi_psk()`, the WPA2 PSK for a
+  passphrase -- PBKDF2-HMAC-SHA1, through PSA on Mbed TLS 4 and pkcs5 on
+  3.6 -- from Defeatist's and Errant's wifijoin.c, so their ELFs need
+  not reach Mbed TLS for it. Built in Errant (its 0043) with ESP-IDF
+  v6.1, no warnings. Not on a Tab5.

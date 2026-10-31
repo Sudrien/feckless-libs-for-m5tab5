@@ -332,6 +332,15 @@ esp_err_t wifi_scan_log(void);
 
 esp_err_t wifi_join(const char *ssid, const char *secret, uint32_t timeout_ms);
 
+/* 6003: the WPA2 PSK for a passphrase: PBKDF2-HMAC-SHA1 with the SSID as
+ * salt, 4096 rounds, 32 bytes -- what wifi_join() takes as a 64-hex-digit
+ * secret, so a join does not spend the derivation on the C6. Through
+ * PSA key derivation on Mbed TLS 4 (IDF 6.x), as IDF's own supplicant
+ * does, and mbedtls_pkcs5_pbkdf2_hmac_ext() on 3.6 (IDF 5.x). ESP_OK, or
+ * ESP_FAIL with key cleared. From Defeatist's and Errant's wifijoin.c,
+ * so an app's ELF need not reach Mbed TLS itself. */
+esp_err_t wifi_psk(const char *ssid, const char *passphrase, uint8_t key[32]);
+
 /* Whether the station has an address. A value, safe anywhere. */
 bool wifi_connected(void);
 
