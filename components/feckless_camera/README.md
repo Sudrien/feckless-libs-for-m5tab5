@@ -4,9 +4,9 @@ The M5Stack Tab5's camera, as grey frames, as an ESP-IDF component.
 Written for [Unprofitable Mahjong](https://github.com/Sudrien/unprofitable-mahjong),
 whose Scan a code reads replay QR codes with it, and run there on a
 Tab5 (silicon v1.3, ESP-IDF 6.1). Beside
-[feckless-drivers](https://github.com/Sudrien/feckless-drivers-for-m5tab5),
+[feckless_drivers](../feckless_drivers),
 whose I2C bus it uses, and
-[feckless-graphics-handler](https://github.com/Sudrien/feckless-graphics-handler-for-m5tab5),
+[feckless_graphics_handler](../feckless_graphics_handler),
 whose panel bring-up powers the MIPI PHY it shares.
 
 | | |

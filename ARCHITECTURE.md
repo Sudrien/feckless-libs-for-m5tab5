@@ -88,3 +88,16 @@ histories stay in the archived repositories.
   supplies. No code changes; no host tests to run. Not built here:
   esp_video 2.5.0 and what it brings were not fetched. Its code is
   v0.1.0's, as Mahjong builds it.
+  Tagged v0.2.0 (2edea9f). The apps moved to it: Duplicitous 0030,
+  Lothesome 0047, Mahjong's, Aimless 0040, Defeatist 8060 (Aimless 0039
+  and Defeatist 8059 first moved their firmware into m5tab5/). Those
+  builds, with ESP-IDF release/v6.1 and the component manager off, are
+  the first P4 builds of feckless_network_handler (Aimless 0x1bef10
+  bytes, Defeatist 0x2ec3d0) and feckless_camera (Mahjong 0x13ffa0, with
+  esp_video 2.5.0) from this repository. None yet on a Tab5.
+
+## The 3000 series, toward v0.3.0
+
+- **3001** CLAUDE.md opens this series, and says what 1.0.0 waits on now
+  that every library is here. feckless_camera's README links its
+  siblings in this repository, not their archived ones.

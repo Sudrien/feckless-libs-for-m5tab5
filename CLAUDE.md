@@ -34,12 +34,12 @@ gives `0009-<subject>.patch`. Write the subject as the subject.
 entry in the series at the end of `ARCHITECTURE.md`, which every patch
 adds itself to. Take the next one.
 
-**Where the numbering is now: the 2000 series, toward v0.2.0.** A
+**Where the numbering is now: the 3000 series, toward v0.3.0.** A
 series is named for the release it leads to -- the 0000s toward v0.1.0,
 the 2000s toward v0.2.0, the 3000s toward v0.3.0 -- so a patch number
 says which release it went into. A point release does not start a
-series. The version is below 1.0.0 while there are feckless libraries
-still in other repositories. **The first patch after a tag updates this
+series. Since v0.2.0 every feckless library is here; 1.0.0 waits on the
+ABI settling, with file I/O in it. **The first patch after a tag updates this
 paragraph** and opens the next series' heading in `ARCHITECTURE.md`.
 
 **What a patch's `ARCHITECTURE.md` entry says:** its number and
