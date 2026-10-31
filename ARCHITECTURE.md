@@ -101,3 +101,25 @@ histories stay in the archived repositories.
 - **3001** CLAUDE.md opens this series, and says what 1.0.0 waits on now
   that every library is here. feckless_camera's README links its
   siblings in this repository, not their archived ones.
+- **3002** fatfs: ESP-IDF's fatfs with exFAT, as a component of its own
+  name, so it stands in for IDF's (a component added later overrides
+  one of the same name; managed components come after IDF's). At
+  configure time its CMakeLists.txt copies the installed IDF's
+  components/fatfs into the build directory, runs tools/patch_fatfs.py
+  over the copy, and includes IDF's CMakeLists.txt from it with
+  COMPONENT_DIR pointing there; its Kconfig sources IDF's, and its
+  project_include.cmake includes IDF's. patch_fatfs.py is Defeatist's
+  tools/enable_exfat.sh's three edits, moved into Python unchanged: on
+  release/v6.1's FatFs its output is byte for byte the script's.
+  CONFIG_FECKLESS_FATFS_EXFAT=n (default y) builds IDF's unpatched, in
+  place of TAB5_NO_EXFAT. CI patches v5.5.5's and release/v6.1's FatFs
+  from a sparse clone. Built in Duplicitous with ESP-IDF release/v6.1,
+  the component manager off, its cmake/exfat.cmake and components/fatfs
+  taken out: `fatfs (feckless): exFAT, from .../components/fatfs`, ff.c
+  compiled from build/feckless_fatfs, libfatfs.a with create_xdir,
+  load_xdir_checked and a weak ff_tab5_bad_entry that the storage
+  handler's replaces; duplicitous.bin 0x135040 bytes, 16 more than with
+  its own copy. With the option off: IDF's ff.c, no exFAT, 0x132770.
+  The same with ESP-IDF v5.5.5: `fatfs (feckless): exFAT, from
+  .../idf55/components/fatfs`, that IDF's FatFs patched and built,
+  0x138880 bytes -- one component, two IDFs' FatFs. Not on a Tab5.

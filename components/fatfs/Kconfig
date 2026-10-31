@@ -1,0 +1,23 @@
+# feckless-libs-for-m5tab5: fatfs. This component stands in for IDF's
+# fatfs, so its options -- CONFIG_FATFS_* -- come from IDF's own Kconfig.
+# SPDX-License-Identifier: MIT
+
+source "$IDF_PATH/components/fatfs/Kconfig"
+
+menu "FAT Filesystem support (feckless)"
+
+    config FECKLESS_FATFS_EXFAT
+        bool "exFAT (and 64-bit sector addresses)"
+        default y
+        help
+            Build IDF's FatFs from a copy patched for exFAT: FF_FS_EXFAT 1,
+            FF_LBA64 1, FF_USE_TRIM 0, and load_xdir() reporting a damaged
+            entry set through ff_tab5_bad_entry(). exFAT needs long file
+            names (FATFS_LFN_HEAP or FATFS_LFN_STACK). Off: IDF's FatFs as
+            it is, FAT32 only.
+
+            exFAT was a Microsoft patent family; Microsoft published the
+            specification in 2019 and committed it to the Open Invention
+            Network's patent non-aggression pool.
+
+endmenu

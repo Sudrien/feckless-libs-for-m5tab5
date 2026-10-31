@@ -19,6 +19,20 @@ jobs:
         run: make -C components/feckless_graphics_handler/test
       - name: feckless_network_handler
         run: make -C components/feckless_network_handler/test
+      # 3002: fatfs's patch against each IDF the Tab5 projects build
+      # with -- just components/fatfs, from a sparse clone.
+      - name: fatfs patches ESP-IDF v5.5.5 and release/v6.1
+        run: |
+          set -euo pipefail
+          for ref in v5.5.5 release/v6.1; do
+            d="$RUNNER_TEMP/idf-${ref//\//-}"
+            git clone -q --depth 1 --filter=blob:none --sparse -b "$ref" \
+              https://github.com/espressif/esp-idf.git "$d"
+            git -C "$d" sparse-checkout set components/fatfs
+            cp -r "$d/components/fatfs" "$d/fatfs-copy"
+            python3 components/fatfs/tools/patch_fatfs.py "$d/fatfs-copy"
+            grep -E '^#define (FF_FS_EXFAT|FF_LBA64|FF_USE_TRIM)' "$d/fatfs-copy/src/ffconf.h"
+          done
       - name: One version
         run: |
           set -euo pipefail

@@ -1,0 +1,11 @@
+version: "0.2.0"
+description: >-
+  ESP-IDF's fatfs component, with exFAT: it stands in for IDF's fatfs and
+  builds the installed IDF's FatFs from a copy patched at configure time
+  (FF_FS_EXFAT, FF_LBA64, no TRIM, damaged-entry reporting).
+url: https://github.com/Sudrien/feckless-libs-for-m5tab5
+license: "MIT AND Apache-2.0"
+
+dependencies:
+  idf:
+    version: ">=5.4.2"

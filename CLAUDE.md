@@ -2,7 +2,7 @@
 
 How to work on this repository. Read it before writing a patch.
 
-Six ESP-IDF components for the M5Stack Tab5, in `components/`, released
+Seven ESP-IDF components for the M5Stack Tab5, in `components/`, released
 together under one tag. `README.md` says what each is.
 
 ## Patches
@@ -66,6 +66,10 @@ and -- once a board has run it -- what the log showed.
 - **Host tests:** `make -C components/<name>/test` for
   feckless_drivers, feckless_graphics_handler and
   feckless_network_handler.
+- **`fatfs` is IDF's, patched at configure time** (3002). Its edits are
+  `components/fatfs/tools/patch_fatfs.py`, checked in CI against the
+  IDFs the Tab5 projects build with; a new IDF whose FatFs it refuses
+  is a patch to that script, never a vendored copy of FatFs.
 
 ## The ABI
 
