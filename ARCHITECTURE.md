@@ -23,3 +23,5 @@ histories stay in the archived repositories.
 - **0002** feckless_drivers, imported unchanged from
   feckless-drivers-for-m5tab5 v0.5.10 (dad9e7a) into
   `components/feckless_drivers`.
+- **0003** feckless_graphics_handler, imported unchanged from
+  feckless-graphics-handler-for-m5tab5 v0.2.9 (2c869be).
