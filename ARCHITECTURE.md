@@ -31,3 +31,13 @@ histories stay in the archived repositories.
   names and urls.
 - **0005** feckless_abi, imported unchanged from feckless-abi-for-m5tab5
   v0.2.5 (94a9206).
+- **0006** One release: every manifest at 1.0.0 with this repository's
+  url, siblings by name only. feckless_abi's manifest no longer pins the
+  drivers and the graphics handler by their old git urls; the app names
+  each component at the same tag, and feckless_abi's CMakeLists.txt
+  fails the build when a sibling's version is not its own. The
+  usb_host_uac pin moves from feckless_abi to feckless_drivers, which
+  requires it. READMEs' install snippets name the new url and `path:`.
+  No code changes: exports.txt's names are as they were, so it is ABI v1
+  still, and an app built against feckless-abi v0.2.5 loads on a
+  launcher built from this.

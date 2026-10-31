@@ -1,9 +1,9 @@
-version: "0.2.9"
+version: "1.0.0"
 description: >-
   The M5Stack Tab5's ST7121 panel and backlight, and gfx: a rotating
   RGB565 framebuffer with a DMA2D blit, Ark Pixel 12px text with
   CJK, Galmuri 12px Hangul, Arabic shaping and right-to-left lines.
-url: https://github.com/Sudrien/feckless-graphics-handler-for-m5tab5
+url: https://github.com/Sudrien/feckless-libs-for-m5tab5
 license: "MIT AND OFL-1.1 AND CC-BY-4.0"
 
 dependencies:

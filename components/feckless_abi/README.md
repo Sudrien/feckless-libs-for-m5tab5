@@ -5,10 +5,8 @@ with esp_elf (Espressif's
 [elf_loader](https://github.com/espressif/esp-iot-solution/tree/master/components/elf_loader)),
 as an ESP-IDF component.
 
-The launcher links the libraries, pinned here:
-[feckless-drivers](https://github.com/Sudrien/feckless-drivers-for-m5tab5)
-and
-[feckless-graphics-handler](https://github.com/Sudrien/feckless-graphics-handler-for-m5tab5).
+The launcher links the libraries beside it in this repository,
+`feckless_drivers` and `feckless_graphics_handler`, at the same tag.
 An app is an ELF that contains only its own code and what it links
 statically, and leaves every call into the libraries, FreeRTOS, the heap,
 the log, libc, libm and libgcc for the launcher to supply.
@@ -16,7 +14,8 @@ the log, libc, libm and libgcc for the launcher to supply.
 
 ## Version 1
 
-- **feckless_drivers v0.5.10 and feckless_graphics_handler v0.2.9**,
+- **feckless_drivers and feckless_graphics_handler** (as at their old
+  repositories' v0.5.10 and v0.2.9, unchanged in v1.0.0),
   their whole public API: every global their public headers declare.
   That is 110 functions and the font tables.
 - **A fixed set from ESP-IDF and the toolchain**: FreeRTOS tasks,
@@ -51,11 +50,21 @@ keeps running.
 # main/idf_component.yml
 dependencies:
   feckless_abi:
-    git: https://github.com/Sudrien/feckless-abi-for-m5tab5.git
-    version: "v0.2.5"
+    git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
+    path: components/feckless_abi
+    version: "v1.0.0"
+  feckless_drivers:
+    git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
+    path: components/feckless_drivers
+    version: "v1.0.0"
+  feckless_graphics_handler:
+    git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
+    path: components/feckless_graphics_handler
+    version: "v1.0.0"
 ```
 
-`feckless_abi` goes in main's `REQUIRES`, and `feckless_abi_elf()` goes
+All three at the same tag: the build fails otherwise. A launcher's
+manifest is the same. `feckless_abi` goes in main's `REQUIRES`, and `feckless_abi_elf()` goes
 in the project's CMakeLists.txt in place of elf_loader's `project_elf()`:
 
 ```cmake
@@ -138,13 +147,16 @@ not find. It fails before any of the app runs.
   the shorter list still load; a new app that uses the name needs a
   launcher that has it. That is a minor release.
 - **Removing** a name, or changing what one means, is a new version:
-  a signature, or a struct. A feckless tag moved in `idf_component.yml`
-  is a new version if it changes either. A tag that only changes
-  behaviour is not; v0.1.0's v0.5.9/v0.2.7 to v0.5.10/v0.2.9, whose
-  inits may be called twice, is not. Bump `FECKLESS_ABI_VERSION` and
-  `FECKLESS_ABI_SYMBOL` together, in a major release.
+  a signature, or a struct, in any of the components the ABI exports.
+  A change that only changes behaviour is not; v1.0.0's code, which is
+  the old repositories' v0.5.10 and v0.2.9 (whose inits may be called
+  twice, over v0.2.0's v0.5.9 and v0.2.7), is not. Bump
+  `FECKLESS_ABI_VERSION` and `FECKLESS_ABI_SYMBOL` together, in a major
+  release. The repository's tag and the ABI version are separate
+  numbers: v1.0.0 is ABI v1, as v0.2.5 was.
 
-After moving a tag, `tools/feckless_exports.py <build> <managed_components>`
+After a change to either library's headers,
+`tools/feckless_exports.py <build> <dir holding the components>`
 prints the libraries' public API afresh, for the feckless section of
 `exports.txt`.
 

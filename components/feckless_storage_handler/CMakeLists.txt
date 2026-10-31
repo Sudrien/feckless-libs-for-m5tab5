@@ -1,4 +1,4 @@
-# feckless-storage-handler-for-m5tab5
+# feckless-libs-for-m5tab5: feckless_storage_handler
 #
 # usb_host_msc and fatfs are REQUIRED BY NAME and not listed in
 # idf_component.yml: the player vendors both (usb_host_msc with fixes the

@@ -6,11 +6,13 @@
 # name are ignored.
 #
 # Adding a name is compatible: apps built against v1 still load. Removing
-# one, or changing what one means -- its signature, a struct it takes, a
-# feckless tag moved in idf_component.yml -- is a new version: bump
-# FECKLESS_ABI_VERSION and FECKLESS_ABI_SYMBOL together.
+# one, or changing what one means -- its signature, a struct it takes --
+# is a new version: bump FECKLESS_ABI_VERSION and FECKLESS_ABI_SYMBOL
+# together.
 
-# ---- feckless_drivers v0.5.10, feckless_graphics_handler v0.2.9 --------
+# ---- feckless_drivers, feckless_graphics_handler -----------------------
+# As at feckless-drivers v0.5.10 and feckless-graphics-handler v0.2.9,
+# which feckless-libs v1.0.0 has unchanged.
 # Their whole public API: tools/feckless_exports.py.
 arabixel_count
 arabixel_find

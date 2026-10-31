@@ -1,9 +1,9 @@
-version: "0.5.10"
+version: "1.0.0"
 description: >-
   M5Stack Tab5 board drivers: the USB-A host and its USB audio and HID
   class drivers, the battery monitor, the RX8130 clock and the
   touch controller (GT911 or ST7123, probed).
-url: https://github.com/Sudrien/feckless-drivers-for-m5tab5
+url: https://github.com/Sudrien/feckless-libs-for-m5tab5
 license: MIT
 
 dependencies:
@@ -19,3 +19,9 @@ dependencies:
   # revision fails at runtime instead of at link time.
   espressif/esp_lcd_touch_st7123: "*"
   espressif/esp_lcd_touch_gt911: "*"
+
+  # The USB audio class driver, required by name in CMakeLists.txt. Moved
+  # here from feckless_abi's manifest, which pinned it before v1.0.0; a
+  # project's own components/usb_host_uac, as the player has, takes
+  # precedence over it.
+  espressif/usb_host_uac: "1.5.0"

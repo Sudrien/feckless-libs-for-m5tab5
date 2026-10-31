@@ -19,11 +19,14 @@ came along unchanged.
 # main/idf_component.yml
 dependencies:
   feckless_storage_handler:
-    git: https://github.com/Sudrien/feckless-storage-handler-for-m5tab5.git
-    version: "v0.1.0"
+    git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
+    path: components/feckless_storage_handler
+    version: "v1.0.0"
 ```
 
-and `feckless_storage_handler` in `main`'s `REQUIRES`.
+and `feckless_storage_handler` in `main`'s `REQUIRES`. It requires a
+`usb_host_msc` component by name and does not fetch one: the Tab5
+projects carry a patched 1.3.0 in their own `components/`.
 
 ```c
 static const storage_usb_t usb = {

@@ -1,4 +1,4 @@
-# feckless-abi-for-m5tab5
+# feckless-libs-for-m5tab5: feckless_abi
 #
 # The host's side: the feckless libraries, linked, and the table esp_elf
 # resolves an app's ELF against, generated from exports.txt. The table
@@ -42,6 +42,25 @@ if(NOT CMAKE_BUILD_EARLY_EXPANSION)
         message(WARNING "feckless_abi: CONFIG_UAC_FREQ_NUM_MAX=8 is recommended: "
                 "with 4, a microphone that lists five rates loses its fifth")
     endif()
+
+    # One tag for the repository (README.md at its root): the ABI is
+    # these siblings at its own version. The app's manifest names each
+    # one, so it can name them at different tags; fail that here rather
+    # than as a launcher whose table and libraries disagree.
+    function(_feckless_version _dir _out)
+        file(STRINGS "${_dir}/idf_component.yml" _v REGEX "^version:")
+        string(REGEX REPLACE "^version:[ \t]*\"?([^\" \t]*)\"?.*" "\\1" _v "${_v}")
+        set(${_out} "${_v}" PARENT_SCOPE)
+    endfunction()
+    _feckless_version("${CMAKE_CURRENT_LIST_DIR}" _own)
+    foreach(_sib feckless_drivers feckless_graphics_handler)
+        idf_component_get_property(_sibdir ${_sib} COMPONENT_DIR)
+        _feckless_version("${_sibdir}" _sibv)
+        if(NOT _sibv STREQUAL _own)
+            message(FATAL_ERROR "feckless_abi: ${_sib} is ${_sibv}, feckless_abi is ${_own}: "
+                    "name every feckless component at the same tag")
+        endif()
+    endforeach()
 
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_exports}")
     file(STRINGS "${_exports}" _syms REGEX "^[A-Za-z_][A-Za-z0-9_]*$")

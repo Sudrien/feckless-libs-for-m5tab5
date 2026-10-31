@@ -1,29 +1,20 @@
-version: "0.2.5"
+version: "1.0.0"
 description: >-
   The ABI between a Tab5 launcher and the apps it loads with esp_elf:
-  the feckless libraries, pinned, and the list of symbols an app's ELF
-  may take from the launcher.
-url: https://github.com/Sudrien/feckless-abi-for-m5tab5
+  the list of symbols an app's ELF may take from the launcher, and the
+  check of the ELF against it.
+url: https://github.com/Sudrien/feckless-libs-for-m5tab5
 license: MIT
 
 dependencies:
   idf:
     version: ">=5.4.2"
 
-  # The ABI is these two at these tags (README.md, "Versions"). v0.5.10
-  # and v0.2.9: tab5io, lcd, gfx, touch and usbhost initialise again
-  # without error, and a USB class registered late is installed -- an
-  # app runs on the board its launcher brought up.
-  feckless_drivers:
-    git: https://github.com/Sudrien/feckless-drivers-for-m5tab5.git
-    version: "v0.5.10"
-  feckless_graphics_handler:
-    git: https://github.com/Sudrien/feckless-graphics-handler-for-m5tab5.git
-    version: "v0.2.9"   # v0.2.8 was tagged without the init change
-
-  # feckless_drivers requires the USB audio class driver by name and
-  # does not fetch it. The host links it like the rest.
-  espressif/usb_host_uac: "1.5.0"
+  # feckless_drivers and feckless_graphics_handler are this repository's
+  # own, required by name in CMakeLists.txt and listed by the app at this
+  # same tag (README.md). Before v1.0.0 they were pinned here by git url:
+  # v0.5.10 and v0.2.9, whose code v1.0.0 has unchanged. usb_host_uac,
+  # which the drivers require by name, moved to their manifest.
 
   # esp_elf: the host loads with it, and an app's ELF is linked by its
   # project_elf().

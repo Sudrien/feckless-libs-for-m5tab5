@@ -1,4 +1,4 @@
-# feckless-graphics-handler-for-m5tab5
+# feckless-libs-for-m5tab5: feckless_graphics_handler
 #
 # The two fonts were components of their own in the player
 # (components/ark12, components/arabixel). A git dependency is one
