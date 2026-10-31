@@ -123,3 +123,8 @@ histories stay in the archived repositories.
   The same with ESP-IDF v5.5.5: `fatfs (feckless): exFAT, from
   .../idf55/components/fatfs`, that IDF's FatFs patched and built,
   0x138880 bytes -- one component, two IDFs' FatFs. Not on a Tab5.
+- **3003** usb_host_msc, imported unchanged from Defeatist's
+  m5tab5/components/usb_host_msc (c4be9ad): Espressif's 1.3.0 with
+  Defeatist's 5035 and 6031 (transfers cut to what the Tab5's DMA memory
+  can give), each marked "Vendored change". Identical to Duplicitous's
+  copy. Apache-2.0, with its LICENCE.
