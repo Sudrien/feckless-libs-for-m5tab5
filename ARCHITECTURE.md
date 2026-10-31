@@ -393,3 +393,37 @@ histories stay in the archived repositories.
   linking mbedtls into the ELF, which would be a second copy beside the
   host's; `usb_serial_jtag_*` is the console setup, which belongs in the
   shim, not the ABI.
+- **7004** feckless_image_handler: the pure half of image loading, moved
+  from Defeatist. Image loading is generic enough for feckless -- every
+  app that shows a picture asks the same questions, and an ELF on the
+  ABI should not each carry its own JPEG, PNG, JPEG XL and GIF handling
+  or its own claim on the one hardware JPEG engine -- so the whole of it
+  is moving in stages: this patch is the part with no ESP-IDF in it;
+  the decoders (the engine with its software fallback, PNG, JPEG XL),
+  the fit-and-draw into gfx's framebuffer and an ABI section for them
+  are the patches after it, and Defeatist's adoption of each comes last
+  (its albumart.c keeps the ID3 and container parsing, the cover cache,
+  the hashing and the keystone/offset taste; a cover is Defeatist's, a
+  picture is feckless'). In this patch: `img_sniff()`/`img_mime()` (the
+  magic bytes; was artformat.h's `artformat_sniff`/`_mime`, with
+  `IMG_NONE/JPEG/PNG/JXL/GIF`), `img_jpeg_sof()` (was
+  `artformat_jpeg_sof`; a truncated SOF0 still reads baseline with size
+  0, as it did), `img_int_scale()` (was `art_int_scale` in albumart.c,
+  with its 256-pixel bound), and `img_ico_is_ico()`/`img_ico_to_png()`
+  (was icoimg.c, whole; a DIB or PNG entry out as a PNG whose deflate is
+  stored blocks). Moved as they were, renamed only. `static inline` for
+  the first four, `src/image_ico.c` for the icon, whose one IDF call is
+  the allocator (PSRAM on the target). Version 0.6.2, as every sibling
+  must be. Built: `make -C components/feckless_image_handler/test`
+  runs the header and image_ico.c as they are under ASan and UBSan, 48
+  checks: every format and its short, null and wrong-magic forms; the
+  MIME types; the SOF walk for baseline, extended, progressive,
+  arithmetic, SOS-before-SOF, no SOI, truncated and a bad segment
+  length; the integer scale at its edges; an icon's 32-bit DIB
+  converted and unwrapped again (CRCs, Adler-32, stored blocks, the
+  pixels and their alpha), a 24-bit one, an embedded PNG copied
+  unchanged, and the refusals (offsets and sizes past the end, a cursor,
+  too large). Defeatist's own tests of these (arttest, which also runs
+  its decoders) are unchanged until its adoption patch. Not built
+  against ESP-IDF (none in the session), not on a Tab5. Nothing uses the
+  component yet, so nothing links it.

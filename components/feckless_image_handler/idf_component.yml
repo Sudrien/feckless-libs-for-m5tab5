@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MIT
+version: "0.6.2"
+description: >-
+  Pictures for the M5Stack Tab5's apps, from their bytes: the kind
+  (JPEG, PNG, JPEG XL, GIF) by magic number, a JPEG's baseline-or-not
+  and size, the whole-number fit for small art, and a favicon.ico as a
+  PNG.
+url: https://github.com/Sudrien/feckless-libs-for-m5tab5
+license: MIT
+
+dependencies:
+  idf:
+    version: ">=5.4.2"
