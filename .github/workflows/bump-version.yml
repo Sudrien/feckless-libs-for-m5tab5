@@ -1,6 +1,6 @@
 # Pushing a tag vX.Y.Z sets the version: in every component's manifest
 # to X.Y.Z, commits that to the default branch, and moves the tag onto
-# the commit -- all four components at once, which feckless_abi's
+# the commit -- every component at once, which feckless_abi's
 # CMakeLists.txt checks. From feckless-storage-handler-for-m5tab5's.
 name: Sync version from tag
 

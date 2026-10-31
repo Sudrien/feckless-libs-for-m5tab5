@@ -22,8 +22,9 @@ came along unchanged.
 # main/idf_component.yml
 dependencies:
   feckless_network_handler:
-    git: https://github.com/Sudrien/feckless-network-handler-for-m5tab5.git
-    version: "v0.1.0"
+    git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
+    path: components/feckless_network_handler
+    version: "v0.2.0"
 ```
 
 and `feckless_network_handler` in `main`'s `REQUIRES`.

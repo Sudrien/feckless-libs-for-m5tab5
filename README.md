@@ -8,13 +8,15 @@ under one tag:
 | `feckless_drivers` | The USB-A host and its USB audio and HID class drivers, the battery monitor, the RX8130 clock, the touch controller (GT911 or ST7123, probed), audio out |
 | `feckless_graphics_handler` | The ST7121 panel and backlight, and gfx: a rotating RGB565 framebuffer with a DMA2D blit, Ark Pixel 12px text with CJK, Galmuri 12px Hangul, Arabic shaping and right-to-left lines |
 | `feckless_storage_handler` | The microSD slot and USB-A mass storage, mounted and watched, with one arbiter that leases the volume per read |
+| `feckless_network_handler` | Wi-Fi through the ESP32-C6 (esp_hosted over SDIO2), a saved-network list in NVS, and USB Ethernet (ASIX, CDC-ECM) on the USB-A port, the wired link preferred when it can route |
 | `feckless_abi` | The ABI between a launcher and the apps it loads with esp_elf: the list of symbols an app's ELF may take from the launcher, and the build check |
 
 Each is in `components/`, with its own README.
 
-They were four repositories, each tagged on its own, until v0.1.0:
+They were repositories of their own, each tagged on its own:
 feckless-drivers-for-m5tab5, feckless-graphics-handler-for-m5tab5,
-feckless-storage-handler-for-m5tab5 and feckless-abi-for-m5tab5, now
+feckless-storage-handler-for-m5tab5 and feckless-abi-for-m5tab5 until
+v0.1.0, feckless-network-handler-for-m5tab5 until v0.2.0, now
 archived. `ARCHITECTURE.md` says what each was imported at.
 
 ## Using them
@@ -41,8 +43,10 @@ component needs:
 - `feckless_abi`: `feckless_drivers` and `feckless_graphics_handler`.
 - `feckless_storage_handler`: a `usb_host_msc` component, by name. The
   Tab5 projects carry a patched 1.3.0 in their own `components/`.
-- `feckless_drivers` and `feckless_graphics_handler`: nothing of each
-  other's.
+- `feckless_network_handler`: `esp_usbh_asix`, from
+  github.com/Sudrien/esp_usbh_asix at v0.1.0, which its manifest pins.
+- `feckless_drivers`, `feckless_graphics_handler` and
+  `feckless_network_handler`: nothing of each other's.
 
 `feckless_abi` fails the build if a sibling it requires is at another
 version than its own.

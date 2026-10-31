@@ -2,7 +2,7 @@
 
 How to work on this repository. Read it before writing a patch.
 
-Four ESP-IDF components for the M5Stack Tab5, in `components/`, released
+Five ESP-IDF components for the M5Stack Tab5, in `components/`, released
 together under one tag. `README.md` says what each is.
 
 ## Patches
@@ -48,7 +48,7 @@ and -- once a board has run it -- what the log showed.
 
 ## The components
 
-- **One tag for all four.** The `version:` in every
+- **One tag for all of them.** The `version:` in every
   `components/*/idf_component.yml` is the same, and the tag workflow
   sets them together. `feckless_abi` checks its siblings' versions
   against its own at configure time.
@@ -63,15 +63,16 @@ and -- once a board has run it -- what the log showed.
   (esp-bsp, esp-iot-solution, esp-usb) into a scratch directory and
   building with `IDF_COMPONENT_MANAGER=0`; a patch says whether it was
   built that way, or not at all.
-- **Host tests:** `make -C components/feckless_drivers/test` and
-  `make -C components/feckless_graphics_handler/test`.
+- **Host tests:** `make -C components/<name>/test` for
+  feckless_drivers, feckless_graphics_handler and
+  feckless_network_handler.
 
 ## The ABI
 
 `components/feckless_abi/exports.txt` is what an app's ELF may take from
 its launcher, and its README says what is compatible. Adding a name is a
 minor release. Removing one, or changing a signature or a struct an
-exported function takes, in any of the four components, is a new ABI
+exported function takes, in any component the ABI exports, is a new ABI
 version: `FECKLESS_ABI_VERSION` and `FECKLESS_ABI_SYMBOL` together, in a
 major release. The repository's tag and the ABI version are separate
 numbers.

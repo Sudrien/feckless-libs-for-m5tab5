@@ -1,9 +1,9 @@
-version: "0.2.2"
+version: "0.1.0"
 description: >-
   Wi-Fi through the M5Stack Tab5's ESP32-C6 (esp_hosted over SDIO2), a
   saved-network list in NVS, and USB Ethernet (ASIX, CDC-ECM) on the
   Tab5's USB-A port, with the wired link preferred when it can route.
-url: https://github.com/Sudrien/feckless-network-handler-for-m5tab5
+url: https://github.com/Sudrien/feckless-libs-for-m5tab5
 license: MIT
 
 dependencies:

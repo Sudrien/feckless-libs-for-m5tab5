@@ -1,4 +1,4 @@
-# feckless-network-handler-for-m5tab5
+# feckless-libs-for-m5tab5: feckless_network_handler
 #
 # The esp_wifi_remote / esp_hosted / ASIX / CDC-ECM components come from
 # idf_component.yml. esp_wifi, esp_netif and esp_event are PUBLIC because

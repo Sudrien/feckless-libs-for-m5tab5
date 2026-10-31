@@ -66,3 +66,11 @@ histories stay in the archived repositories.
   feckless-network-handler-for-m5tab5 v0.2.2 (e4ef6e5), which aimless
   and defeatist pin, into `components/feckless_network_handler`. It
   requires none of the other four.
+- **2003** feckless_network_handler on the one version: its manifest at
+  0.1.0 with this repository's url, so the next tag sets it with the
+  rest; its README's snippet at `path:` and v0.2.0, the first tag that
+  has it; the README's table and CLAUDE.md name five components; its
+  host tests in test.yml. No code changes. Run here: the network
+  handler's host tests, 46 checks, and the drivers' and graphics
+  handler's as before, no failures. Not built for the P4: its code is
+  v0.2.2's, which aimless builds.
