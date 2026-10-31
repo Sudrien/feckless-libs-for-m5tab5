@@ -214,3 +214,12 @@ histories stay in the archived repositories.
   Mahjong's save.c, which used NVS directly. Built with ESP-IDF v6.1 and
   the component manager off, in Mahjong (its 0100): no warnings. Not on
   a Tab5.
+- **4004** The nvs section: feckless_abi's sections/nvs.txt and the
+  component feckless_abi_nvs -- feckless_nvs_handler's API but
+  `nvsh_init()`, 13 names under feckless_abi_nvs_v1, the launcher
+  bringing NVS up as it does the board. As the storage section:
+  WHOLE_ARCHIVE, its table weak in feckless_abi_run(). Built with ESP-IDF
+  v6.1 and the component manager off: Unprofitable Mahjong's ELF
+  (its 0101) taking nine of them, `feckless_abi: 78 symbols, all in
+  feckless_abi_v1 + feckless_abi_camera_v1 + feckless_abi_nvs_v1`, and
+  its standalone .bin linking the section. Not on a Tab5.

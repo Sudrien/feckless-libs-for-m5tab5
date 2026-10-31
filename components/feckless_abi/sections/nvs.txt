@@ -1,0 +1,29 @@
+# The feckless ABI's nvs section, version 1 (4004).
+#
+# What an app's ELF may take from a launcher that links the section's
+# component, feckless_abi_nvs -- one symbol a line, as exports.txt. The
+# launcher defines the "@symbol"; an app that takes any name below
+# refers to it (feckless_abi_require_nvs()), so a launcher without the
+# section refuses the app by that name instead of failing on its first
+# save. Lines that are not a bare name are ignored.
+#
+# Adding a name is compatible. Removing one, or changing what one means,
+# is a new section version: nvs_v2.
+@symbol feckless_abi_nvs_v1
+
+# ---- feckless_nvs_handler ----------------------------------------------
+# Its public API but nvsh_init(): the launcher brings NVS up, as it does
+# the board, and the app finds it up.
+nvsh_erase_key
+nvsh_erase_ns
+nvsh_get_blob
+nvsh_get_i32
+nvsh_get_str
+nvsh_get_u32
+nvsh_get_u8
+nvsh_ready
+nvsh_set_blob
+nvsh_set_i32
+nvsh_set_str
+nvsh_set_u32
+nvsh_set_u8

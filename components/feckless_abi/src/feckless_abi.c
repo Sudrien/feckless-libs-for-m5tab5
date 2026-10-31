@@ -23,9 +23,11 @@ const void *const feckless_abi_table = g_feckless_abi_elfsyms;
  * and an app that needs it fails in esp_elf_relocate(), naming the
  * section's version symbol. */
 extern esp_elf_symbol_table_t g_feckless_abi_storage_elfsyms[] __attribute__((weak));
+extern esp_elf_symbol_table_t g_feckless_abi_nvs_elfsyms[] __attribute__((weak));      /* 4004 */
 
 static esp_elf_symbol_table_t *const s_sections[] = {
     g_feckless_abi_storage_elfsyms,
+    g_feckless_abi_nvs_elfsyms,
 };
 #define SECTION_COUNT (sizeof s_sections / sizeof s_sections[0])
 

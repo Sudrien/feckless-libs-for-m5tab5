@@ -142,6 +142,7 @@ uses no section, and runs on any launcher on ABI v1.
 | Section | Component | Symbol | What |
 |---|---|---|---|
 | storage | `feckless_abi_storage` | `feckless_abi_storage_v1` | `feckless_storage_handler`, FatFs with exFAT, libc's and POSIX file I/O (3008) |
+| nvs | `feckless_abi_nvs` | `feckless_abi_nvs_v1` | `feckless_nvs_handler`'s settings and saves, but `nvsh_init()`: the launcher brings NVS up (4004) |
 
 ## Configuration
 
