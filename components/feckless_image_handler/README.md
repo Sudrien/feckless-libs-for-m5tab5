@@ -3,8 +3,8 @@
 Pictures for the Tab5's apps, from their bytes. Moved out of Defeatist
 (its `artformat.h`, `icoimg.[ch]` and the integer-scale rule in
 `albumart.c`) so that an app asks what a picture is the same way every
-other app does. The software decoders came with 7005 and 7006; the hardware JPEG engine
-and drawing follow in later patches.
+other app does. The software decoders came with 7005 and 7006, and `img_decode()` (7007) picks
+between them; the ESP backends and drawing follow in later patches.
 
 ```c
 #include "feckless_image.h"
@@ -63,3 +63,17 @@ runs the sources as they are, under ASan and UBSan: `imagetest` (the
 header and the icon), `stbjpegtest` (JPEG, with a corruption sweep),
 `gifimgtest`, `pngimgtest` and `jxltest`. The last four fetch the
 single-file libraries into `vendor/` the first time.
+
+## One entry (7007)
+
+```c
+#include "feckless_image_decode.h"
+
+img_pic_t pic;
+img_err_t e = img_decode(&ops, buf, len, box_w, box_h, bg565, &pic);
+/* pic.px (free it), pic.w/h, pic.stride, pic.decoder, pic.skipped, pic.why */
+```
+
+`ops` holds the backends (hardware JPEG, TJpgDec, stb, GIF, PNG, JXL) and the
+heap queries; a NULL entry is a decoder that is not there. Baseline JPEG tries
+hardware, then TJpgDec, then stb_image; progressive goes to stb_image.

@@ -511,3 +511,26 @@ histories stay in the archived repositories.
   ESP-IDF, not on a Tab5. Nothing links it yet; Defeatist's arttest
   keeps its PNG cases until its adoption patch deletes them with the
   rest.
+- **7007** feckless_image_handler: `img_decode()`, one entry for every
+  format, with the decoders behind an `img_ops_t` table. This is the
+  order Defeatist's `albumart_draw()` followed and could only test on the
+  board: a baseline JPEG goes to the hardware engine if it is ready, its
+  header can be read, and the largest PSRAM block holds the MCU-padded
+  result (stride is the padded width; there is no scaler); otherwise to
+  TJpgDec from the smallest scale that covers the box; and only when
+  TJpgDec refuses the format (`IMG_ERR_FAILED`), to stb_image. TJpgDec
+  running out of memory stays `IMG_ERR_NO_MEM`, since stb needs more.
+  A progressive JPEG goes to stb_image alone; any other SOF is
+  `IMG_ERR_UNSUPPORTED`, with the marker in `img_pic_t`. GIF, PNG and JXL
+  are refused before they start if PSRAM cannot hold their peak (JXL's
+  includes its 24 KB stack), and `bg` is handed to those that blend.
+  `img_pic_t.decoder` names who produced the picture, and `skipped` why a
+  faster one was passed over. Every software decode is bracketed by
+  `soft_begin`/`soft_end` (Defeatist drops to idle priority there); the
+  hardware path is not. Deliberate change: a hardware failure to read
+  the header or to allocate now falls back to software, where Defeatist
+  gave up. A hardware buffer whose size or stride is not the padded one
+  is freed and reported `IMG_ERR_FAILED`, not drawn sheared. The
+  ESP backends (7008) fill the table; `decodetest` fills it with fakes:
+  60 checks under ASan and UBSan, covering each step of the order, the
+  memory refusals, NULL backends, and the pad and first-scale arithmetic.
