@@ -16,3 +16,20 @@ idf_component_register(
     REQUIRES esp_driver_i2c
     PRIV_REQUIRES esp_timer fatfs sdmmc esp_driver_sdmmc usb usb_host_msc
 )
+
+# 3004: usb_host_msc is required by name. The one beside this component
+# in feckless-libs has the Tab5's fixes; say so when another is in use
+# (the registry's, or a project's own copy), rather than fail -- it
+# builds, it only does worse on the Tab5.
+if(NOT CMAKE_BUILD_EARLY_EXPANSION)
+    idf_component_get_property(_msc_dir usb_host_msc COMPONENT_DIR)
+    set(_msc_url "")
+    if(EXISTS "${_msc_dir}/idf_component.yml")
+        file(STRINGS "${_msc_dir}/idf_component.yml" _msc_url REGEX "^url:")
+    endif()
+    if(NOT _msc_url MATCHES "feckless-libs-for-m5tab5")
+        message(WARNING "feckless_storage_handler: usb_host_msc is ${_msc_dir}, not "
+                "feckless-libs' (components/usb_host_msc), which has the Tab5's "
+                "DMA-sized transfers. Name that one in the project's manifest.")
+    endif()
+endif()

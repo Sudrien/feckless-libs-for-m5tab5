@@ -128,3 +128,10 @@ histories stay in the archived repositories.
   Defeatist's 5035 and 6031 (transfers cut to what the Tab5's DMA memory
   can give), each marked "Vendored change". Identical to Duplicitous's
   copy. Apache-2.0, with its LICENCE.
+- **3004** usb_host_msc on the one version: its manifest at 0.2.0 with
+  this repository's url, so the tag sets it with the rest, saying in a
+  comment it was modified from Espressif's 1.3.0; esp-usb's url and
+  repository fields go with that. feckless_storage_handler warns at
+  configure time when the usb_host_msc it gets is not this one. The
+  READMEs say to name it; CLAUDE.md says eight components. No code
+  changes.

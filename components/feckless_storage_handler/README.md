@@ -25,8 +25,8 @@ dependencies:
 ```
 
 and `feckless_storage_handler` in `main`'s `REQUIRES`. It requires a
-`usb_host_msc` component by name and does not fetch one: the Tab5
-projects carry a patched 1.3.0 in their own `components/`.
+`usb_host_msc` component by name and does not fetch one: name
+`usb_host_msc` from this repository too, at the same tag (below).
 
 ```c
 static const storage_usb_t usb = {
@@ -47,9 +47,19 @@ the Tab5's port, so this component registers its class through
 `register_class` and does not install the host stack or switch USB5V_EN.
 
 **Supply `usb_host_msc`.** Required by name rather than pulled from the
-registry, because the player builds against a vendored 1.3.0 with fixes
-the registry did not have. Anything else adds
-`espressif/usb_host_msc` to its own manifest.
+registry, because the registry's 1.3.0 lacks fixes the Tab5 needs.
+Since v0.3.0 the fixed copy is this repository's
+`components/usb_host_msc`:
+
+```yaml
+  usb_host_msc:
+    git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
+    path: components/usb_host_msc
+    version: "v0.3.0"
+```
+
+Another -- `espressif/usb_host_msc`, or a project's own copy, which wins
+over a managed one -- builds, with a configure warning.
 
 **Decide on exFAT.** With FatFs's exFAT enabled a file can be over 4 GB,
 and `fseek()` takes `long`, which is 32 bits on this target.

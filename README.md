@@ -11,6 +11,7 @@ under one tag:
 | `feckless_network_handler` | Wi-Fi through the ESP32-C6 (esp_hosted over SDIO2), a saved-network list in NVS, and USB Ethernet (ASIX, CDC-ECM) on the USB-A port, the wired link preferred when it can route |
 | `feckless_camera` | The SC202CS camera on MIPI CSI, as luma frames, through esp_video; it takes the I2C bus from `feckless_drivers`' tab5io as an argument |
 | `fatfs` | ESP-IDF's own fatfs with exFAT: it stands in for IDF's, and builds the installed IDF's FatFs from a copy patched at configure time |
+| `usb_host_msc` | Espressif's USB mass storage class driver 1.3.0, with the Tab5's fixes (Apache-2.0) |
 | `feckless_abi` | The ABI between a launcher and the apps it loads with esp_elf: the list of symbols an app's ELF may take from the launcher, and the build check |
 
 Each is in `components/`, with its own README.
@@ -43,8 +44,9 @@ the project's manifest is the one place a tag is written. Which ones a
 component needs:
 
 - `feckless_abi`: `feckless_drivers` and `feckless_graphics_handler`.
-- `feckless_storage_handler`: a `usb_host_msc` component, by name. The
-  Tab5 projects carry a patched 1.3.0 in their own `components/`. For
+- `feckless_storage_handler`: a `usb_host_msc` component, by name --
+  `usb_host_msc` from here, Espressif's 1.3.0 with the Tab5's fixes
+  (configure warns about any other). For
   exFAT cards and drives, `fatfs` from here as well -- IDF's own is
   FAT32 only.
 - `feckless_network_handler`: `esp_usbh_asix`, from
