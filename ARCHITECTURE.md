@@ -205,3 +205,12 @@ histories stay in the archived repositories.
   map Errant Moving Map (Aimless until its 0042): the storage section's
   README and two comments in the network handler say so. Earlier
   entries keep the names they had. Comments and documentation only.
+- **4003** feckless_nvs_handler: the NVS partition a value at a time.
+  `nvsh_init()` brings it up once, erasing a partition that is full or
+  of a newer format; `nvsh_get_*()`/`nvsh_set_*()` for blobs, strings,
+  u8, u32 and i32, and erasing a key or a namespace, each opening,
+  committing and closing for itself, so no `nvs_handle_t` crosses the
+  API -- the shape an ABI section can export. From Unprofitable
+  Mahjong's save.c, which used NVS directly. Built with ESP-IDF v6.1 and
+  the component manager off, in Mahjong (its 0100): no warnings. Not on
+  a Tab5.
