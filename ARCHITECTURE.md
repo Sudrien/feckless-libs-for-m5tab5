@@ -235,3 +235,18 @@ histories stay in the archived repositories.
   qrcodegen's in Unprofitable Mahjong's ELF, which they failed the
   check on. Names added, so a minor release: still ABI v1. Built as
   4004. Not on a Tab5.
+  Tagged v0.4.0 (98d7852) before 4003-4006 were pushed, so they are in
+  v0.4.1 (74a88d2), a point release.
+
+## The 5000 series, toward v0.5.0
+
+- **5001** CLAUDE.md opens this series. And 4003-4006 on a Tab5, with
+  Unprofitable Mahjong (its 0100, 0101) at v0.4.1. Its standalone .bin,
+  which links both sections and runs its embedded ELF: the board up
+  from inside the ELF, `ui: resumed a saved game` (nvsh_get_blob()),
+  `sc202cs: Detected Camera sensor PID=0xeb52` and `camera: sensor
+  found, /dev/video0` at boot, and `camera: 1280x720 UYVY, 2560 bytes a
+  line` when Scan a code opened. Then its .elf through Avoidant (its
+  0035-0037): a game in progress restored after a reboot (NVS both
+  ways), and a replay code read off the camera and decoded by quirc
+  inside the ELF (4006's rintf and __assert_func). Documentation only.
