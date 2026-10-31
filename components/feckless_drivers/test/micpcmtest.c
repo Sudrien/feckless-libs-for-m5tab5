@@ -1,0 +1,344 @@
+/*
+ * micpcmtest.c -- the microphone conversions in micpcm.h (5207).
+ *
+ * What is at risk:
+ *
+ *   - THE TDM SLOT. Slot 3 of four is the headset microphone; reading
+ *     slot 2 is the right array microphone and sounds like a working
+ *     recording of the wrong thing. And in place: an unpack that writes
+ *     over a raw frame before reading it starts corrupting partway
+ *     through a buffer.
+ *   - THE CARRY. The UAC driver returns what it had at its timeout,
+ *     which need not be whole frames. Dropping the partial frame shifts
+ *     every later sample by one channel -- a stereo file swaps sides
+ *     from there -- and it happens once in a long recording, which is
+ *     the hardest place to find it.
+ *   - SIGN. Little-endian int16 widened to int32 has to stay negative.
+ *   - THE MONO FOLD. The mean of two samples, rounded the same way for
+ *     both signs, with no overflow at full scale.
+ *
+ * SPDX-License-Identifier: MIT
+ */
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "micpcm.h"
+
+static int checks, failures;
+
+#define CHECK(cond, ...) do {                           \
+    checks++;                                           \
+    if (!(cond)) {                                      \
+        failures++;                                     \
+        printf("  FAIL %s:%d: ", __FILE__, __LINE__);   \
+        printf(__VA_ARGS__);                            \
+        printf("\n");                                   \
+    }                                                   \
+} while (0)
+
+static void put16(uint8_t *p, int16_t v) { memcpy(p, &v, 2); }
+
+/* A sample value that says which frame and slot it came from, and is
+ * negative for odd frames so sign extension is exercised throughout. */
+static int16_t tag(size_t frame, unsigned slot)
+{
+    const int v = (int)((frame * 8 + slot) % 30000) + 1;
+    return (int16_t)((frame & 1) ? -v : v);
+}
+
+static void test_tdm(void)
+{
+    printf("  tdm slot, in place\n");
+    enum { N = 961 };                       /* odd, and more than one DMA buffer */
+    for (unsigned slots = 2; slots <= 8; slots += 2) {
+        for (unsigned slot = 0; slot < slots; slot++) {
+            /* Sized as the capture buffer is: n frames of 2 x int32, or
+             * n raw frames of `slots` int16 -- whichever is larger. */
+            const size_t bytes = N * (slots * 2 > 8 ? slots * 2 : 8);
+            int32_t *buf = malloc(bytes);
+            uint8_t *raw = (uint8_t *)buf;
+            for (size_t i = 0; i < N; i++)
+                for (unsigned s = 0; s < slots; s++)
+                    put16(raw + (i * slots + s) * 2, tag(i, s));
+            const size_t n = micpcm_tdm_slot(buf, N, slots, slot);
+            CHECK(n == N, "slots %u: %zu frames back", slots, n);
+            size_t bad = 0;
+            for (size_t i = 0; i < N; i++) if (buf[i] != tag(i, slot)) bad++;
+            CHECK(bad == 0, "slots %u slot %u: %zu samples wrong", slots, slot, bad);
+            free(buf);
+        }
+    }
+    /* The one the board uses: 4 slots, slot 3, extremes. */
+    {
+        int32_t buf[4];
+        uint8_t *raw = (uint8_t *)buf;
+        const int16_t a[8] = { 1, 2, 3, -32768, 5, 6, 7, 32767 };
+        for (int i = 0; i < 8; i++) put16(raw + i * 2, a[i]);
+        CHECK(micpcm_tdm_slot(buf, 2, 4, 3) == 2, "2 frames");
+        CHECK(buf[0] == -32768 && buf[1] == 32767, "full scale: %d %d",
+              (int)buf[0], (int)buf[1]);
+    }
+    CHECK(micpcm_tdm_slot(NULL, 5, 1, 0) == 0, "1 slot must be refused");
+    CHECK(micpcm_tdm_slot(NULL, 5, 4, 4) == 0, "slot past the end must be refused");
+}
+
+/* A stream of `frames` interleaved int16 frames, fed through
+ * micpcm_s16_take() in chunks whose sizes come from `chunks` (cycled),
+ * none aligned to a frame. The output must be the stream, exactly. */
+static void run_carry(unsigned ch, const size_t *chunks, size_t nchunks, size_t frames)
+{
+    const size_t fb = ch * 2;
+    uint8_t *stream = malloc(frames * fb);
+    for (size_t i = 0; i < frames; i++)
+        for (unsigned c = 0; c < ch; c++)
+            put16(stream + i * fb + c * 2, tag(i, c));
+
+    uint8_t *raw = malloc(4096 + fb);
+    int32_t *out = malloc(frames * ch * sizeof(int32_t));
+    int32_t *tmp = malloc(4096 / 2 * sizeof(int32_t) + 16);
+    size_t carry = 0, pos = 0, outn = 0, k = 0;
+    while (pos < frames * fb) {
+        size_t got = chunks[k++ % nchunks];
+        if (got > frames * fb - pos) got = frames * fb - pos;
+        memcpy(raw + carry, stream + pos, got);
+        pos += got;
+        const size_t n = micpcm_s16_take(raw, carry, got, ch, tmp, &carry);
+        CHECK(carry < fb, "carry %zu not under a frame (%zu)", carry, fb);
+        memcpy(out + outn * ch, tmp, n * ch * sizeof(int32_t));
+        outn += n;
+    }
+    CHECK(outn == frames, "%u ch: %zu of %zu frames", ch, outn, frames);
+    CHECK(carry == 0, "%u ch: %zu bytes left at the end", ch, carry);
+    size_t bad = 0;
+    for (size_t i = 0; i < outn; i++)
+        for (unsigned c = 0; c < ch; c++)
+            if (out[i * ch + c] != tag(i, c)) bad++;
+    CHECK(bad == 0, "%u ch: %zu samples wrong (a channel shift?)", ch, bad);
+    free(stream); free(raw); free(out); free(tmp);
+}
+
+static void test_carry(void)
+{
+    printf("  16-bit take, with a partial frame carried\n");
+    const size_t odd[] = { 1, 3, 7, 1000, 5, 2, 1, 999 };
+    const size_t whole[] = { 960 };
+    const size_t tiny[] = { 1 };
+    for (unsigned ch = 1; ch <= 2; ch++) {
+        run_carry(ch, odd, sizeof(odd) / sizeof(odd[0]), 4801);
+        run_carry(ch, whole, 1, 4800);
+        run_carry(ch, tiny, 1, 97);
+    }
+    /* Nothing new: whatever was carried stays carried. */
+    {
+        uint8_t raw[8] = { 0x34, 0x12, 0x78 };
+        int32_t out[4];
+        size_t carry = 99;
+        CHECK(micpcm_s16_take(raw, 3, 0, 2, out, &carry) == 0 && carry == 3,
+              "3 bytes of a 4-byte frame: %zu carried", carry);
+        CHECK(raw[0] == 0x34 && raw[1] == 0x12 && raw[2] == 0x78, "carry moved");
+        CHECK(micpcm_s16_take(raw, 0, 4, 0, out, &carry) == 0 && carry == 0,
+              "0 channels takes nothing");
+    }
+}
+
+static void test_pair(void)
+{
+    printf("  tdm pair, in place (5212)\n");
+    enum { N = 961 };
+    for (unsigned slots = 4; slots <= 8; slots += 2) {
+        for (unsigned a = 0; a < slots; a++) {
+            for (unsigned b = 0; b < slots; b++) {
+                int32_t *buf = malloc(N * slots * 2 > N * 8 ? N * slots * 2 : N * 8);
+                uint8_t *raw = (uint8_t *)buf;
+                for (size_t i = 0; i < N; i++)
+                    for (unsigned s = 0; s < slots; s++)
+                        put16(raw + (i * slots + s) * 2, tag(i, s));
+                CHECK(micpcm_tdm_pair(buf, N, slots, a, b, 8) == N, "count");
+                size_t bad = 0;
+                for (size_t i = 0; i < N; i++)
+                    if (buf[2 * i] != tag(i, a) * 256 || buf[2 * i + 1] != tag(i, b) * 256) bad++;
+                CHECK(bad == 0, "slots %u pair %u,%u: %zu frames wrong", slots, a, b, bad);
+                free(buf);
+            }
+        }
+    }
+    {
+        int32_t buf[2];
+        uint8_t *raw = (uint8_t *)buf;
+        const int16_t v[4] = { 0, -32768, 32767, 5 };
+        for (int i = 0; i < 4; i++) put16(raw + i * 2, v[i]);
+        micpcm_tdm_pair(buf, 1, 4, 1, 2, 8);
+        CHECK(buf[0] == -8388608 && buf[1] == 8388352, "rails to 24-bit: %d %d",
+              (int)buf[0], (int)buf[1]);
+    }
+    CHECK(micpcm_tdm_pair(NULL, 3, 2, 0, 1, 8) == 0, "2 slots must be refused");
+    CHECK(micpcm_tdm_pair(NULL, 3, 4, 0, 4, 8) == 0, "slot past the end must be refused");
+}
+
+static void test_mono(void)
+{
+    printf("  mono fold\n");
+    int32_t f[] = { 100, 200,  -1, 0,  -3, -4,  8388607, 8388607,
+                    -8388608, -8388608,  32767, -32768,  2147483647, 2147483647 };
+    const size_t n = sizeof(f) / sizeof(f[0]) / 2;
+    micpcm_mono(f, n);
+    CHECK(f[0] == 150, "100,200 -> %d", (int)f[0]);
+    CHECK(f[1] == -1, "-1,0 -> %d (floor)", (int)f[1]);
+    CHECK(f[2] == -4, "-3,-4 -> %d (floor)", (int)f[2]);
+    CHECK(f[3] == 8388607, "24-bit +FS -> %d", (int)f[3]);
+    CHECK(f[4] == -8388608, "24-bit -FS -> %d", (int)f[4]);
+    CHECK(f[5] == -1, "opposite 16-bit rails -> %d", (int)f[5]);
+    CHECK(f[6] == 2147483647, "no overflow at int32 max: %d", (int)f[6]);
+}
+
+/* The silent slot, found wherever the frame was cut: four slots, slot 0
+ * silent, the stream started `shift` words into a frame. */
+static void test_align(void)
+{
+    printf("  tdm alignment from the silent slot\n");
+    enum { N = 480, SLOTS = 4 };
+    for (unsigned shift = 0; shift < SLOTS; shift++) {
+        /* What the codec sends, frame after frame: slot 0 silent, 1-3 not. */
+        static int16_t sent[(N + 1) * SLOTS];
+        for (unsigned i = 0; i < (N + 1) * SLOTS; i++) {
+            const unsigned slot = i % SLOTS;
+            sent[i] = slot == 0 ? 0 : (int16_t)(100 * (int)slot + (int)(i % 7) + 1);
+        }
+        /* What a channel enabled mid-frame reads: the same words, `shift`
+         * of them late -- so position p holds slot (p - shift) mod 4... or
+         * rather the word stream starts at word (SLOTS - shift) % SLOTS. */
+        static int32_t got[N * SLOTS / 2];
+        memcpy(got, sent + (SLOTS - shift) % SLOTS, N * SLOTS * sizeof(int16_t));
+        uint32_t nz[SLOTS] = { 0 };
+        micpcm_tdm_count(got, N, SLOTS, nz);
+        const int where = micpcm_tdm_silent(nz, SLOTS, 0);
+        CHECK(where == (int)shift, "shift %u: silent slot found at %d", shift, where);
+
+        /* Taking slot 3 relative to that position gives slot 3's samples. */
+        const size_t n = micpcm_tdm_slot(got, N, SLOTS, (3 + (unsigned)where) % SLOTS);
+        size_t bad = 0;
+        for (size_t i = 0; i < n; i++) bad += (got[i] < 300 || got[i] > 307);
+        CHECK(n == N && bad == 0, "shift %u: slot 3 not recovered (%zu wrong)", shift, bad);
+    }
+    uint32_t none[4] = { 9, 9, 9, 9 }, two[4] = { 0, 9, 0, 9 }, noise[4] = { 3, 900, 800, 700 };
+    CHECK(micpcm_tdm_silent(none, 4, 0) == -1, "nothing silent must be undecided");
+    CHECK(micpcm_tdm_silent(two, 4, 0) == -1, "two silent must be undecided");
+    CHECK(micpcm_tdm_silent(noise, 4, 4) == 0, "a few start-up samples within max_nz");
+}
+
+/* A 24-bit test value for frame i, channel c: spread over the whole
+ * range, negative half the time, so a sign-extension slip shows. */
+static int32_t tag24(size_t i, unsigned c)
+{
+    const uint32_t u = (uint32_t)(i * 2654435761u + c * 40503u) & 0xFFFFFFu;
+    return (int32_t)(u ^ 0x800000u) - 0x800000;
+}
+
+/* One 24-bit value as a `sub`-byte subframe: packed in 3, or the top
+ * 24 bits of a 32-bit word in 4, with junk in the low byte -- a device
+ * may put anything there, and the take must drop it. */
+static void put24(uint8_t *p, unsigned sub, int32_t v, uint8_t junk)
+{
+    const uint32_t u = (uint32_t)v;
+    if (sub == 3) { p[0] = (uint8_t)u; p[1] = (uint8_t)(u >> 8); p[2] = (uint8_t)(u >> 16); }
+    else { p[0] = junk; p[1] = (uint8_t)u; p[2] = (uint8_t)(u >> 8); p[3] = (uint8_t)(u >> 16); }
+}
+
+/* micpcm_take() at 3 and 4 bytes a sample: the stream back exactly,
+ * through chunks that never land on a frame. */
+static void run_carry_wide(unsigned ch, unsigned sub, const size_t *chunks, size_t nchunks,
+                           size_t frames)
+{
+    const size_t fb = (size_t)ch * sub;
+    uint8_t *stream = malloc(frames * fb);
+    for (size_t i = 0; i < frames; i++)
+        for (unsigned c = 0; c < ch; c++)
+            put24(stream + i * fb + c * sub, sub, tag24(i, c), (uint8_t)(i * 7 + c));
+    uint8_t *raw = malloc(4096 + fb);
+    int32_t *out = malloc(frames * ch * sizeof(int32_t));
+    int32_t *tmp = malloc(4096 * sizeof(int32_t));
+    size_t carry = 0, pos = 0, outn = 0, k = 0;
+    while (pos < frames * fb) {
+        size_t got = chunks[k++ % nchunks];
+        if (got > frames * fb - pos) got = frames * fb - pos;
+        memcpy(raw + carry, stream + pos, got);
+        pos += got;
+        const size_t n = micpcm_take(raw, carry, got, ch, sub, tmp, &carry);
+        CHECK(carry < fb, "carry %zu not under a frame (%zu)", carry, fb);
+        memcpy(out + outn * ch, tmp, n * ch * sizeof(int32_t));
+        outn += n;
+    }
+    CHECK(outn == frames && carry == 0, "%u ch %u B: %zu of %zu frames, %zu left",
+          ch, sub, outn, frames, carry);
+    size_t bad = 0;
+    for (size_t i = 0; i < outn; i++)
+        for (unsigned c = 0; c < ch; c++)
+            if (out[i * ch + c] != tag24(i, c)) bad++;
+    CHECK(bad == 0, "%u ch %u B: %zu samples wrong", ch, sub, bad);
+    free(stream); free(raw); free(out); free(tmp);
+}
+
+static void test_wide(void)
+{
+    printf("  24-bit take: 3- and 4-byte subframes, rails, sign, carry\n");
+    /* The rails and the values either side of zero, both widths. */
+    static const int32_t v[] = { -8388608, -8388607, -1, 0, 1, 8388606, 8388607 };
+    const unsigned n = sizeof(v) / sizeof(v[0]);
+    for (unsigned sub = 3; sub <= 4; sub++) {
+        uint8_t raw[7 * 4];
+        int32_t out[7];
+        size_t carry = 0;
+        for (unsigned i = 0; i < n; i++) put24(raw + i * sub, sub, v[i], 0xA5);
+        CHECK(micpcm_take(raw, 0, n * sub, 1, sub, out, &carry) == n && carry == 0, "count");
+        size_t bad = 0;
+        for (unsigned i = 0; i < n; i++) bad += out[i] != v[i];
+        CHECK(bad == 0, "%u B: %zu of the rails wrong (%d %d)", sub, bad, out[0], out[n - 1]);
+    }
+    /* A 32-bit device's full scale reads 24-bit full scale. */
+    {
+        uint8_t raw[8];
+        int32_t out[2];
+        size_t carry;
+        const int32_t lo = INT32_MIN, hi = INT32_MAX;
+        memcpy(raw, &lo, 4);
+        memcpy(raw + 4, &hi, 4);
+        micpcm_take(raw, 0, 8, 2, 4, out, &carry);
+        CHECK(out[0] == -8388608 && out[1] == 8388607, "32-bit rails: %d %d", out[0], out[1]);
+    }
+    const size_t odd[] = { 1, 5, 7, 1000, 11, 2, 1, 997 };
+    for (unsigned ch = 1; ch <= 2; ch++)
+        for (unsigned sub = 3; sub <= 4; sub++)
+            run_carry_wide(ch, sub, odd, sizeof(odd) / sizeof(odd[0]), 4801);
+    /* What micpcm_s16_take() always did, through the new path. */
+    {
+        uint8_t raw[4];
+        int32_t out[2];
+        size_t carry;
+        put16(raw, -32768);
+        put16(raw + 2, 32767);
+        CHECK(micpcm_take(raw, 0, 4, 2, 2, out, &carry) == 1 &&
+              out[0] == -32768 && out[1] == 32767, "16-bit through take: %d %d", out[0], out[1]);
+    }
+    {
+        uint8_t raw[8] = { 0 };
+        int32_t out[2];
+        size_t carry = 9;
+        CHECK(micpcm_take(raw, 0, 8, 2, 1, out, &carry) == 0 && carry == 0, "1-byte refused");
+        CHECK(micpcm_take(raw, 0, 8, 2, 5, out, &carry) == 0 && carry == 0, "5-byte refused");
+    }
+}
+
+int main(void)
+{
+    printf("micpcmtest\n");
+    test_align();
+    test_tdm();
+    test_carry();
+    test_wide();
+    test_pair();
+    test_mono();
+    printf("micpcmtest: %d checks, %d failures\n", checks, failures);
+    return failures ? 1 : 0;
+}

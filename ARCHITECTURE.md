@@ -20,3 +20,6 @@ histories stay in the archived repositories.
 ## The 0000 series, toward v1.0.0
 
 - **0001** The repository: README, LICENSE, CLAUDE.md, this file.
+- **0002** feckless_drivers, imported unchanged from
+  feckless-drivers-for-m5tab5 v0.5.10 (dad9e7a) into
+  `components/feckless_drivers`.
