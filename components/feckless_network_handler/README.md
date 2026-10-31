@@ -51,6 +51,17 @@ wifi_apply_settings();
 
 `feckless_net.h` gives each hook's default when it is left NULL.
 
+Or, since 6005, in two halves: whoever owns the board -- a launcher, or
+the launcher side of a standalone firmware -- brings the network up
+once with `feckless_net_start()`, which does the saved networks, the
+USB configuration selector (`ethcfg_select()`), the USB hook,
+`wifi_init()` and `ethernet_init()` in that order, before the USB port
+comes up; and the app sets its policy with `feckless_net_set_hooks()`,
+which may now be called after, and asks for the radio
+(`wifi_request_apply()`). Nothing is powered until it does.
+`wifi_init()`, `ethernet_init()` and `wifistore_init()` return at once
+when called again.
+
 ## What the application must do
 
 **Own the USB host.** The Tab5 has one USB-A port and the Ethernet

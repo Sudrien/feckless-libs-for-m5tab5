@@ -301,3 +301,17 @@ histories stay in the archived repositories.
   ELF (its 0043), `feckless_abi: 212 symbols, all in feckless_abi_v1 +
   feckless_abi_network_v1 + feckless_abi_storage_v2`; its standalone
   .bin linking the section, 0x1edec0 bytes. Not on a Tab5.
+- **6005** feckless_network_handler: `feckless_net_start()`, the network
+  brought up by the board's owner, as storage is -- the saved networks,
+  the USB configuration selector given `ethcfg_select()`, the owner's USB
+  hook, `wifi_init()`, `ethernet_init()`, before the port comes up and
+  powering nothing. `feckless_net_set_hooks()` may now be called after,
+  for an app's policy: two buffers and an atomic pointer, and a NULL
+  `usb_register_class` keeps the owner's. `wifi_init()` and
+  `ethernet_init()` return at once the second time, so an app built
+  before this still runs. Not exported: the network section gains only
+  `feckless_net_started`, and stays network_v1. From Errant's RTL8152,
+  which met no configuration selector because each app set its own:
+  Errant's 0046 and Avoidant's 0043. Built: Errant as an ELF,
+  `feckless_abi: 208 symbols` (its bring-up gone); Avoidant 0x21d180.
+  Host tests pass. Not on a Tab5.

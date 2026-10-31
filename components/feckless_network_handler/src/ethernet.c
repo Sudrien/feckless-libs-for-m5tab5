@@ -529,10 +529,16 @@ static esp_err_t attach(eth_if_t *i, iot_eth_driver_t *driver, const char *if_ke
 
 esp_err_t ethernet_init(void)
 {
+    /* 6005: once, as wifi_init(): feckless_net_start() registers the class for the
+     * board's owner, and an app built before it asks again. */
+    static bool s_registered;
+    if (s_registered) return ESP_OK;
     const feckless_net_hooks_t *h = feckless_net_hooks();
     if (!h->usb_register_class) {
         ESP_LOGE(TAG, "no usb_register_class hook; see feckless_net.h");
         return ESP_ERR_INVALID_STATE;
     }
-    return h->usb_register_class("eth", eth_class_install);
+    const esp_err_t err = h->usb_register_class("eth", eth_class_install);
+    if (err == ESP_OK) s_registered = true;
+    return err;
 }

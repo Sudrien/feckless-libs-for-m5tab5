@@ -959,6 +959,12 @@ void wifi_request_apply(void)
 
 void wifi_init(i2c_master_dev_handle_t exp2)
 {
+    /* 6005: once. feckless_net_start() calls this for the board's owner, and an
+     * app built before it calls it again; a second task and second locks
+     * would race the first. */
+    static bool s_inited;
+    if (s_inited) return;
+    s_inited = true;
     s_exp2 = exp2;
 
     s_lock = xSemaphoreCreateMutex();

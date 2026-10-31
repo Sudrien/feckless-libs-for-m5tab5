@@ -16,14 +16,19 @@
 @symbol feckless_abi_network_v1
 
 # ---- feckless_network_handler ------------------------------------------
-# Its whole public API. wifi_init() and ethernet_init() are the app's, as
-# the board's inits are: the launcher need not bring the network up.
+# Its public API but feckless_net_start(), which is the launcher's (6005): the
+# launcher brings the network up, as it does storage, and the app sets
+# its policy (feckless_net_set_hooks()) and asks for the radio
+# (wifi_request_apply()). wifi_init(), ethernet_init() and
+# wifistore_init() stay for apps built before 6005, which call them;
+# after feckless_net_start() each returns at once.
 ethernet_connected
 ethernet_init
 ethernet_ip
 ethernet_link
 feckless_net_hooks
 feckless_net_set_hooks
+feckless_net_started
 net_online
 net_probe
 net_route_describe

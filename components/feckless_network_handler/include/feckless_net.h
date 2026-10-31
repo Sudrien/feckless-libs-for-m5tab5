@@ -78,11 +78,48 @@ typedef struct {
 } feckless_net_hooks_t;
 
 /*
- * Copy the hooks in. Once, before wifi_init() and ethernet_init(); the
- * callers read them from other tasks without a lock, so changing them
- * afterwards is not supported.
+ * Copy the hooks in. Before wifi_init() and ethernet_init(), or -- since
+ * 6005, with feckless_net_start() -- at any time after: the application's policy
+ * (whether the radio and NTP are wanted, its portal) arrives once the
+ * launcher has brought the network up. Callers read the hooks from other
+ * tasks without a lock, so each call copies into the other of two
+ * buffers and swaps a pointer; a reader holds one buffer or the other,
+ * both whole. A call with usb_register_class NULL keeps the one already
+ * set: that one is the USB host owner's, feckless_net_start()'s.
  */
 void feckless_net_set_hooks(const feckless_net_hooks_t *hooks);
+
+/*
+ * 6005: the network, brought up once by whoever owns the board -- a
+ * launcher, or the launcher side of a standalone firmware -- as storage
+ * is. In order: the saved networks (wifistore_init(nvs_ns)); the USB
+ * host's configuration selector, given ethcfg_select() so a Realtek
+ * adapter enumerates in its CDC-ECM configuration; the owner's
+ * usb_register_class hook; wifi_init(exp2); ethernet_init(). Before the
+ * USB port comes up, so the Ethernet class is installed with the rest
+ * and no device has to be cycled to meet it.
+ *
+ * Nothing is powered: the radio comes up when something asks
+ * (wifi_request_apply()) and the wifi_enabled hook agrees, and a cable
+ * when one is attached. An app sets its policy with
+ * feckless_net_set_hooks() and asks. A second call returns ESP_OK and
+ * does nothing; so do wifi_init(), ethernet_init() and wifistore_init()
+ * called again after it, which an app built before 6005 does.
+ *
+ * The ABI's network section does not export this: it is the launcher's,
+ * as storage_init() is.
+ */
+typedef uint8_t (*feckless_net_config_fn)(uint16_t vid, uint16_t pid, uint8_t num_configs);
+typedef struct {
+    struct i2c_master_dev_t *exp2;      /* tab5io_exp2(): the C6's power and reset */
+    esp_err_t (*usb_register_class)(const char *name, feckless_net_usb_class_fn fn);
+    void (*usb_set_config_select)(feckless_net_config_fn fn);   /* usbhost_set_config_select */
+    const char *nvs_ns;                 /* the saved networks' namespace; NULL: wifistore's default */
+} feckless_net_start_t;
+esp_err_t feckless_net_start(const feckless_net_start_t *cfg);
+
+/* Whether feckless_net_start() has run. */
+bool feckless_net_started(void);
 
 /* The hooks in force; never NULL, members may be. For wifi.c and
  * ethernet.c. */

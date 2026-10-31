@@ -13,8 +13,22 @@ manifest, at the tag of the rest, and `feckless_abi_network` in main's
 `REQUIRES`. The network runs under the launcher's build, so it does what
 feckless_network_handler's README asks of an application -- its
 esp_hosted and Wi-Fi settings -- and holds to the configuration below.
-It need not bring the network up: `wifi_init()` and `ethernet_init()`
-are the app's. NVS must be up, for the saved networks.
+It brings the network up, as it does storage, with
+`feckless_net_start()` (6005), after storage and before the USB port:
+
+```c
+const feckless_net_start_t net = {
+    .exp2                  = tab5io_exp2(),
+    .usb_register_class    = usbhost_register_class,
+    .usb_set_config_select = usbhost_set_config_select,
+    .nvs_ns                = "defeatist",      /* the saved networks */
+};
+feckless_net_start(&net);
+usbhost_start();
+```
+
+NVS must be up first, for the saved networks. Nothing is powered: the
+radio comes up when an app asks, a cable when one is attached.
 
 ## An app
 
@@ -31,7 +45,13 @@ are the app's. NVS must be up, for the saved networks.
 
 beside the rest, and `feckless_abi_network` in main's `REQUIRES`. Then
 `feckless_abi_require_network()` first thing in `app_main()`, beside
-`feckless_abi_require()`. Sockets are lwIP's: `socket()` and the rest
+`feckless_abi_require()`. The app finds the network up to be asked
+for: it sets its policy with `feckless_net_set_hooks()` -- whether the
+radio and NTP are wanted, its portal; `usb_register_class` left NULL
+keeps the launcher's -- and asks for the radio with
+`wifi_request_apply()`. `feckless_net_start()` is not exported; an app
+built before 6005 calls `wifi_init()`, `ethernet_init()` and
+`wifistore_init()`, which return at once after it. Sockets are lwIP's: `socket()` and the rest
 compile to `lwip_socket()` and the rest, which the section exports;
 `close()`, `read()` and `write()` on a socket go through IDF's VFS and are
 the storage section's. Mbed TLS is not exported: the WPA2 PSK is the
