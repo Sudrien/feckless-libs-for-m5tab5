@@ -192,6 +192,7 @@ xTaskGetTickCount
 # ---- ESP-IDF -----------------------------------------------------------
 _esp_error_check_failed
 esp_app_get_description
+esp_deep_sleep_start
 esp_err_to_name
 esp_fill_random
 esp_get_free_heap_size
@@ -212,6 +213,7 @@ esp_timer_start_periodic
 esp_timer_stop
 heap_caps_aligned_alloc
 heap_caps_calloc
+heap_caps_check_integrity_all
 heap_caps_free
 heap_caps_get_free_size
 heap_caps_get_info
@@ -220,6 +222,7 @@ heap_caps_get_minimum_free_size
 heap_caps_malloc
 heap_caps_print_heap_info
 heap_caps_realloc
+heap_caps_register_failed_alloc_callback
 # 6002: the MAC, and reading the partitions -- Errant's and Defeatist's
 # launcher_import.c look for Launcher's saved networks in its image.
 esp_efuse_mac_get_default

@@ -118,6 +118,7 @@ httpd_req_get_url_query_str
 httpd_req_recv
 httpd_req_to_sockfd
 httpd_resp_send
+httpd_resp_send_404
 httpd_resp_send_chunk
 httpd_resp_send_err
 httpd_resp_set_hdr

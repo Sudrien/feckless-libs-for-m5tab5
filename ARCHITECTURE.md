@@ -365,3 +365,31 @@ histories stay in the archived repositories.
   restart; the apps this loads are code the owner chose to run. Not
   built (no ESP-IDF in the session): exports.txt's format is one name a
   line, and the name is IDF's own `esp_ota_ops.h`. Not on a Tab5.
+- **7003** feckless_abi: four names Defeatist's ELF leaves undefined,
+  from a scan of what its main/ calls against exports.txt and the
+  sections (no ESP-IDF in the session, so a scan of the source, not the
+  linker's list): `esp_deep_sleep_start` (core: the sleep page),
+  `heap_caps_check_integrity_all` and
+  `heap_caps_register_failed_alloc_callback` (core: heapmap.c's
+  diagnostics) and `httpd_resp_send_404` (network section, beside
+  `httpd_resp_send_err`). Names added: ABI v1 and the network section's
+  v1 stand. Each is a real function in its IDF header; none is a macro or
+  an inline, which would not be undefined in an ELF and would be a name
+  the launcher's table cannot take the address of. Left out on purpose,
+  for the ELF build to settle (its undefined list is the authority, and
+  a wrong name here breaks every launcher's link): `httpd_resp_sendstr`
+  and `heap_caps_print_all_task_stat_overview` (could not tell a function
+  from an inline), and the macros whose targets are exported already
+  (`xSemaphoreTake` to `xQueueSemaphoreTake` and the rest of FreeRTOS,
+  `inet_addr` to `ipaddr_addr`, `portENTER_CRITICAL`). Not built, not on
+  a Tab5.
+
+  The scan's other gaps need a decision, not a name: the audio codec
+  (`esp_audio_simple_dec_*`, `esp_audio_dec_register_default`) and the
+  hardware JPEG engine (`jpeg_new_decoder_engine`, `jpeg_alloc_decoder_mem`,
+  `jpeg_decoder_get_info`, `jpeg_decoder_process`) are host singletons and
+  want sections of their own, as camera has one; TLS (`httpd_ssl_*`,
+  28 mbedtls and 13 psa names, certgen.c) wants either a section or
+  linking mbedtls into the ELF, which would be a second copy beside the
+  host's; `usb_serial_jtag_*` is the console setup, which belongs in the
+  shim, not the ABI.
