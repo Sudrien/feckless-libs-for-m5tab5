@@ -195,3 +195,9 @@ histories stay in the archived repositories.
   feckless_abi_storage_v1`); with f_mkfs, refused as outside the ABI;
   with CONFIG_FECKLESS_FATFS_EXFAT=n and CONFIG_FATFS_FS_LOCK=4,
   refused at configure, naming both. Not on a Tab5.
+  Tagged v0.3.0 (9806e21).
+
+## The 4000 series, toward v0.4.0
+
+- **4001** CLAUDE.md opens this series; the README's example names
+  v0.3.0, not v0.1.0.

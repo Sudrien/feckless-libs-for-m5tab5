@@ -34,11 +34,11 @@ dependencies:
   feckless_drivers:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/feckless_drivers
-    version: "v0.1.0"
+    version: "v0.3.0"
   feckless_graphics_handler:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/feckless_graphics_handler
-    version: "v0.1.0"
+    version: "v0.3.0"
 ```
 
 The components require each other by name, not by a git dependency, so
