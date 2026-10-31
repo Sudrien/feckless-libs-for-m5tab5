@@ -62,28 +62,9 @@ if(NOT CMAKE_BUILD_EARLY_EXPANSION)
         endif()
     endforeach()
 
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_exports}")
-    file(STRINGS "${_exports}" _syms REGEX "^[A-Za-z_][A-Za-z0-9_]*$")
-    # As elf_loader's tool/symbols.py writes it: only the address
-    # matters, and "int" for memcpy needs the warning off.
-    set(_c "/* Generated from exports.txt by CMakeLists.txt. Do not edit. */\n")
-    string(APPEND _c "#include <stddef.h>\n#include \"private/elf_symbol.h\"\n")
-    string(APPEND _c "#include \"feckless_abi.h\"\n\n")
-    string(APPEND _c "#pragma GCC diagnostic push\n")
-    string(APPEND _c "#pragma GCC diagnostic ignored \"-Wbuiltin-declaration-mismatch\"\n")
-    foreach(_s IN LISTS _syms)
-        string(APPEND _c "extern int ${_s};\n")
-    endforeach()
-    string(APPEND _c "#pragma GCC diagnostic pop\n\n")
-    string(APPEND _c "const struct esp_elfsym g_feckless_abi_elfsyms[] = {\n")
-    # Not ESP_ELFSYM_EXPORT(FECKLESS_ABI_SYMBOL): it stringizes its
-    # argument unexpanded, and registered the version as
-    # "FECKLESS_ABI_SYMBOL", which no app asks for.
-    string(APPEND _c "    { FECKLESS_ABI_NAME, (const void *)&FECKLESS_ABI_SYMBOL },\n")
-    foreach(_s IN LISTS _syms)
-        string(APPEND _c "    ESP_ELFSYM_EXPORT(${_s}),\n")
-    endforeach()
-    string(APPEND _c "    ESP_ELFSYM_END\n};\n")
-    file(WRITE "${_table}.tmp" "${_c}")
-    configure_file("${_table}.tmp" "${_table}" COPYONLY)
+    # The core table: exports.txt and feckless_abi_v1 (3007: the writer
+    # is cmake/abitable.cmake, which each section's component uses too).
+    include("${CMAKE_CURRENT_LIST_DIR}/cmake/abitable.cmake")
+    feckless_abi_write_table("${_table}" "${_exports}" g_feckless_abi_elfsyms
+                             FECKLESS_ABI_NAME FECKLESS_ABI_SYMBOL)
 endif()

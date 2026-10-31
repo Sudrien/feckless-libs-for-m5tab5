@@ -36,6 +36,7 @@ macro(feckless_abi_elf _name)
                 -DELF=${CMAKE_BINARY_DIR}/${_name}.app.elf
                 -DEXPORTS=${FECKLESS_ABI_DIR}/exports.txt
                 -DHEADER=${FECKLESS_ABI_DIR}/include/feckless_abi.h
+                -DSECTIONS=${FECKLESS_ABI_DIR}/sections
                 -P ${FECKLESS_ABI_DIR}/cmake/abicheck.cmake
         COMMENT "Checking ${_name}.app.elf against the feckless ABI"
         VERBATIM)

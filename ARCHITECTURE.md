@@ -158,3 +158,20 @@ histories stay in the archived repositories.
   the same name is not known to override that -- a project's own
   components/esp_ipa does. Mahjong keeps its copy until a registry
   esp_ipa has the less-than-v3 libraries.
+- **3007** feckless_abi: sections. Some exports are not every
+  launcher's to give -- storage, for one: Lothesome's standalone .bin is
+  a launcher for its own ELF and links none. A section is a list of its
+  own, sections/<name>.txt, with an "@symbol" of its own, given by a
+  component feckless_abi_<name> that a launcher links only if it has
+  what it exports. feckless_abi_run() registers each section's table,
+  found through a weak reference, beside the core one. abicheck.cmake
+  reads every section: an app's import may be in exports.txt or a
+  section's list, and an app taking a section's names must refer to its
+  symbol, so a launcher without the section refuses the app by that
+  name. The table writer moved into cmake/abitable.cmake, shared with
+  the sections; the core table it writes has the same entries as before
+  (one declaration more). No names added to v1: still ABI v1, and an
+  app built before this loads on a launcher built after, and the other
+  way round. Built: Lothesome with ESP-IDF release/v6.1 and the
+  component manager off, `feckless_abi: 85 symbols, all in
+  feckless_abi_v1`, as before.

@@ -117,6 +117,32 @@ app run, so the launcher can carry on. A return of 0 means the app's
 leave the screen alone from then on (`vTaskDelete(NULL)`). See
 "Configuration" for the sdkconfig.
 
+## Sections
+
+Some of what an app might want is not every launcher's to give. A
+section is a list of its own, `sections/<name>.txt`, with a version
+symbol of its own (its `@symbol` line), given by a component of its own,
+`feckless_abi_<name>`, that a launcher links only if it has what the
+section exports. `feckless_abi_run()` registers each section's table
+beside the core one when it is linked in.
+
+An app that takes a name from a section calls
+`feckless_abi_require_<name>()` beside `feckless_abi_require()`, and
+names the section's component for its headers. The build check fails an
+app that takes a section's names without referring to its symbol, so a
+launcher without the section refuses the app by that name -- in
+`esp_elf_relocate()`, before any of it runs -- rather than the app
+failing at its first call. The check reports what an ELF uses:
+`feckless_abi: 9 symbols, all in feckless_abi_v1 + feckless_abi_storage_v1`.
+
+A section's version is its own: adding a name is compatible, removing
+one or changing what one means is `<name>_v2`. Lothesome's analyzer
+uses no section, and runs on any launcher on ABI v1.
+
+| Section | Component | Symbol | What |
+|---|---|---|---|
+| storage | `feckless_abi_storage` | `feckless_abi_storage_v1` | `feckless_storage_handler`, FatFs with exFAT, libc's and POSIX file I/O (3008) |
+
 ## Configuration
 
 An app is compiled with its own sdkconfig and runs under its launcher's,
