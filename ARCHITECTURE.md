@@ -140,3 +140,21 @@ histories stay in the archived repositories.
   Defeatist's 5026 (stop once), 5032 and 6062 (its rings in PSRAM,
   freed as made), each marked "Vendored change" in uac_host.c.
   Apache-2.0, with its LICENSE.
+- **3006** usb_host_uac on the one version: its manifest at 0.2.0 with
+  this repository's url, a comment saying it was modified from 1.5.0.
+  feckless_drivers' manifest no longer pins espressif/usb_host_uac 1.5.0
+  -- both at once would be two components for one name -- so every
+  project on the drivers names usb_host_uac from here; the drivers warn
+  at configure time when the one they get is not this one. The READMEs
+  and CLAUDE.md say so. No code changes. Built: Duplicitous with
+  ESP-IDF release/v6.1 and the component manager off, its own
+  components/usb_host_msc, components/fatfs and cmake/exfat.cmake taken
+  out, with fatfs, usb_host_msc and usb_host_uac from here: no warning,
+  duplicitous.bin 0x135330 bytes. With its own usb_host_msc put back,
+  configure warned `feckless_storage_handler: usb_host_msc is
+  .../components/usb_host_msc, not feckless-libs'`. Not on a Tab5.
+  esp_ipa, Mahjong's fixed copy, is not brought in: esp_video requires
+  espressif/esp_ipa 2.4.0 from the registry, and a git dependency of
+  the same name is not known to override that -- a project's own
+  components/esp_ipa does. Mahjong keeps its copy until a registry
+  esp_ipa has the less-than-v3 libraries.

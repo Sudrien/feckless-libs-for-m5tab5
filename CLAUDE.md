@@ -2,7 +2,7 @@
 
 How to work on this repository. Read it before writing a patch.
 
-Eight ESP-IDF components for the M5Stack Tab5, in `components/`, released
+Nine ESP-IDF components for the M5Stack Tab5, in `components/`, released
 together under one tag. `README.md` says what each is.
 
 ## Patches
@@ -57,7 +57,10 @@ and -- once a board has run it -- what the log showed.
   dependency in its manifest: a component cannot name the tag it is
   about to be. The app's manifest lists every component it uses.
 - **Registry dependencies are pinned** in the manifest of the component
-  that uses them.
+  that uses them -- except an Espressif component this repository
+  carries a fixed copy of (usb_host_msc, usb_host_uac): that one is
+  required by name, named by the app, and the requiring component warns
+  at configure time when it is not ours.
 - **The Espressif registry is not reachable from a session.** A session
   can build by fetching the registry components' sources from GitHub
   (esp-bsp, esp-iot-solution, esp-usb) into a scratch directory and

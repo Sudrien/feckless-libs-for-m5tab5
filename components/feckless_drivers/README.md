@@ -57,9 +57,20 @@ moves Realtek adapters to their CDC-ECM configuration.
 ## What the application must do
 
 **Supply `usb_host_uac`.** Required by name rather than pulled from the
-registry, because the player builds against a vendored 1.5.0 with a
-descriptor-parser fix. Anything else adds `espressif/usb_host_uac` to
-its own manifest.
+registry, because the registry's 1.5.0 lacks fixes the Tab5 needs.
+Since v0.3.0 the fixed copy is this repository's
+`components/usb_host_uac`, named beside this one at the same tag:
+
+```yaml
+  usb_host_uac:
+    git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
+    path: components/usb_host_uac
+    version: "v0.3.0"
+```
+
+Every project using `feckless_drivers` needs it, audio or not: the
+drivers link it. Another -- `espressif/usb_host_uac`, or a project's own
+copy -- builds, with a configure warning.
 
 **Set the USB host's Kconfig in its own `sdkconfig.defaults`.** The
 player's sets, among others:

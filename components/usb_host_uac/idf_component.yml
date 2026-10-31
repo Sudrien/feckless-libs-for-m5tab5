@@ -1,14 +1,15 @@
 ## IDF Component Manager Manifest File
-version: "1.5.0"
+version: "0.2.0"
 license: "Apache-2.0"
-# Modified from Espressif's usb_host_uac 1.5.0: the espressif/usb
-# override_path is dropped (see below). Apache-2.0, see LICENSE.
-description: USB Host UAC driver
-url: https://github.com/espressif/esp-usb/tree/master/host/class/uac/usb_host_uac
-issues: "https://github.com/espressif/esp-usb/issues"
-repository: "https://github.com/espressif/esp-usb.git"
-repository_info:
-  path: "host/class/uac/usb_host_uac"
+# Modified from Espressif's usb_host_uac 1.5.0 (esp-usb,
+# host/class/uac/usb_host_uac): Defeatist's 5026, 5032 and 6062, marked
+# "Vendored change" in uac_host.c; and the espressif/usb override_path
+# dropped (see below). Apache-2.0, see LICENSE. Its version is
+# feckless-libs' since 3006; 1.5.0 is what it was modified from.
+description: >-
+  USB Host UAC driver: Espressif's usb_host_uac 1.5.0, with the Tab5's
+  fixes (a stream stopped once; its rings in PSRAM, freed as made).
+url: https://github.com/Sudrien/feckless-libs-for-m5tab5
 dependencies:
   idf: ">=5.0"
   cmake_utilities: "0.5.*"
