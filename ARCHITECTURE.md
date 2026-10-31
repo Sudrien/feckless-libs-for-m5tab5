@@ -135,3 +135,8 @@ histories stay in the archived repositories.
   configure time when the usb_host_msc it gets is not this one. The
   READMEs say to name it; CLAUDE.md says eight components. No code
   changes.
+- **3005** usb_host_uac, imported unchanged from Defeatist's
+  m5tab5/components/usb_host_uac (c4be9ad): Espressif's 1.5.0 with
+  Defeatist's 5026 (stop once), 5032 and 6062 (its rings in PSRAM,
+  freed as made), each marked "Vendored change" in uac_host.c.
+  Apache-2.0, with its LICENSE.
