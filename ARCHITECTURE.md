@@ -272,3 +272,9 @@ histories stay in the archived repositories.
   list. Built: Avoidant without the option, refused at configure
   (`CONFIG_FATFS_USE_FASTSEEK=y (FIL's cltbl, storage_v2)`); with it,
   0x1784a0 bytes, feckless_abi_storage_v2 in the link. Not on a Tab5.
+  Tagged v0.5.0 (c6c4bc6).
+
+## The 6000 series, toward v0.6.0
+
+- **6001** CLAUDE.md opens this series, and says a new component starts
+  at its siblings' version. Documentation only.
