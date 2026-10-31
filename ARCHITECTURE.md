@@ -223,3 +223,10 @@ histories stay in the archived repositories.
   (its 0101) taking nine of them, `feckless_abi: 78 symbols, all in
   feckless_abi_v1 + feckless_abi_camera_v1 + feckless_abi_nvs_v1`, and
   its standalone .bin linking the section. Not on a Tab5.
+- **4005** The camera section: feckless_abi's sections/camera.txt and
+  the component feckless_abi_camera -- feckless_camera's whole API, six
+  names under feckless_abi_camera_v1; `camera_init()` is the app's, as
+  the board's inits are, and already a no-op the second time. The
+  camera runs under the launcher's build, so the launcher carries its
+  configuration; configure warns without the sensor and the ISP's
+  controller. Built as 4004, in the same Mahjong build. Not on a Tab5.

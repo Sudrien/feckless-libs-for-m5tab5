@@ -1,0 +1,23 @@
+# The feckless ABI's camera section, version 1 (4005).
+#
+# What an app's ELF may take from a launcher that links the section's
+# component, feckless_abi_camera -- one symbol a line, as exports.txt.
+# The launcher defines the "@symbol"; an app that takes any name below
+# refers to it (feckless_abi_require_camera()), so a launcher without the
+# section refuses the app by that name instead of failing on its first
+# frame. Lines that are not a bare name are ignored.
+#
+# Adding a name is compatible. Removing one, or changing what one means,
+# is a new section version: camera_v2.
+@symbol feckless_abi_camera_v1
+
+# ---- feckless_camera ---------------------------------------------------
+# Its whole public API. camera_init() is the app's, as the board's inits
+# are (the core README, "The board may already be up"): it probes once
+# per boot, and a second call returns ESP_OK and does nothing.
+camera_grab_luma
+camera_init
+camera_luma_size
+camera_present
+camera_start
+camera_stop
