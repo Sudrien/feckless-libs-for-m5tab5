@@ -80,3 +80,11 @@ histories stay in the archived repositories.
   as an argument (`camera_init(tab5io_bus())`) and requires no other
   component; esp_video and what it brings stay out of any build that
   does not name it.
+- **2005** feckless_camera on the one version: its manifest's url is
+  this repository's (its version was already 0.1.0); its README's
+  snippet at `path:` and v0.2.0; the README's table and CLAUDE.md name
+  six components, and the README says what it needs at run time -- the
+  bus, lcd_init() first, and on P4 silicon before v3 an esp_ipa the app
+  supplies. No code changes; no host tests to run. Not built here:
+  esp_video 2.5.0 and what it brings were not fetched. Its code is
+  v0.1.0's, as Mahjong builds it.

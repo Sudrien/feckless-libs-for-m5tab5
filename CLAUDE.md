@@ -2,7 +2,7 @@
 
 How to work on this repository. Read it before writing a patch.
 
-Five ESP-IDF components for the M5Stack Tab5, in `components/`, released
+Six ESP-IDF components for the M5Stack Tab5, in `components/`, released
 together under one tag. `README.md` says what each is.
 
 ## Patches

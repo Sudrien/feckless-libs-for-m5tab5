@@ -9,6 +9,7 @@ under one tag:
 | `feckless_graphics_handler` | The ST7121 panel and backlight, and gfx: a rotating RGB565 framebuffer with a DMA2D blit, Ark Pixel 12px text with CJK, Galmuri 12px Hangul, Arabic shaping and right-to-left lines |
 | `feckless_storage_handler` | The microSD slot and USB-A mass storage, mounted and watched, with one arbiter that leases the volume per read |
 | `feckless_network_handler` | Wi-Fi through the ESP32-C6 (esp_hosted over SDIO2), a saved-network list in NVS, and USB Ethernet (ASIX, CDC-ECM) on the USB-A port, the wired link preferred when it can route |
+| `feckless_camera` | The SC202CS camera on MIPI CSI, as luma frames, through esp_video; it takes the I2C bus from `feckless_drivers`' tab5io as an argument |
 | `feckless_abi` | The ABI between a launcher and the apps it loads with esp_elf: the list of symbols an app's ELF may take from the launcher, and the build check |
 
 Each is in `components/`, with its own README.
@@ -16,8 +17,8 @@ Each is in `components/`, with its own README.
 They were repositories of their own, each tagged on its own:
 feckless-drivers-for-m5tab5, feckless-graphics-handler-for-m5tab5,
 feckless-storage-handler-for-m5tab5 and feckless-abi-for-m5tab5 until
-v0.1.0, feckless-network-handler-for-m5tab5 until v0.2.0, now
-archived. `ARCHITECTURE.md` says what each was imported at.
+v0.1.0, feckless-network-handler-for-m5tab5 and feckless-camera-for-m5tab5
+until v0.2.0, now archived. `ARCHITECTURE.md` says what each was imported at.
 
 ## Using them
 
@@ -45,8 +46,14 @@ component needs:
   Tab5 projects carry a patched 1.3.0 in their own `components/`.
 - `feckless_network_handler`: `esp_usbh_asix`, from
   github.com/Sudrien/esp_usbh_asix at v0.1.0, which its manifest pins.
-- `feckless_drivers`, `feckless_graphics_handler` and
-  `feckless_network_handler`: nothing of each other's.
+- `feckless_camera`: nothing by name; `camera_init()` takes the bus,
+  and the panel's bring-up (`lcd_init()`) powers the MIPI PHY it shares,
+  so it runs after that.
+  On P4 silicon before v3 (the Tab5s so far), an `esp_ipa` the app
+  supplies: the component's README says why.
+- `feckless_drivers`, `feckless_graphics_handler`,
+  `feckless_network_handler` and `feckless_camera`: nothing of each
+  other's.
 
 `feckless_abi` fails the build if a sibling it requires is at another
 version than its own.

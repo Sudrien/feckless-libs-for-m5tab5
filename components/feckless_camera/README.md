@@ -24,8 +24,9 @@ whose panel bring-up powers the MIPI PHY it shares.
 # main/idf_component.yml
 dependencies:
   feckless_camera:
-    git: https://github.com/Sudrien/feckless-camera-for-m5tab5.git
-    version: "v0.1.0"
+    git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
+    path: components/feckless_camera
+    version: "v0.2.0"
 ```
 
 and `feckless_camera` in `main`'s `REQUIRES`. Then:
