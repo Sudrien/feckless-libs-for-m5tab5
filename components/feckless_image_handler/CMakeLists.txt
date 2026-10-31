@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: MIT
 # feckless_image_handler: pictures, from their bytes (7004), and the
 # software decoders (7005): stb_image for JPEG and GIF, J40 for JPEG XL,
-# and pngle for PNG (7006).
+# and pngle for PNG (7006); img_decode() (7007) and its ESP backends (7008:
+# the P4 hardware JPEG engine, TJpgDec through esp_jpeg, big-stack runners).
 #
 # stb_image.h, j40.h, pngle and miniz are fetched at configure time, pinned and
 # hash-checked (cmake/vendored.cmake), into vendor/, which is gitignored.
@@ -11,10 +12,11 @@ endif()
 
 idf_component_register(
     SRCS "src/image_ico.c" "src/image_stb.c" "src/image_jxl.c" "src/image_png.c"
+         "src/image_decode.c" "src/image_esp.c"
          "vendor/pngle.c" "vendor/miniz.c"
     INCLUDE_DIRS "include"
     PRIV_INCLUDE_DIRS "vendor"
-    PRIV_REQUIRES heap
+    PRIV_REQUIRES heap log freertos esp_driver_jpeg espressif__esp_jpeg
 )
 
 # -fwrapv: a damaged file can overflow signed arithmetic in stb_image's

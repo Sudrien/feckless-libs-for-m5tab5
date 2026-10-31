@@ -534,3 +534,24 @@ histories stay in the archived repositories.
   ESP backends (7008) fill the table; `decodetest` fills it with fakes:
   60 checks under ASan and UBSan, covering each step of the order, the
   memory refusals, NULL backends, and the pad and first-scale arithmetic.
+- **7008** feckless_image_handler: the ESP backends for `img_decode()`,
+  `feckless_image_esp.h` and `src/image_esp.c`: `img_esp_init()` (the
+  hardware JPEG engine, made once and kept, as `albumart_init()` did) and
+  `img_esp_ops()`. Moved from Defeatist's `albumart.c` with their reasons:
+  the engine's DMA input and output buffers from `jpeg_alloc_decoder_mem()`
+  (output padded to the MCU grid, the stride the padded width), BGR
+  `rgb_order` and BT.601 stated (the byte scramble, not a colour order);
+  TJpgDec through `esp_jpeg` with the 8 KB internal work buffer supplied
+  (1104) and the scale ladder from `img_tjpgd_first_scale()`, not byte
+  swapped; stb_image, pngle and J40 with their errors mapped onto
+  `img_err_t`; GIF (`IMG_GIF_STACK`) and JXL (`IMG_JXL_STACK`) on a PSRAM
+  stack with a static internal TCB, at idle priority (6147), and
+  `soft_begin`/`soft_end` as the idle-priority drop (5093). New
+  requirements: the component now REQUIRES `esp_driver_jpeg` and a
+  manifest dependency on `espressif/esp_jpeg ^1.3.1` (a re-resolve of the
+  project's lock), and a project must set `CONFIG_JD_USE_SCALE=y`. Not
+  carried over: Defeatist's per-cover hash logging, which was a
+  diagnosis of one reproducible file. Compile-checked against stubs with
+  `-Wall -Wextra -Werror`; the engine, the stacks and the colour order
+  are verified only on the board. The draw step and the ABI section
+  follow.

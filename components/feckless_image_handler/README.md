@@ -77,3 +77,15 @@ img_err_t e = img_decode(&ops, buf, len, box_w, box_h, bg565, &pic);
 `ops` holds the backends (hardware JPEG, TJpgDec, stb, GIF, PNG, JXL) and the
 heap queries; a NULL entry is a decoder that is not there. Baseline JPEG tries
 hardware, then TJpgDec, then stb_image; progressive goes to stb_image.
+
+## On the board (7008)
+
+```c
+#include "feckless_image_esp.h"
+
+img_esp_init();                                   /* once, at boot */
+img_decode(img_esp_ops(), buf, len, w, h, bg, &pic);
+```
+
+Needs `CONFIG_JD_USE_SCALE=y` (TJpgDec's 1/2..1/8 reduction) and pulls in
+`esp_driver_jpeg` and `espressif/esp_jpeg`.

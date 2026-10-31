@@ -11,3 +11,11 @@ license: MIT
 dependencies:
   idf:
     version: ">=5.4.2"
+
+  # TJpgDec, the software JPEG decoder between the hardware engine and
+  # stb_image. The P4's hardware decoder has no scaler, so a 3000 px cover
+  # wants 17 MB in one block; TJpgDec decodes at 1/2, 1/4 or 1/8. Not in
+  # ROM on the P4 (about 5 KB of flash). TJpgDec is ChaN's, under its own
+  # permissive licence; the notice travels with a redistribution. Needs
+  # CONFIG_JD_USE_SCALE=y in the project's sdkconfig.
+  espressif/esp_jpeg: "^1.3.1"
