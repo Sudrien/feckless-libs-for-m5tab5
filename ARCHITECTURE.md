@@ -45,3 +45,12 @@ histories stay in the archived repositories.
   setting all four manifests' versions at once; and the host tests on
   every push, with a check that the four versions are one. Run here:
   micpcmtest 1470 checks, the graphics handler's 922, no failures.
+- **0008** Built: 0006 under Duplicitous. Duplicitous's m5tab5/ at
+  its main, with ESP-IDF release/v6.1 (9a97f6c, the build Lothesome's
+  log shows), `IDF_COMPONENT_MANAGER=0` and these four components plus
+  the registry ones' sources from GitHub as EXTRA_COMPONENT_DIRS: built,
+  no errors. Its own manifest was not changed for it, which the manager
+  being off makes moot; moving it here is Duplicitous's patch. With
+  feckless_drivers' manifest set to 1.0.1, configure stopped at
+  `feckless_abi: feckless_drivers is 1.0.1, feckless_abi is 1.0.0`.
+  Not run on a Tab5.
