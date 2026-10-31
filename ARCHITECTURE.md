@@ -74,3 +74,9 @@ histories stay in the archived repositories.
   handler's host tests, 46 checks, and the drivers' and graphics
   handler's as before, no failures. Not built for the P4: its code is
   v0.2.2's, which aimless builds.
+- **2004** feckless_camera, imported unchanged from
+  feckless-camera-for-m5tab5 v0.1.0 (44ad3dc), which Unprofitable
+  Mahjong pins, into `components/feckless_camera`. It takes the I2C bus
+  as an argument (`camera_init(tab5io_bus())`) and requires no other
+  component; esp_video and what it brings stay out of any build that
+  does not name it.
