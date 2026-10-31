@@ -17,7 +17,7 @@ app. feckless-graphics-handler v0.2.8 was tagged without the change it
 was for, and cost a round on a Tab5 (Duplicitous's 0024). Their
 histories stay in the archived repositories.
 
-## The 0000 series, toward v1.0.0
+## The 0000 series, toward v0.1.0
 
 - **0001** The repository: README, LICENSE, CLAUDE.md, this file.
 - **0002** feckless_drivers, imported unchanged from
@@ -54,3 +54,11 @@ histories stay in the archived repositories.
   feckless_drivers' manifest set to 1.0.1, configure stopped at
   `feckless_abi: feckless_drivers is 1.0.1, feckless_abi is 1.0.0`.
   Not run on a Tab5.
+  Tagged v0.1.0; the tag workflow set every manifest to 0.1.0 (e6ddd3d).
+  0006's 1.0.0 was a guess at the version, not the version.
+
+## The 2000 series, toward v0.2.0
+
+- **2001** The docs at v0.1.0: the install snippets, the history notes
+  and exports.txt's comment said v1.0.0. CLAUDE.md's numbering opens
+  this series, numbered as the apps' are.

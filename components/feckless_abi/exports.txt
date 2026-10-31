@@ -12,7 +12,7 @@
 
 # ---- feckless_drivers, feckless_graphics_handler -----------------------
 # As at feckless-drivers v0.5.10 and feckless-graphics-handler v0.2.9,
-# which feckless-libs v1.0.0 has unchanged.
+# which feckless-libs v0.1.0 has unchanged.
 # Their whole public API: tools/feckless_exports.py.
 arabixel_count
 arabixel_find

@@ -21,7 +21,7 @@ dependencies:
   espressif/esp_lcd_touch_gt911: "*"
 
   # The USB audio class driver, required by name in CMakeLists.txt. Moved
-  # here from feckless_abi's manifest, which pinned it before v1.0.0; a
+  # here from feckless_abi's manifest, which pinned it before v0.1.0; a
   # project's own components/usb_host_uac, as the player has, takes
   # precedence over it.
   espressif/usb_host_uac: "1.5.0"

@@ -21,7 +21,7 @@ dependencies:
   feckless_storage_handler:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/feckless_storage_handler
-    version: "v1.0.0"
+    version: "v0.1.0"
 ```
 
 and `feckless_storage_handler` in `main`'s `REQUIRES`. It requires a

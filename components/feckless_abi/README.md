@@ -15,7 +15,7 @@ the log, libc, libm and libgcc for the launcher to supply.
 ## Version 1
 
 - **feckless_drivers and feckless_graphics_handler** (as at their old
-  repositories' v0.5.10 and v0.2.9, unchanged in v1.0.0),
+  repositories' v0.5.10 and v0.2.9, unchanged in v0.1.0),
   their whole public API: every global their public headers declare.
   That is 110 functions and the font tables.
 - **A fixed set from ESP-IDF and the toolchain**: FreeRTOS tasks,
@@ -52,15 +52,15 @@ dependencies:
   feckless_abi:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/feckless_abi
-    version: "v1.0.0"
+    version: "v0.1.0"
   feckless_drivers:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/feckless_drivers
-    version: "v1.0.0"
+    version: "v0.1.0"
   feckless_graphics_handler:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/feckless_graphics_handler
-    version: "v1.0.0"
+    version: "v0.1.0"
 ```
 
 All three at the same tag: the build fails otherwise. A launcher's
@@ -148,12 +148,13 @@ not find. It fails before any of the app runs.
   launcher that has it. That is a minor release.
 - **Removing** a name, or changing what one means, is a new version:
   a signature, or a struct, in any of the components the ABI exports.
-  A change that only changes behaviour is not; v1.0.0's code, which is
+  A change that only changes behaviour is not; v0.1.0's code, which is
   the old repositories' v0.5.10 and v0.2.9 (whose inits may be called
   twice, over v0.2.0's v0.5.9 and v0.2.7), is not. Bump
   `FECKLESS_ABI_VERSION` and `FECKLESS_ABI_SYMBOL` together, in a major
   release. The repository's tag and the ABI version are separate
-  numbers: v1.0.0 is ABI v1, as v0.2.5 was.
+  numbers: feckless-libs v0.1.0 is ABI v1, as feckless-abi v0.2.5
+  was.
 
 After a change to either library's headers,
 `tools/feckless_exports.py <build> <dir holding the components>`

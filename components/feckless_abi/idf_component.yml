@@ -12,8 +12,8 @@ dependencies:
 
   # feckless_drivers and feckless_graphics_handler are this repository's
   # own, required by name in CMakeLists.txt and listed by the app at this
-  # same tag (README.md). Before v1.0.0 they were pinned here by git url:
-  # v0.5.10 and v0.2.9, whose code v1.0.0 has unchanged. usb_host_uac,
+  # same tag (README.md). Before v0.1.0 they were pinned here by git url:
+  # v0.5.10 and v0.2.9, whose code v0.1.0 has unchanged. usb_host_uac,
   # which the drivers require by name, moved to their manifest.
 
   # esp_elf: the host loads with it, and an app's ELF is linked by its

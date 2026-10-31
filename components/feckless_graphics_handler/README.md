@@ -28,7 +28,7 @@ dependencies:
   feckless_graphics_handler:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/feckless_graphics_handler
-    version: "v1.0.0"
+    version: "v0.1.0"
 ```
 
 and `feckless_graphics_handler` in `main`'s `REQUIRES`.
