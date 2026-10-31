@@ -230,3 +230,8 @@ histories stay in the archived repositories.
   camera runs under the launcher's build, so the launcher carries its
   configuration; configure warns without the sensor and the ISP's
   controller. Built as 4004, in the same Mahjong build. Not on a Tab5.
+- **4006** `__assert_func` and `rintf` in exports.txt, libc's and
+  libm's: vendored libraries' assert() and rounding, quirc's and
+  qrcodegen's in Unprofitable Mahjong's ELF, which they failed the
+  check on. Names added, so a minor release: still ABI v1. Built as
+  4004. Not on a Tab5.
