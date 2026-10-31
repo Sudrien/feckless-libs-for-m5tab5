@@ -250,3 +250,16 @@ histories stay in the archived repositories.
   0035-0037): a game in progress restored after a reboot (NVS both
   ways), and a replay code read off the camera and decoded by quirc
   inside the ELF (4006's rintf and __assert_func). Documentation only.
+- **5002** feckless_abi: 45 names more in the core list -- libc's
+  (strspn, strdup, strftime, gmtime_r, time, gettimeofday, the ctype
+  table...), libm's, libgcc's `__clzdi2`, FreeRTOS's stream buffers,
+  static creation, priorities and multi-core critical sections, and
+  `esp_fill_random`, `esp_rom_delay_us`, `esp_log_level_get` and heap
+  reporting. What Spurious StarDict Reader, Errant Moving Map and
+  Defeatist Music Player call that is neither a library of their own
+  nor a section's: listed from each one's build with ESP-IDF v6.1, by
+  the undefined symbols of its main and vendored components. Not
+  `errno`, which is thread-local on IDF 6.1 and cannot be in the table
+  (`__errno` is, already). Names added: still ABI v1. Built: Avoidant
+  linking the table, every name resolved, 0x178100 bytes (0x30a0 more).
+  Not built on 5.5.

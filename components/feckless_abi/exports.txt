@@ -141,22 +141,27 @@ pcTaskGetName
 ulTaskGenericNotifyTake
 uxQueueMessagesWaiting
 uxTaskGetStackHighWaterMark
+uxTaskPriorityGet
 vEventGroupDelete
 vPortEnterCritical
 vPortExitCritical
+vPortExitCriticalMultiCore
 vQueueDelete
 vTaskDelay
 vTaskDelete
 vTaskGenericNotifyGiveFromISR
+vTaskPrioritySet
 vTaskResume
 vTaskSuspend
 xEventGroupClearBits
 xEventGroupCreate
 xEventGroupSetBits
 xEventGroupWaitBits
+xPortEnterCriticalTimeout
 xPortInIsrContext
 xQueueCreateCountingSemaphore
 xQueueCreateMutex
+xQueueCreateMutexStatic
 xQueueGenericCreate
 xQueueGenericReset
 xQueueGenericSend
@@ -168,25 +173,37 @@ xQueueReceive
 xQueueReceiveFromISR
 xQueueSemaphoreTake
 xQueueTakeMutexRecursive
+xStreamBufferBytesAvailable
+xStreamBufferGenericCreateStatic
+xStreamBufferIsEmpty
+xStreamBufferReceive
+xStreamBufferReset
+xStreamBufferSend
+xStreamBufferSpacesAvailable
 xTaskCreatePinnedToCore
+xTaskCreateStaticPinnedToCore
 xTaskDelayUntil
 xTaskGenericNotify
 xTaskGenericNotifyFromISR
 xTaskGetCurrentTaskHandle
+xTaskGetStackStart
 xTaskGetTickCount
 
 # ---- ESP-IDF -----------------------------------------------------------
 _esp_error_check_failed
 esp_app_get_description
 esp_err_to_name
+esp_fill_random
 esp_get_free_heap_size
 esp_log
+esp_log_level_get
 esp_log_level_set
 esp_log_timestamp
 esp_log_write
 esp_log_writev
 esp_random
 esp_restart
+esp_rom_delay_us
 esp_timer_create
 esp_timer_delete
 esp_timer_get_time
@@ -197,23 +214,31 @@ heap_caps_aligned_alloc
 heap_caps_calloc
 heap_caps_free
 heap_caps_get_free_size
+heap_caps_get_info
 heap_caps_get_largest_free_block
+heap_caps_get_minimum_free_size
 heap_caps_malloc
+heap_caps_print_heap_info
 heap_caps_realloc
 
 # ---- libc --------------------------------------------------------------
 __assert_func
+atof
+_ctype_b
 __errno
 abs
 atoi
 bsearch
 calloc
 free
+gettimeofday
+gmtime_r
 labs
 malloc
 memchr
 memcmp
 memcpy
+memmem
 memmove
 memset
 printf
@@ -222,6 +247,7 @@ puts
 qsort
 rand
 realloc
+settimeofday
 snprintf
 sprintf
 srand
@@ -231,13 +257,20 @@ strcat
 strchr
 strcmp
 strcpy
+strcspn
+strdup
+strerror
+strftime
+strlcpy
 strlen
 strncasecmp
 strncat
 strncmp
 strncpy
 strnlen
+strpbrk
 strrchr
+strspn
 strstr
 strtod
 strtof
@@ -245,12 +278,18 @@ strtol
 strtoll
 strtoul
 strtoull
+time
+tolower
 vprintf
 vsnprintf
 
 # ---- libm --------------------------------------------------------------
 # __issignalingf: newlib's newer float functions call it (IDF 6.1's
 # toolchain); src/feckless_abi.c has it for 5.5's, which lacks it.
+acos
+asin
+asinh
+cbrtf
 __issignalingf
 acosf
 asinf
@@ -271,11 +310,15 @@ floorf
 fmod
 fmodf
 hypotf
+ldexp
+ldexpf
 log
 log10
 log10f
 log2f
 logf
+lrintf
+lround
 lroundf
 pow
 powf
@@ -284,6 +327,7 @@ round
 roundf
 sin
 sinf
+sinh
 sqrt
 sqrtf
 tan
@@ -298,6 +342,7 @@ __ashldi3
 __ashrdi3
 __bswapdi2
 __bswapsi2
+__clzdi2
 __clzsi2
 __ctzsi2
 __divdf3
