@@ -1,15 +1,17 @@
 # SPDX-License-Identifier: MIT
 # feckless_image_handler: pictures, from their bytes (7004), and the
-# software decoders (7005): stb_image for JPEG and GIF, J40 for JPEG XL.
+# software decoders (7005): stb_image for JPEG and GIF, J40 for JPEG XL,
+# and pngle for PNG (7006).
 #
-# stb_image.h and j40.h are fetched at configure time, pinned and
+# stb_image.h, j40.h, pngle and miniz are fetched at configure time, pinned and
 # hash-checked (cmake/vendored.cmake), into vendor/, which is gitignored.
 if(NOT CMAKE_BUILD_EARLY_EXPANSION)
     include("${CMAKE_CURRENT_LIST_DIR}/cmake/vendored.cmake")
 endif()
 
 idf_component_register(
-    SRCS "src/image_ico.c" "src/image_stb.c" "src/image_jxl.c"
+    SRCS "src/image_ico.c" "src/image_stb.c" "src/image_jxl.c" "src/image_png.c"
+         "vendor/pngle.c" "vendor/miniz.c"
     INCLUDE_DIRS "include"
     PRIV_INCLUDE_DIRS "vendor"
     PRIV_REQUIRES heap
@@ -32,3 +34,13 @@ set_source_files_properties("src/image_stb.c" PROPERTIES COMPILE_OPTIONS
 # UI's path.
 set_source_files_properties("src/image_jxl.c" PROPERTIES COMPILE_OPTIONS
     "-fwrapv;-Os;-Wno-unused-function;-Wno-sign-compare;-Wno-unused-but-set-variable;-Wno-type-limits;-Wno-implicit-fallthrough;-Wno-unused-variable;-Wno-maybe-uninitialized;-Wno-missing-field-initializers;-Wno-format;-Wno-incompatible-pointer-types;-Wno-error")
+
+# pngle.c and miniz.c are fetched unmodified, so upstream's warnings stay
+# upstream's. miniz.h is a one-line shim that #includes miniz.c with
+# MINIZ_HEADER_FILE_ONLY defined, so miniz.c is both the header and the
+# implementation, by design; compiling it once as a source gives the
+# implementation exactly once. -fwrapv for the reason stb has it.
+set_source_files_properties("vendor/pngle.c" PROPERTIES COMPILE_OPTIONS
+    "-fwrapv;-Wno-sign-compare;-Wno-unused-function;-Wno-unused-parameter")
+set_source_files_properties("vendor/miniz.c" PROPERTIES COMPILE_OPTIONS
+    "-fwrapv;-Wno-unused-function;-Wno-unused-parameter;-Wno-sign-compare;-Wno-attributes")

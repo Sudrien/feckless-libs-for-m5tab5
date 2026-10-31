@@ -467,3 +467,47 @@ histories stay in the archived repositories.
   component: PNG (pngle's streaming into a buffer), then the hardware
   JPEG engine with the fallback order, an `img_decode()` over all of
   them, and the draw and ABI section.
+- **7006** feckless_image_handler: PNG, through pngle, to an RGB565
+  buffer. Defeatist drew a PNG by streaming pngle's runs into the panel's
+  framebuffer, fitted to the screen (its `albumart_draw_png()`), which
+  knows the panel and cannot be shared; this is the same decode with a
+  buffer for the destination, answering as `img_stb_decode_rgb565()` and
+  `img_jxl_decode_rgb565()` do: `img_png_info()` (the IHDR, read
+  directly), `img_png_peak_bytes()`, `img_png_decode_rgb565()`,
+  `img_png_err_name()`, in `feckless_image_png.h` and `src/image_png.c`.
+  pngle still streams, so the RGBA picture never exists (a 1400x1400
+  one would be 7.8 MB); what is kept is the RGB565 result, thinned by the
+  same whole-step nearest neighbour (the output pixel at (i, j) is the
+  source pixel at (i*step, j*step), so a run from pngle paints the
+  outputs whose source lies in it, and an Adam7 pass's coarse blocks are
+  overwritten by the later exact ones). Three things differ from the old
+  path, deliberately: a half-transparent pixel is blended over `bg`
+  (JPEG XL's rule) where Defeatist drew it opaque; a fully transparent
+  one is `bg` exactly, as it left the background; and the bound is
+  `IMG_PNG_MAX_PIXELS`, 16 megapixels, in place of Defeatist's 100000 a
+  side (which its scaler's 32-bit edge map needed, and which this has no
+  edge map for). A truncated file gives the part that decoded and
+  `IMG_PNG_OK`, as it did. Memory is the change to know: where the old
+  path held nothing but the framebuffer, this holds the thinned result --
+  a 1400x1400 cover into a 720 box is 3.9 MB of PSRAM, once, like the
+  JPEG path. pngle and miniz are fetched at configure time into `vendor/`
+  at Defeatist's pin (b1c6819), each file checked against its SHA256, by
+  the same `cmake/vendored.cmake`; miniz.c compiles once as a source, as
+  its one-line miniz.h shim intends. Tests: `pngimgtest` -- Defeatist's
+  arttest PNG cases moved (RGB, RGBA, palette, palette with tRNS, grey,
+  grey with alpha, 16-bit, Adam7), every file cut at every length, the
+  blend against two backgrounds, thinning at steps 2, 1 and 5 (and the
+  interlaced file at 3), the refusals (junk, junk after the signature,
+  empty, NULL, a 5000x5000 and a 0x0 header) and 8000 damaged files; two
+  fixtures from `test/gen_png_fixtures.py` (1500x1000, and a 2x1 for the
+  blend). `stbjpegtest` gains Defeatist's arttest JPEG cases on its
+  fixtures (baseline 4:2:0 and 4:4:4, progressive, greyscale, EXIF ahead
+  of the SOF: the SOF walk, the quadrants, every prefix). Built: all
+  five tests under ASan and UBSan -- 48, 9827, 35, 9347 and 105 checks,
+  no failures (pngle's and miniz's own alignment and shift reports are
+  masked as Defeatist's arttest masked them). image_png.c compiled on
+  the ESP_PLATFORM path against a stub heap header, and pngle.c and
+  miniz.c at `-O2 -Wall` with upstream's warnings off. Not built against
+  ESP-IDF, not on a Tab5. Nothing links it yet; Defeatist's arttest
+  keeps its PNG cases until its adoption patch deletes them with the
+  rest.

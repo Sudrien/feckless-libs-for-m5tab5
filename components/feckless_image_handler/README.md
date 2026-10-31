@@ -3,7 +3,7 @@
 Pictures for the Tab5's apps, from their bytes. Moved out of Defeatist
 (its `artformat.h`, `icoimg.[ch]` and the integer-scale rule in
 `albumart.c`) so that an app asks what a picture is the same way every
-other app does. The software decoders came with 7005; the hardware JPEG engine, PNG
+other app does. The software decoders came with 7005 and 7006; the hardware JPEG engine
 and drawing follow in later patches.
 
 ```c
@@ -32,14 +32,16 @@ images over `IMG_ICO_MAX_DIM` a side are refused.
 
 ```c
 #include "feckless_image_stb.h"     /* JPEG and GIF, through stb_image */
+#include "feckless_image_png.h"     /* PNG, through pngle (7006) */
 #include "feckless_image_jxl.h"     /* JPEG XL, through J40 */
 
 uint16_t *px; size_t size; int w, h; const char *why;
 img_stb_err_t e = img_stb_decode_rgb565(buf, len, box_w, box_h, &px, &size, &w, &h, &why);
+img_png_err_t n = img_png_decode_rgb565(buf, len, box_w, box_h, bg565, &px, &size, &w, &h, &why);
 img_jxl_err_t j = img_jxl_decode_rgb565(buf, len, box_w, box_h, bg565, &px, &size, &w, &h, &why);
 ```
 
-Each reads the header first (`img_stb_info()`, `img_jxl_info()`) and says
+Each reads the header first (`img_stb_info()`, `img_png_info()`, `img_jxl_info()`) and says
 what a decode may hold at once (`img_*_peak_bytes()`), so the caller can
 check free memory before asking. Output is native RGB565, thinned by
 whole steps to the smallest size that still covers the box, malloc'd
@@ -48,8 +50,9 @@ resorts, as they were in Defeatist: stb_image decodes SOF0-2 at any
 size and sampling but holds a whole progressive picture's coefficients;
 J40 is deep (about 11.5 KB of stack on a 64-bit host), so the caller runs
 it on a task with a PSRAM stack, and it has limits that
-`test/jxltest.c` pins. `stb_image.h` and `j40.h` are not in the
-repository: `cmake/vendored.cmake` fetches them at configure time into
+`test/jxltest.c` pins. PNG streams through pngle, so the full RGBA picture never exists;
+transparency is blended over `bg`. `stb_image.h`, `j40.h`, `pngle.[ch]`
+and `miniz.[ch]` are not in the repository: `cmake/vendored.cmake` fetches them at configure time into
 `vendor/`, pinned to a commit and checked against a SHA256.
 
 ## Test
@@ -58,5 +61,5 @@ repository: `cmake/vendored.cmake` fetches them at configure time into
 
 runs the sources as they are, under ASan and UBSan: `imagetest` (the
 header and the icon), `stbjpegtest` (JPEG, with a corruption sweep),
-`gifimgtest` and `jxltest`. The last three fetch the two headers into
-`vendor/` the first time.
+`gifimgtest`, `pngimgtest` and `jxltest`. The last four fetch the
+single-file libraries into `vendor/` the first time.

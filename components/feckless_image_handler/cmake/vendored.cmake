@@ -13,6 +13,8 @@
 set(IMG_STB_COMMIT 013ac3beddff3dbffafd5177e7972067cd2b5083)
 # J40 version 2270: the JPEG XL decoder.
 set(IMG_J40_COMMIT 252e7987d36d50f617f29e94eeeb741198adc617)
+# pngle (and its miniz): the streaming PNG decoder (7006).
+set(IMG_PNGLE_COMMIT b1c68193f1d3f8642b3e0e095d457a828038e6fb)
 
 # vendored_fetch(<url> <destination> <sha256>)
 function(vendored_fetch url dest sha)
@@ -78,3 +80,13 @@ vendored_fetch("https://raw.githubusercontent.com/nothings/stb/${IMG_STB_COMMIT}
 vendored_fetch("https://raw.githubusercontent.com/lifthrasiir/j40/${IMG_J40_COMMIT}/j40.h"
                "${_vendor_dir}/j40.h"
                981c80c07d46d7a263d7790e71f6d9713278974088235cffcf21dea4fc3b5f6d)
+
+set(_pngle_base "https://raw.githubusercontent.com/kikuchan/pngle/${IMG_PNGLE_COMMIT}/src")
+vendored_fetch("${_pngle_base}/pngle.c" "${_vendor_dir}/pngle.c"
+               cfd047df6464ac299ecd47aeb13fecfb55f1d841da56dc57085248ef43655049)
+vendored_fetch("${_pngle_base}/pngle.h" "${_vendor_dir}/pngle.h"
+               d8aa264f80cdd884c02ca1e28b696e8bbfbc16074c9c5265fcec4463f563bb17)
+vendored_fetch("${_pngle_base}/miniz.c" "${_vendor_dir}/miniz.c"
+               97efe2132abc8346a3d11f29f84b574f5da78a1b94432ea42b0c754c7c39da4e)
+vendored_fetch("${_pngle_base}/miniz.h" "${_vendor_dir}/miniz.h"
+               8a638511f9f98e8240fc00522989fe7908a06f73a6386191e4374046c993cfa0)

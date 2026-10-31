@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "feckless_image.h"
 #include "feckless_image_stb.h"
 
 static int failures, checks;
@@ -64,9 +65,65 @@ static int chan_diff(uint16_t a, uint16_t b)
     return dr > dg ? (dr > db ? dr : db) : (dg > db ? dg : db);
 }
 
+/* ---- Defeatist's arttest JPEGs (moved by 7006): a 64x48 four-quadrant
+ * picture (red, green / blue, white) as baseline 4:2:0 and 4:4:4,
+ * progressive, greyscale, and with EXIF ahead of the SOF. The middle of
+ * each quadrant must be the colour drawn, the SOF walk must name the
+ * marker, and every prefix of the file must be refused or partial. */
+static uint16_t q565(int r, int g, int b)
+{
+    return (uint16_t)(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3));
+}
+
+static void jpeg_case(const char *name, uint8_t sof_want, int grey)
+{
+    static const int want[4][3] = {
+        { 220, 30, 30 }, { 30, 200, 40 }, { 40, 50, 210 }, { 255, 255, 255 },
+    };
+    char path[64];
+    snprintf(path, sizeof path, "../art/%s", name);   /* fixtures/art, beside stbjpeg */
+    size_t len;
+    uint8_t *b = slurp(path, &len);
+    CHECK(img_sniff(b, len) == IMG_JPEG, "%s: not sniffed as JPEG", name);
+
+    uint8_t sof = 0;
+    uint32_t w = 0, h = 0;
+    const bool base = img_jpeg_sof(b, len, &sof, &w, &h);
+    CHECK(sof == sof_want && w == 64 && h == 48, "%s: SOF %02x %ux%u, want %02x 64x48",
+          name, sof, (unsigned)w, (unsigned)h, sof_want);
+    CHECK(base == (sof_want == 0xC0 || sof_want == 0xC1), "%s: baseline says %d", name, base);
+
+    pic_t p = decode(b, len, 0, 0);
+    CHECK(p.err == IMG_STB_OK && p.w == 64 && p.h == 48, "%s: %s %dx%d", name, img_stb_err_name(p.err), p.w, p.h);
+    if (p.px) {
+        for (int q = 0; q < 4; q++) {
+            const int x = (q & 1) ? 48 : 16, y = (q & 2) ? 36 : 12;
+            int r = want[q][0], g = want[q][1], bl = want[q][2];
+            if (grey) { const int l = (r * 299 + g * 587 + bl * 114) / 1000; r = g = bl = l; }
+            const int d = chan_diff(p.px[y * 64 + x], q565(r, g, bl));
+            CHECK(d <= 24, "%s: quadrant %d is %04x (off by %d)", name, q, p.px[y * 64 + x], d);
+        }
+    }
+    free(p.px);
+
+    for (size_t cut = 0; cut < len; cut += (cut < 64 ? 1 : 7)) {
+        pic_t t = decode(b, cut, 0, 0);
+        CHECK(t.err == IMG_STB_OK ? (t.px != NULL) : (t.px == NULL), "%s cut at %zu", name, cut);
+        free(t.px);
+        img_jpeg_sof(b, cut, &sof, &w, &h);
+    }
+    free(b);
+}
+
 int main(void)
 {
     printf("stbjpegtest\n");
+
+    jpeg_case("base420.jpg", 0xC0, 0);
+    jpeg_case("base444.jpg", 0xC0, 0);
+    jpeg_case("prog.jpg", 0xC2, 0);
+    jpeg_case("gray.jpg", 0xC0, 1);
+    jpeg_case("exif.jpg", 0xC0, 0);
 
     pic_t base = decode_file("base145.jpg", 0, 0);
     CHECK(base.err == IMG_STB_OK && base.w == 145 && base.h == 145,
