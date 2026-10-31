@@ -14,11 +14,14 @@ idf_component_register(
     SRCS "src/image_ico.c" "src/image_stb.c" "src/image_jxl.c" "src/image_png.c"
          "src/image_decode.c" "src/image_fit.c" "src/image_esp.c"
          "vendor/pngle.c" "vendor/miniz.c"
-    INCLUDE_DIRS "include"
-    PRIV_INCLUDE_DIRS "vendor"
+    INCLUDE_DIRS "include" "vendor"
     PRIV_REQUIRES heap log freertos esp_driver_jpeg espressif__esp_jpeg
 )
 
+# 8002: vendor/ is public. An app that inflates (Defeatist's i18n.c, tinfl
+# from the ROM) takes miniz.h from here instead of carrying a second copy
+# of pngle's miniz, whose symbols would collide with this one's.
+#
 # -fwrapv: a damaged file can overflow signed arithmetic in stb_image's
 # IDCT and in J40 (the host test's corruption sweeps found it under
 # UBSan). Defined as wrapping, it is garbage pixels rather than undefined

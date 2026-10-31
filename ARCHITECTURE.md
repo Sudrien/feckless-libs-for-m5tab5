@@ -603,3 +603,12 @@ histories stay in the archived repositories.
   the audio codec (`esp_audio_simple_dec_*`) and TLS are still decisions
   (a section each, or linked into the ELF), and the board is yet to run
   the image path. No code changed.
+- **8002** feckless_image_handler: `vendor/` is on the component's public
+  include path, so `#include "miniz.h"` works for an app that names the
+  component. Defeatist's `i18n.c` inflates its tables with tinfl (the
+  ROM's; only the declarations are needed) and took `miniz.h` from its
+  `pngle` component, which goes when Defeatist adopts this component
+  (its 8069); a second copy of pngle's miniz beside this one would have
+  defined the same symbols twice. `stb_image.h`, `j40.h` and `pngle.h`
+  come with it, which nothing is bothered by. Built: nothing to build on
+  a host; the include path is the one `PRIV_INCLUDE_DIRS` had, moved.
