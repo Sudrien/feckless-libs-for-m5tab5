@@ -278,3 +278,9 @@ histories stay in the archived repositories.
 
 - **6001** CLAUDE.md opens this series, and says a new component starts
   at its siblings' version. Documentation only.
+- **6002** feckless_abi: GPIO, UART and I2C devices in the core list,
+  with reading partitions and the MAC -- 33 names, what Errant's GNSS,
+  IMU and Launcher import call and every launcher links anyway. IDF 6's
+  `uart_set_pin()` is a macro calling `_uart_set_pin6()`; feckless_abi.c
+  supplies that on 5.5. Names added: still ABI v1. Built: Avoidant,
+  0x17e160 bytes (0x5ca0 more, mostly the UART driver). Not on 5.5.

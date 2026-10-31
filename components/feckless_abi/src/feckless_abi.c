@@ -9,6 +9,8 @@
 
 #include "esp_elf.h"
 #include "esp_log.h"
+#include "esp_idf_version.h"
+#include "driver/uart.h"   /* 6002 */
 
 static const char *TAG = "feckless_abi";
 
@@ -53,6 +55,19 @@ __attribute__((weak)) int __issignalingf(float x)
     memcpy(&u, &x, sizeof u);
     return (u & 0x7fc00000u) == 0x7f800000u && (u & 0x003fffffu) != 0;
 }
+
+/* 6002: IDF 6's uart_set_pin() is a macro that calls _uart_set_pin6();
+ * 5.5's is a function of four pins. An app built on 6.1 imports the
+ * former, so a 5.5 launcher supplies it here. */
+#if ESP_IDF_VERSION_MAJOR < 6
+esp_err_t _uart_set_pin6(uart_port_t uart_num, int tx_io_num, int rx_io_num,
+                         int rts_io_num, int cts_io_num, int dtr_io_num, int dsr_io_num)
+{
+    (void)dtr_io_num;
+    (void)dsr_io_num;
+    return uart_set_pin(uart_num, tx_io_num, rx_io_num, rts_io_num, cts_io_num);
+}
+#endif
 
 /* Static: the app's sections are referenced from here while it runs. */
 static esp_elf_t s_elf;

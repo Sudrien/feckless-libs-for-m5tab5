@@ -220,6 +220,46 @@ heap_caps_get_minimum_free_size
 heap_caps_malloc
 heap_caps_print_heap_info
 heap_caps_realloc
+# 6002: the MAC, and reading the partitions -- Errant's and Defeatist's
+# launcher_import.c look for Launcher's saved networks in its image.
+esp_efuse_mac_get_default
+esp_ota_get_running_partition
+esp_partition_find
+esp_partition_find_first
+esp_partition_get
+esp_partition_iterator_release
+esp_partition_next
+esp_partition_read
+
+# ---- ESP-IDF's drivers: GPIO, UART, I2C devices (6002) -----------------
+# Every launcher links them. Errant's GNSS is on a UART, with a GPIO for
+# its reset and PPS, and its IMU on tab5io's I2C bus as a device of its
+# own. _uart_set_pin6 is what IDF 6's uart_set_pin() macro calls;
+# src/feckless_abi.c has it for 5.5, whose uart_set_pin() is a function.
+gpio_config
+gpio_get_level
+gpio_install_isr_service
+gpio_isr_handler_add
+gpio_isr_handler_remove
+gpio_reset_pin
+gpio_set_direction
+gpio_set_level
+gpio_uninstall_isr_service
+i2c_master_bus_add_device
+i2c_master_bus_rm_device
+i2c_master_probe
+i2c_master_receive
+i2c_master_transmit
+i2c_master_transmit_receive
+_uart_set_pin6
+uart_driver_delete
+uart_driver_install
+uart_flush_input
+uart_get_buffered_data_len
+uart_param_config
+uart_read_bytes
+uart_wait_tx_done
+uart_write_bytes
 
 # ---- libc --------------------------------------------------------------
 __assert_func

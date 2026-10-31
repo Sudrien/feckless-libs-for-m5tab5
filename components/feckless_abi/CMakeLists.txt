@@ -18,6 +18,9 @@ idf_component_register(
     INCLUDE_DIRS "include"
     REQUIRES feckless_drivers feckless_graphics_handler
     PRIV_REQUIRES elf_loader esp_timer esp_app_format
+                  # 6002: the drivers, partitions and MAC exports.txt names
+                  esp_driver_gpio esp_driver_uart esp_driver_i2c
+                  esp_partition app_update efuse
 )
 
 if(NOT CMAKE_BUILD_EARLY_EXPANSION)
