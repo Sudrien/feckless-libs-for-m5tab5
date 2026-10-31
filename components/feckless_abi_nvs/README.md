@@ -39,6 +39,7 @@ void app_main(void)
     ...
 ```
 
+`nvsh_migrate()` is in it (7001): an app moves its own old namespaces.
 The app finds NVS up, and does not call `nvsh_init()`, which is not
 exported. It shares the partition with the launcher and every other
 app: keep to a namespace of your own.

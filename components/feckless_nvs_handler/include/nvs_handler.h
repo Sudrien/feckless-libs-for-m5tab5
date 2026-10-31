@@ -67,6 +67,50 @@ esp_err_t nvsh_set_i32(const char *ns, const char *key, int32_t v);
 esp_err_t nvsh_erase_key(const char *ns, const char *key);
 esp_err_t nvsh_erase_ns(const char *ns);
 
+/* A migration (7001): moving values from the namespaces an app or
+ * firmware used to keep them in to the one it keeps them in now.
+ *
+ * Each entry names a key, the old namespace it lives in and its type.
+ * The type is the key's own: nvsh reads a key as the type it is told,
+ * and a key of another type is an error, not a guess. Plain integers
+ * and pointers only, so an app's ELF can submit one through the nvs
+ * section. */
+typedef enum {
+    NVSH_BLOB = 0,
+    NVSH_STR,
+    NVSH_U8,
+    NVSH_U32,
+    NVSH_I32,
+} nvsh_type_t;
+
+typedef struct {
+    const char *ns;     /* the old namespace */
+    const char *key;    /* the key in it, and in the new namespace */
+    nvsh_type_t type;
+} nvsh_move_t;
+
+/* Move the listed values into `to_ns`, one old namespace at a time:
+ *
+ *  - a key the new namespace already has, of any type, is kept as it is
+ *    (the new one is the newer write);
+ *  - a key the old namespace lacks is skipped, so a device with nothing
+ *    to move costs one failed read per key and writes nothing;
+ *  - once every key of an old namespace is copied or kept, the whole old
+ *    namespace is erased -- keys the list does not name go with it, so
+ *    list everything that matters;
+ *  - if a copy fails (the partition full, a key not of the type given)
+ *    that namespace is left as it was, with whatever was copied already
+ *    in the new one, and the call returns that error after trying the
+ *    others. Called again at the next boot, it picks up where it was.
+ *
+ * *moved, if not NULL, is the number of values copied. ESP_OK when
+ * nothing failed, nothing to move included. ESP_ERR_INVALID_STATE before
+ * nvsh_init(); ESP_ERR_INVALID_ARG for a NULL name, or an old namespace
+ * that is `to_ns`, before anything is touched. Each move is logged once
+ * per old namespace, at warning level. */
+esp_err_t nvsh_migrate(const char *to_ns, const nvsh_move_t *moves, size_t n,
+                       size_t *moved);
+
 #ifdef __cplusplus
 }
 #endif

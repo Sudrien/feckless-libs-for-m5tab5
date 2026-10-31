@@ -45,6 +45,33 @@ is what it is for. A namespace and a key are at most 15 characters.
 The partition is shared by everything the board runs, a launcher and
 every app it loads, so each keeps to a namespace of its own.
 
+## Moving values from old namespaces (7001)
+
+An app that renames its namespace, or folds several into one, submits
+the move instead of writing the copy-and-erase itself:
+
+```c
+static const nvsh_move_t old[] = {
+    { "radiokeep", "last",    NVSH_BLOB },
+    { "radiokeep", "wifi_on", NVSH_U8   },
+    { "devcert",   "key",     NVSH_STR  },
+};
+nvsh_migrate("myapp", old, sizeof old / sizeof old[0], NULL);
+```
+
+Each old namespace is handled whole: a key the new namespace already has
+is kept (the new one is the newer write); a key the old one lacks is
+skipped; once every listed key is copied or kept, **the old namespace is
+erased, listed keys or not**. A copy that fails (the partition full, a
+key of another type than the list says) leaves that namespace as it was,
+and the same call at the next boot carries on. It is cheap when there is
+nothing to move: one failed read per key, no writes. If two old
+namespaces hold the same key, the one listed first wins. Nothing here
+reads a value as a type it is not, and there is no i64 or 16-bit type:
+the types are blob, string, u8, u32 and i32.
+
+`make -C test` runs it against an in-memory NVS.
+
 ## On a launcher
 
 The launcher calls `nvsh_init()`; an app finds NVS up and does not call

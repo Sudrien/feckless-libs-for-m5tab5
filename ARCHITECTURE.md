@@ -330,3 +330,25 @@ histories stay in the archived repositories.
   or SNTP)`. feckless_net_set_hooks() now starts SNTP if wanted, and
   calls online(), when a network is already up. Built: Avoidant.
   Not on a Tab5.
+
+## The 7000 series, toward v0.7.0
+
+- **7001** feckless_nvs_handler: `nvsh_migrate()`, a migration submitted
+  as data. An app or firmware that moved its values between namespaces
+  (Defeatist's 6006: three namespaces into one) wrote its own copy-and-
+  erase, walking NVS with an iterator, which an ELF cannot. Now it hands
+  over a table -- old namespace, key, type (blob, string, u8, u32, i32)
+  -- and the new namespace: a key already there is kept, a key absent is
+  skipped, an old namespace is erased whole once all its listed keys are
+  copied or kept, and a failed copy leaves that namespace for the next
+  call. Exported in the nvs section (a name added: nvs_v1 and ABI v1
+  stand). Defeatist's nvsns.c (its 8066) is the first user and becomes a
+  table. Built: `make -C components/feckless_nvs_handler/test` runs
+  nvs_handler.c itself against an in-memory NVS under ASan and UBSan, 66
+  checks: nothing to move writes nothing; the whole move; kept keys of
+  any type; a first-listed key winning over a later namespace's; a
+  failed write leaving its namespace and the next call finishing it; a
+  key of another type than listed failing that namespace only; bad
+  arguments refused before anything is touched. Not built against
+  ESP-IDF (none in the session), not on a Tab5. Adds `heap` to the
+  component's PRIV_REQUIRES for esp_heap_caps.h.

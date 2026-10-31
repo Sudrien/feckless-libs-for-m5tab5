@@ -34,11 +34,12 @@ gives `0009-<subject>.patch`. Write the subject as the subject.
 entry in the series at the end of `ARCHITECTURE.md`, which every patch
 adds itself to. Take the next one.
 
-**Where the numbering is now: the 6000 series, toward v0.6.0.** A
+**Where the numbering is now: the 7000 series, toward v0.7.0.** A
 series is named for the release it leads to -- the 0000s toward v0.1.0,
 the 2000s toward v0.2.0, the 3000s toward v0.3.0, the 4000s toward
 v0.4.0 (and 4003-4006, which came after its tag, in v0.4.1), the 5000s
-toward v0.5.0, the 6000s toward v0.6.0 -- so a patch number
+toward v0.5.0, the 6000s toward v0.6.0 (and 6005-6006, in v0.6.1 and
+v0.6.2), the 7000s toward v0.7.0 -- so a patch number
 says which release it went into. A point release does not start a
 series. Since v0.2.0 every feckless library is here; 1.0.0 waits on the
 ABI settling, with file I/O in it. **The first patch after a tag updates this
@@ -73,8 +74,8 @@ and -- once a board has run it -- what the log showed.
   building with `IDF_COMPONENT_MANAGER=0`; a patch says whether it was
   built that way, or not at all.
 - **Host tests:** `make -C components/<name>/test` for
-  feckless_drivers, feckless_graphics_handler and
-  feckless_network_handler.
+  feckless_drivers, feckless_graphics_handler,
+  feckless_network_handler and feckless_nvs_handler.
 - **`fatfs` is IDF's, patched at configure time** (3002). Its edits are
   `components/fatfs/tools/patch_fatfs.py`, checked in CI against the
   IDFs the Tab5 projects build with; a new IDF whose FatFs it refuses
