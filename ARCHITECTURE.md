@@ -315,3 +315,18 @@ histories stay in the archived repositories.
   Errant's 0046 and Avoidant's 0043. Built: Errant as an ELF,
   `feckless_abi: 208 symbols` (its bring-up gone); Avoidant 0x21d180.
   Host tests pass. Not on a Tab5.
+- **6006** feckless_network_handler: hooks set after a network is up
+  catch up with it. *6005 on a Tab5*, Avoidant's 0043 with Errant's
+  0046: `feckless_net: network up to be asked for: 0 saved networks,
+  Ethernet registered` at boot, the Ethernet class installed before the
+  port (`class driver eth installed`, then `VBUS on`), the RTL8152 asked
+  for its CDC-ECM configuration (`0bda:8152: asking for configuration
+  2`) and up on DHCP (`ecm: address 192.168.1.125 ... it is the default
+  route`) before any app; Errant's .elf on it, an HTTPS request over
+  the cable through the network section, answered (`range 0+127: HTTP
+  404` -- the tile build it remembered is gone from the server). And no
+  SNTP: the cable came up with no hooks, ntp_enabled() unanswered, and
+  nothing asked again once Errant set its policy, so `no date yet (GNSS
+  or SNTP)`. feckless_net_set_hooks() now starts SNTP if wanted, and
+  calls online(), when a network is already up. Built: Avoidant.
+  Not on a Tab5.

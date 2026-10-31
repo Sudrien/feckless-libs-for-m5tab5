@@ -86,6 +86,11 @@ typedef struct {
  * buffers and swaps a pointer; a reader holds one buffer or the other,
  * both whole. A call with usb_register_class NULL keeps the one already
  * set: that one is the USB host owner's, feckless_net_start()'s.
+ *
+ * 6006: set after feckless_net_start() with a network already online --
+ * a cable up at boot -- this does what that network's coming up would
+ * have done with the new hooks: starts SNTP if ntp_enabled() now says so,
+ * and calls online().
  */
 void feckless_net_set_hooks(const feckless_net_hooks_t *hooks);
 

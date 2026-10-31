@@ -15,6 +15,10 @@
 
 static const char *TAG = "feckless_net";
 
+static bool s_started;
+
+bool feckless_net_started(void) { return s_started; }
+
 /* 6005: two buffers and a pointer, so the hooks can be set after the
  * network is up without a reader seeing half of a struct. */
 static feckless_net_hooks_t s_hooks[2];
@@ -28,6 +32,17 @@ void feckless_net_set_hooks(const feckless_net_hooks_t *hooks)
     else       *next = (feckless_net_hooks_t){ 0 };
     if (!next->usb_register_class) next->usb_register_class = keep;
     __atomic_store_n(&s_cur, next, __ATOMIC_RELEASE);
+
+    /* 6006: hooks set after a network is already up -- an app's policy,
+     * arriving on a launcher whose cable came up at boot -- get what the
+     * link's coming up would have done with them: SNTP if now wanted,
+     * which the link found unwanted with no hooks, and online(). Seen:
+     * Errant on Avoidant, a cable up at boot, "no date yet (GNSS or
+     * SNTP)" and no SNTP ever. sntp_start() keeps its own started flag. */
+    if (s_started && net_online()) {
+        wifi_ntp_start();
+        if (next->online) next->online();
+    }
 }
 
 const feckless_net_hooks_t *feckless_net_hooks(void)
@@ -35,9 +50,7 @@ const feckless_net_hooks_t *feckless_net_hooks(void)
     return __atomic_load_n(&s_cur, __ATOMIC_ACQUIRE);
 }
 
-static bool s_started;
 
-bool feckless_net_started(void) { return s_started; }
 
 esp_err_t feckless_net_start(const feckless_net_start_t *cfg)
 {
