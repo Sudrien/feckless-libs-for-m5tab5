@@ -62,3 +62,7 @@ histories stay in the archived repositories.
 - **2001** The docs at v0.1.0: the install snippets, the history notes
   and exports.txt's comment said v1.0.0. CLAUDE.md's numbering opens
   this series, numbered as the apps' are.
+- **2002** feckless_network_handler, imported unchanged from
+  feckless-network-handler-for-m5tab5 v0.2.2 (e4ef6e5), which aimless
+  and defeatist pin, into `components/feckless_network_handler`. It
+  requires none of the other four.
