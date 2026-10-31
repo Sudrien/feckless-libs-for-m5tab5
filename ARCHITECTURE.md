@@ -591,3 +591,15 @@ histories stay in the archived repositories.
   generated and compiled on a host; the names are IDF 5.4's, and the
   build of a launcher that links the component is the check that each is
   a real linker symbol.
+
+## The 8000 series, toward v0.8.0
+
+- **8001** Opens the 8000s. v0.7.0 is tagged with 7001-7010 in it (the
+  nvs migration table, `esp_ota_set_boot_partition` and four more names
+  in the core list, `feckless_image_handler` from the pure helpers to
+  `img_decode()`, its ESP backends and `img_fit_draw()`, and the image
+  ABI section). CLAUDE.md names the 8000s as the series in use. Next in
+  this repository is whatever Defeatist's move to an ELF finds missing:
+  the audio codec (`esp_audio_simple_dec_*`) and TLS are still decisions
+  (a section each, or linked into the ELF), and the board is yet to run
+  the image path. No code changed.
