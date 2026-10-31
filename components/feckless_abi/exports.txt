@@ -224,6 +224,10 @@ heap_caps_realloc
 # launcher_import.c look for Launcher's saved networks in its image.
 esp_efuse_mac_get_default
 esp_ota_get_running_partition
+# 7002: choosing the boot slot, for Defeatist's "exit to Launcher" -- an app
+# whose code is an ELF still names the call, whether or not it makes it
+# (the ELF's check fails on any undefined symbol this list lacks).
+esp_ota_set_boot_partition
 esp_partition_find
 esp_partition_find_first
 esp_partition_get

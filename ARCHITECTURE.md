@@ -352,3 +352,16 @@ histories stay in the archived repositories.
   arguments refused before anything is touched. Not built against
   ESP-IDF (none in the session), not on a Tab5. Adds `heap` to the
   component's PRIV_REQUIRES for esp_heap_caps.h.
+- **7002** feckless_abi: `esp_ota_set_boot_partition` in the core list.
+  Defeatist's "exit to Launcher" sets the factory slot to boot and
+  restarts when it runs from another slot, and only restarts when it is
+  an ELF in the launcher's own (its 8067): one source for both, which
+  needs the call named in the ELF though an ELF never makes it, because
+  the build's check fails on any undefined symbol not in this list. A
+  name added: still ABI v1, a minor release. Every firmware that builds
+  the table already links `app_update` (feckless_abi requires it, 6002),
+  so nothing to add to a launcher or a standalone shim. It lets an ELF
+  choose the next boot slot, as it can already read the partitions and
+  restart; the apps this loads are code the owner chose to run. Not
+  built (no ESP-IDF in the session): exports.txt's format is one name a
+  line, and the name is IDF's own `esp_ota_ops.h`. Not on a Tab5.
