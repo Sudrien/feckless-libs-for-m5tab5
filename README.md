@@ -18,6 +18,7 @@ under one tag:
 | `feckless_abi_storage` | The ABI's storage section: the storage handler, FatFs and file I/O for apps, from a launcher that links it, and the FatFs configuration both sides share |
 | `feckless_abi_nvs` | The ABI's nvs section: `feckless_nvs_handler` for apps, from a launcher that links it and brings NVS up |
 | `feckless_abi_camera` | The ABI's camera section: `feckless_camera` for apps, from a launcher that links it and is configured for the camera |
+| `feckless_abi_network` | The ABI's network section: the network handler, sockets, esp_netif and HTTP for apps, from a launcher that links it, and the configuration both sides share |
 
 Each is in `components/`, with its own README.
 
@@ -53,6 +54,7 @@ component needs:
   and `fatfs`, and so `usb_host_msc`.
 - `feckless_abi_nvs`: `feckless_abi` and `feckless_nvs_handler`.
 - `feckless_abi_camera`: `feckless_abi` and `feckless_camera`.
+- `feckless_abi_network`: `feckless_abi` and `feckless_network_handler`.
 - `feckless_drivers`: a `usb_host_uac` component, by name -- since
   v0.3.0 `usb_host_uac` from here, which every project using the
   drivers now names (v0.1.0 and v0.2.0 pinned the registry's).

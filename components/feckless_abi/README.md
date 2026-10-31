@@ -144,6 +144,7 @@ uses no section, and runs on any launcher on ABI v1.
 | storage | `feckless_abi_storage` | `feckless_abi_storage_v2` | `feckless_storage_handler`, FatFs with exFAT and fast seek, libc's and POSIX file I/O (3008; v2, fast seek, 5003) |
 | nvs | `feckless_abi_nvs` | `feckless_abi_nvs_v1` | `feckless_nvs_handler`'s settings and saves, but `nvsh_init()`: the launcher brings NVS up (4004) |
 | camera | `feckless_abi_camera` | `feckless_abi_camera_v1` | `feckless_camera`'s luma frames; the camera runs under the launcher's configuration (4005) |
+| network | `feckless_abi_network` | `feckless_abi_network_v1` | `feckless_network_handler`, lwIP's sockets, esp_netif, the HTTP server with WebSockets and the HTTP client with the certificate bundle; and the configuration both sides share (6004) |
 
 ## Configuration
 

@@ -289,3 +289,15 @@ histories stay in the archived repositories.
   3.6 -- from Defeatist's and Errant's wifijoin.c, so their ELFs need
   not reach Mbed TLS for it. Built in Errant (its 0043) with ESP-IDF
   v6.1, no warnings. Not on a Tab5.
+- **6004** The network section: feckless_abi's sections/network.txt and
+  the component feckless_abi_network -- the network handler's API
+  (`wifi_init()` and `ethernet_init()` the app's), lwIP's sockets,
+  esp_netif and esp_wifi_get_mac, the HTTP server with WebSockets, the
+  HTTP client and the certificate bundle: 119 names under
+  feckless_abi_network_v1, Errant's and Defeatist's, Mbed TLS and the
+  HTTPS server aside. Both sides held to one configuration where an app
+  lays out what the launcher reads: the URI length, WebSockets, the
+  client's TLS options, IPv4 and IPv6. Built: Errant Moving Map as an
+  ELF (its 0043), `feckless_abi: 212 symbols, all in feckless_abi_v1 +
+  feckless_abi_network_v1 + feckless_abi_storage_v2`; its standalone
+  .bin linking the section, 0x1edec0 bytes. Not on a Tab5.

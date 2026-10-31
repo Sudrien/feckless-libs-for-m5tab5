@@ -1,0 +1,151 @@
+# The feckless ABI's network section, version 1 (6004).
+#
+# What an app's ELF may take from a launcher that links the section's
+# component, feckless_abi_network -- one symbol a line, as exports.txt.
+# The launcher defines the "@symbol"; an app that takes any name below
+# refers to it (feckless_abi_require_network()), so a launcher without
+# the section refuses the app by that name instead of failing on its
+# first connection. Lines that are not a bare name are ignored.
+#
+# Several structs below are laid out by the configuration -- httpd_req_t's
+# uri by CONFIG_HTTPD_MAX_URI_LEN, httpd_uri_t by the WebSocket options,
+# esp_http_client_config_t by the TLS ones, sockaddr_storage by IPv6 --
+# so feckless_abi_network holds both sides to one configuration. Adding a
+# name is compatible. Removing one, or changing what one means or that
+# configuration, is a new section version: network_v2.
+@symbol feckless_abi_network_v1
+
+# ---- feckless_network_handler ------------------------------------------
+# Its whole public API. wifi_init() and ethernet_init() are the app's, as
+# the board's inits are: the launcher need not bring the network up.
+ethernet_connected
+ethernet_init
+ethernet_ip
+ethernet_link
+feckless_net_hooks
+feckless_net_set_hooks
+net_online
+net_probe
+net_route_describe
+wifi_ap_begin
+wifi_ap_clients
+wifi_ap_end
+wifi_ap_netif
+wifi_apply_settings
+wifi_auth_name
+wifi_connected
+wifi_init
+wifi_join
+wifi_ntp_start
+wifi_ntp_synced
+wifi_psk
+wifi_request_apply
+wifi_request_restart
+wifi_scan_list
+wifi_scan_list_quiet
+wifi_scan_log
+wifi_sdio_khz
+wifi_set_sdio_khz
+wifi_sta_ip
+wifi_sta_ssid
+wifi_start
+wifi_stop
+wifi_up
+wifistore_best
+wifistore_clear
+wifistore_count
+wifistore_forget
+wifistore_get
+wifistore_init
+wifistore_rank
+wifistore_save
+
+# ---- lwIP sockets ------------------------------------------------------
+# What the socket calls in sys/socket.h and netdb.h become. close(),
+# read() and write() on a socket go through IDF's VFS, as on a file:
+# those are the storage section's, and lwip_close is here for an app
+# without it.
+ipaddr_addr
+lwip_accept
+lwip_bind
+lwip_close
+lwip_connect
+lwip_fcntl
+lwip_freeaddrinfo
+lwip_getaddrinfo
+lwip_getpeername
+lwip_getsockname
+lwip_getsockopt
+lwip_inet_ntop
+lwip_inet_pton
+lwip_listen
+lwip_recv
+lwip_recvfrom
+lwip_send
+lwip_sendto
+lwip_setsockopt
+lwip_shutdown
+lwip_socket
+select
+
+# ---- esp_netif, esp_wifi -----------------------------------------------
+esp_netif_dhcps_option
+esp_netif_dhcps_start
+esp_netif_dhcps_stop
+esp_netif_find_if
+esp_netif_get_all_ip6
+esp_netif_get_dns_info
+esp_netif_get_handle_from_ifkey
+esp_netif_get_ip_info
+esp_netif_set_dns_info
+esp_wifi_get_mac
+
+# ---- esp_http_server, with WebSockets ----------------------------------
+httpd_get_client_list
+httpd_query_key_value
+httpd_queue_work
+httpd_register_uri_handler
+httpd_req_get_cookie_val
+httpd_req_get_hdr_value_len
+httpd_req_get_hdr_value_str
+httpd_req_get_url_query_len
+httpd_req_get_url_query_str
+httpd_req_recv
+httpd_req_to_sockfd
+httpd_resp_send
+httpd_resp_send_chunk
+httpd_resp_send_err
+httpd_resp_set_hdr
+httpd_resp_set_status
+httpd_resp_set_type
+httpd_sess_trigger_close
+httpd_start
+httpd_stop
+httpd_unregister_uri_handler
+httpd_uri_match_wildcard
+httpd_ws_get_fd_info
+httpd_ws_recv_frame
+httpd_ws_send_frame
+httpd_ws_send_frame_async
+
+# ---- esp_http_client, and the certificate bundle -----------------------
+esp_crt_bundle_attach
+esp_http_client_cleanup
+esp_http_client_close
+esp_http_client_fetch_headers
+esp_http_client_get_content_length
+esp_http_client_get_header
+esp_http_client_get_status_code
+esp_http_client_get_url
+esp_http_client_init
+esp_http_client_is_complete_data_received
+esp_http_client_open
+esp_http_client_perform
+esp_http_client_read
+esp_http_client_set_header
+esp_http_client_set_method
+esp_http_client_set_post_field
+esp_http_client_set_redirection
+esp_http_client_set_timeout_ms
+esp_http_client_set_url
+esp_http_client_write
