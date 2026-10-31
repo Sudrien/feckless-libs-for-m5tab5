@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-version: "0.6.0"
+version: "0.6.1"
 description: >-
   M5Stack Tab5 camera (SC202CS on MIPI CSI) as luma frames, through
   esp_video. Takes the I2C bus from feckless_drivers' tab5io.
