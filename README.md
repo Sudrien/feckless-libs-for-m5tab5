@@ -14,6 +14,7 @@ under one tag:
 | `usb_host_msc` | Espressif's USB mass storage class driver 1.3.0, with the Tab5's fixes (Apache-2.0) |
 | `usb_host_uac` | Espressif's USB audio class driver 1.5.0, with the Tab5's fixes (Apache-2.0) |
 | `feckless_abi` | The ABI between a launcher and the apps it loads with esp_elf: the list of symbols an app's ELF may take from the launcher, and the build check |
+| `feckless_abi_storage` | The ABI's storage section: the storage handler, FatFs and file I/O for apps, from a launcher that links it, and the FatFs configuration both sides share |
 
 Each is in `components/`, with its own README.
 
@@ -45,6 +46,8 @@ the project's manifest is the one place a tag is written. Which ones a
 component needs:
 
 - `feckless_abi`: `feckless_drivers` and `feckless_graphics_handler`.
+- `feckless_abi_storage`: `feckless_abi`, `feckless_storage_handler`
+  and `fatfs`, and so `usb_host_msc`.
 - `feckless_drivers`: a `usb_host_uac` component, by name -- since
   v0.3.0 `usb_host_uac` from here, which every project using the
   drivers now names (v0.1.0 and v0.2.0 pinned the registry's).

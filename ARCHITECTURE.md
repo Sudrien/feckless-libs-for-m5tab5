@@ -175,3 +175,23 @@ histories stay in the archived repositories.
   way round. Built: Lothesome with ESP-IDF release/v6.1 and the
   component manager off, `feckless_abi: 85 symbols, all in
   feckless_abi_v1`, as before.
+- **3008** The storage section: feckless_abi's sections/storage.txt and
+  the component feckless_abi_storage, which a launcher links to give it
+  -- feckless_storage_handler's API but its two inits, ff.h's calls but
+  f_mount, f_mkfs and f_fdisk, and libc's and POSIX file I/O, 92 names
+  under feckless_abi_storage_v1. It requires feckless_abi, the storage
+  handler and fatfs; WHOLE_ARCHIVE, since only feckless_abi_run()'s
+  weak reference names its table. Both sides are held to one FatFs
+  configuration -- this repository's fatfs with exFAT, long names,
+  UTF-8, 4096-byte sectors, a per-file cache in a dynamic buffer, no
+  fast seek, no locks -- since an app's FIL, FF_DIR and FILINFO are laid
+  out by its own build. Built with ESP-IDF release/v6.1 and the
+  component manager off: Duplicitous linking it, every name resolved,
+  0x137280 bytes (0x1f50 more); a test app taking fopen, fgets, f_open,
+  f_close and storage_present, `feckless_abi: 9 symbols, all in
+  feckless_abi_v1 + feckless_abi_storage_v1`; the same without
+  feckless_abi_require_storage(), refused and the ELF deleted (`takes
+  names from the storage section but does not refer to
+  feckless_abi_storage_v1`); with f_mkfs, refused as outside the ABI;
+  with CONFIG_FECKLESS_FATFS_EXFAT=n and CONFIG_FATFS_FS_LOCK=4,
+  refused at configure, naming both. Not on a Tab5.

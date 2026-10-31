@@ -2,7 +2,7 @@
 
 How to work on this repository. Read it before writing a patch.
 
-Nine ESP-IDF components for the M5Stack Tab5, in `components/`, released
+Ten ESP-IDF components for the M5Stack Tab5, in `components/`, released
 together under one tag. `README.md` says what each is.
 
 ## Patches
@@ -83,3 +83,10 @@ exported function takes, in any component the ABI exports, is a new ABI
 version: `FECKLESS_ABI_VERSION` and `FECKLESS_ABI_SYMBOL` together, in a
 major release. The repository's tag and the ABI version are separate
 numbers.
+
+**Sections** (3007) are export lists a launcher gives only if it links
+their component: `components/feckless_abi/sections/<name>.txt`, each with
+its `@symbol`, and `components/feckless_abi_<name>`. A section's version
+is its own, by the same rules. The storage section (3008) also pins the
+FatFs configuration both sides build with; a change to that list is a
+new storage version.

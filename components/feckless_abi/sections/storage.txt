@@ -1,0 +1,118 @@
+# The feckless ABI's storage section, version 1 (3008).
+#
+# What an app's ELF may take from a launcher that links the section's
+# component, feckless_abi_storage -- one symbol a line, as exports.txt.
+# The launcher defines the "@symbol"; an app that takes any name below
+# refers to it (feckless_abi_require_storage()), so a launcher without
+# the section refuses the app by that name instead of failing on the
+# first file it opens. Lines that are not a bare name are ignored.
+#
+# Adding a name is compatible. Removing one, or changing what one means --
+# a signature, a struct (FIL, FF_DIR and FILINFO are the app's, laid out
+# by the FatFs configuration feckless_abi_storage pins) -- is a new
+# section version: storage_v2.
+@symbol feckless_abi_storage_v1
+
+# ---- feckless_storage_handler ------------------------------------------
+# Its public API, but storage_init() and storage_io_init(): the launcher
+# brings storage up, as it does the board, and the app finds it mounted.
+storage_ff_drive
+storage_generation
+storage_hold
+storage_hold_background
+storage_hold_brief
+storage_hold_readers
+storage_io_acquire
+storage_io_close
+storage_io_fread
+storage_io_open
+storage_io_phase_ms
+storage_io_read_at
+storage_io_release
+storage_io_report
+storage_io_should_yield
+storage_io_stats
+storage_is_hidden
+storage_join_path
+storage_label
+storage_mark_hidden
+storage_mount_path
+storage_of_path
+storage_present
+storage_release_brief
+storage_sd_info
+storage_usb_busy
+storage_usb_info
+storage_usb_power
+storage_usb_powered
+
+# ---- FatFs (fatfs, with exFAT) -----------------------------------------
+# ff.h's calls but f_mount, f_mkfs and f_fdisk: the volumes are the
+# launcher's. f_size(), f_tell() and the rest are macros over FIL.
+f_chmod
+f_close
+f_closedir
+f_getfree
+f_lseek
+f_mkdir
+f_open
+f_opendir
+f_read
+f_readdir
+f_rename
+f_stat
+f_sync
+f_truncate
+f_unlink
+f_utime
+f_write
+
+# ---- libc and POSIX file I/O, through IDF's VFS ------------------------
+# On the launcher's mounts (/sd, /usb). fseek() and ftell() take long,
+# 32 bits here: past 4 GB on exFAT, f_lseek() or storage_io_read_at().
+access
+clearerr
+close
+closedir
+fclose
+fdopen
+feof
+ferror
+fflush
+fgetc
+fgets
+fileno
+fopen
+fputc
+fputs
+fread
+fseek
+fseeko
+fstat
+fsync
+ftell
+ftello
+ftruncate
+fwrite
+getc
+lseek
+mkdir
+open
+opendir
+putc
+read
+readdir
+remove
+rename
+rewind
+rewinddir
+rmdir
+seekdir
+setvbuf
+stat
+telldir
+truncate
+ungetc
+unlink
+utime
+write
