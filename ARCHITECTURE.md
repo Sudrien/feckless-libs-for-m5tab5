@@ -555,3 +555,19 @@ histories stay in the archived repositories.
   `-Wall -Wextra -Werror`; the engine, the stacks and the colour order
   are verified only on the board. The draw step and the ABI section
   follow.
+- **7009** feckless_image_handler: fit to a box, `feckless_image_fit.h`
+  and `src/image_fit.c`: the arithmetic of Defeatist's `blit_cover()`
+  without the panel in it. `img_fit_size()` gives the size a picture takes
+  in a box (cross-multiplied fit, both directions, never below 1x1) and
+  the whole-number scale `k` when `img_int_scale()` chose one;
+  `img_fit_draw()` writes it, nearest neighbour on a 16.16 step, exact
+  blocks for a whole-number scale (5088), a memcpy when the step is 1.0,
+  and the source's `stride` honoured (the hardware's MCU padding is never
+  read). Where the result sits is the caller's: Defeatist keeps its
+  `art_place()` offset, keystone and its blit, and calls
+  `img_fit_draw(&pic, fb + dy * fbw + dx, fbw, cw, ch, k)`. This is why
+  there is no gfx dependency and no ABI call for drawing: an app that
+  writes a framebuffer it owns needs the function, not the host's panel.
+  `fittest`: 25 checks under ASan and UBSan -- sizes, identity through a
+  padded stride, 3x blocks, reads inside the source in both directions,
+  nothing written outside cw x ch.

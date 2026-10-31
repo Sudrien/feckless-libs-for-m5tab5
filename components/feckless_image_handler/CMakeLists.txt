@@ -12,7 +12,7 @@ endif()
 
 idf_component_register(
     SRCS "src/image_ico.c" "src/image_stb.c" "src/image_jxl.c" "src/image_png.c"
-         "src/image_decode.c" "src/image_esp.c"
+         "src/image_decode.c" "src/image_fit.c" "src/image_esp.c"
          "vendor/pngle.c" "vendor/miniz.c"
     INCLUDE_DIRS "include"
     PRIV_INCLUDE_DIRS "vendor"

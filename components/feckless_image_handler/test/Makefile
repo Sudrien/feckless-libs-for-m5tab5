@@ -5,6 +5,7 @@
 #   jxltest      image_jxl.c: JPEG XL through J40            (7005)
 #   pngimgtest   image_png.c: PNG through pngle              (7006)
 #   decodetest   image_decode.c: the order, with fake decoders (7007)
+#   fittest      image_fit.c: fit to a box, blocks, strides   (7009)
 #
 #   make -C components/feckless_image_handler/test
 #
@@ -43,7 +44,7 @@ J40_FLAGS := -I../vendor -Wno-sign-compare -Wno-unused-function \
              -Wno-unused-variable -Wno-maybe-uninitialized -Wno-missing-field-initializers \
              -fwrapv -fno-sanitize=signed-integer-overflow
 
-all: run run-stbjpeg run-gif run-jxl run-png run-decode
+all: run run-stbjpeg run-gif run-jxl run-png run-decode run-fit
 
 $(STB_H):
 	mkdir -p ../vendor
@@ -111,6 +112,12 @@ decodetest: decodetest.c ../src/image_decode.c ../src/image_stb.c ../src/image_j
 run-decode: decodetest
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=0 ./decodetest
 
+fittest: fittest.c ../src/image_fit.c ../include/feckless_image_fit.h
+	$(CC) $(CFLAGS) -o $@ fittest.c ../src/image_fit.c $(LDFLAGS)
+
+run-fit: fittest
+	./fittest
+
 jxltest: jxltest.c ../src/image_jxl.c ../include/feckless_image_jxl.h ../include/feckless_image.h $(J40_H)
 	$(CC) $(WARNCFLAGS) -c jxltest.c -o /dev/null
 	$(CC) $(CFLAGS) $(J40_FLAGS) -o $@ jxltest.c ../src/image_jxl.c $(LDFLAGS)
@@ -119,5 +126,5 @@ run-jxl: jxltest
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=0 ./jxltest
 
 clean:
-	rm -f imagetest stbjpegtest gifimgtest jxltest pngimgtest decodetest
-.PHONY: all run run-stbjpeg run-gif run-jxl run-png run-decode clean
+	rm -f imagetest stbjpegtest gifimgtest jxltest pngimgtest decodetest fittest
+.PHONY: all run run-stbjpeg run-gif run-jxl run-png run-decode run-fit clean
