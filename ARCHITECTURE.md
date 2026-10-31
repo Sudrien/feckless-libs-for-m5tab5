@@ -201,3 +201,7 @@ histories stay in the archived repositories.
 
 - **4001** CLAUDE.md opens this series; the README's example names
   v0.3.0, not v0.1.0.
+- **4002** The launcher is Avoidant (Duplicitous until its 0032) and the
+  map Errant Moving Map (Aimless until its 0042): the storage section's
+  README and two comments in the network handler say so. Earlier
+  entries keep the names they had. Comments and documentation only.

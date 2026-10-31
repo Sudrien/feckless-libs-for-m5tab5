@@ -11,7 +11,7 @@ Name `feckless_abi_storage` in the manifest and in main's `REQUIRES`,
 with `feckless_storage_handler`, `fatfs` and `usb_host_msc` -- all from
 this repository, at one tag. Bring storage up as before (`storage_io_init()`,
 `storage_init()`); `feckless_abi_run()` registers the section's table.
-About 8 KB in Duplicitous: the table, and the file calls it keeps in the
+About 8 KB in Avoidant (Duplicitous as was): the table, and the file calls it keeps in the
 link.
 
 ## An app

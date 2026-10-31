@@ -781,7 +781,7 @@ static int scan_list_locked(wifi_seen_t *out, int max, bool quiet)
             memcpy(out[got].bssid, ap[i].bssid, sizeof(out[got].bssid));
             if (h) hidden++;
             /* Every row, named or not, with bytes 2-5 of its BSSID: the
-             * router, as aimless's Wi-Fi location keys it. A router's
+             * router, as errant's Wi-Fi location keys it. A router's
              * guest, mesh and second-band networks differ in the first
              * or last byte, so rows that share these four are one box. */
             if (quiet) {

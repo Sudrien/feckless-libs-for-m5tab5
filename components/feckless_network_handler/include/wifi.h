@@ -385,7 +385,7 @@ struct esp_netif_obj *wifi_ap_netif(void);
  * hidden network has `hidden` set and an empty `ssid`. `bssid` is the
  * access point's MAC: what tells two networks of one name apart, and
  * what an application placing itself by the access points it hears
- * (aimless-moving-map's Wi-Fi location) keys them by. */
+ * (errant-moving-map's Wi-Fi location) keys them by. */
 typedef struct {
     char    ssid[33];
     int8_t  rssi;
