@@ -1,0 +1,11 @@
+version: "0.1.0"
+description: >-
+  The M5Stack Tab5's microSD slot and USB-A mass storage, mounted and
+  watched, with one arbiter that leases the volume per read so a
+  background reader can never hold up playback by more than one chunk.
+url: https://github.com/Sudrien/feckless-storage-handler-for-m5tab5
+license: MIT
+
+dependencies:
+  idf:
+    version: ">=5.4.2"

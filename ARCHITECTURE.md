@@ -25,3 +25,7 @@ histories stay in the archived repositories.
   `components/feckless_drivers`.
 - **0003** feckless_graphics_handler, imported unchanged from
   feckless-graphics-handler-for-m5tab5 v0.2.9 (2c869be).
+- **0004** feckless_storage_handler, imported unchanged from
+  feckless-storage-handler-for-m5tab5 77df253: v0.1.0, which every app
+  pins, and the rename to `-for-m5tab5` after it, which changed only
+  names and urls.
