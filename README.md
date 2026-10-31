@@ -10,7 +10,7 @@ under one tag:
 | `feckless_storage_handler` | The microSD slot and USB-A mass storage, mounted and watched, with one arbiter that leases the volume per read |
 | `feckless_network_handler` | Wi-Fi through the ESP32-C6 (esp_hosted over SDIO2), a saved-network list in NVS, and USB Ethernet (ASIX, CDC-ECM) on the USB-A port, the wired link preferred when it can route |
 | `feckless_nvs_handler` | The NVS partition, a value at a time: brought up once (erased and brought up afresh if unusable), and read and written by namespace and key, with no handle to keep |
-| `feckless_image_handler` | Pictures from their bytes: the kind (JPEG, PNG, JPEG XL, GIF) by magic number, a JPEG's baseline-or-not and size, the whole-number fit for small art, and a favicon.ico as a PNG; decoding and drawing to follow |
+| `feckless_image_handler` | Pictures from their bytes: the kind (JPEG, PNG, JPEG XL, GIF) by magic number, a JPEG's baseline-or-not and size, the whole-number fit for small art, and a favicon.ico as a PNG, and the software decoders (stb_image for JPEG and GIF, J40 for JPEG XL) to RGB565; the hardware JPEG engine, PNG and drawing to follow |
 | `feckless_camera` | The SC202CS camera on MIPI CSI, as luma frames, through esp_video; it takes the I2C bus from `feckless_drivers`' tab5io as an argument |
 | `fatfs` | ESP-IDF's own fatfs with exFAT: it stands in for IDF's, and builds the installed IDF's FatFs from a copy patched at configure time |
 | `usb_host_msc` | Espressif's USB mass storage class driver 1.3.0, with the Tab5's fixes (Apache-2.0) |

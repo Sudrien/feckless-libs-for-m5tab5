@@ -427,3 +427,43 @@ histories stay in the archived repositories.
   its decoders) are unchanged until its adoption patch. Not built
   against ESP-IDF (none in the session), not on a Tab5. Nothing uses the
   component yet, so nothing links it.
+- **7005** feckless_image_handler: the software decoders, moved from
+  Defeatist's `components/stbjpeg` and `components/jxlimg`. stb_image
+  (JPEG, which it reads progressive and at any sampling, and the first
+  frame of a GIF) and J40 (JPEG XL) each decode to native RGB565,
+  thinned by whole steps to the smallest size that covers the box,
+  with a header read first (`img_stb_info`, `img_jxl_info`) and a peak
+  estimate (`img_stb_peak_bytes`, `img_stb_gif_peak_bytes`,
+  `img_jxl_peak_bytes`) so a caller can ask free memory before it
+  asks for a picture. Moved as they were; renamed `stbjpeg_*` to
+  `img_stb_*`, `jxlimg_*` to `img_jxl_*` and their enums likewise
+  (`IMG_STB_OK`, `IMG_JXL_UNSUPPORTED`), in `feckless_image_stb.h` and
+  `feckless_image_jxl.h`, `src/image_stb.c` and `src/image_jxl.c`. The
+  two single-header libraries are fetched at configure time into
+  `vendor/` (gitignored) by `cmake/vendored.cmake`: the same pins and
+  SHA256s as Defeatist's (stb_image v2.30, J40 2270), the same
+  `vendored_fetch()` with its error message pointed at this directory.
+  Compile options carry over per source file: `-fwrapv` and upstream's
+  warnings off for both, `-Os` and the RISC-V `int32_t` mismatches off
+  for J40. Tests moved with their fixtures (small binaries, 164 KB; the
+  patch is `format-patch --binary`): `stbjpegtest` (JPEG: baseline,
+  progressive, SOF1, greyscale, thinning, the 5000x5000 header refused,
+  truncation, and 9000 damaged files), `jxltest` (lossy, lossless,
+  alpha, a container, split `jxlp` boxes; the four kinds J40 refuses,
+  each kept so a newer J40 shows; the size header at 13 shapes; every
+  file cut short), and `gifimgtest` (GIF87a, interlaced, transparent,
+  animated; the PNG and pngle checks of Defeatist's arttest stay there
+  until PNG moves). Built: `make -C components/feckless_image_handler/
+  test` runs all four under ASan and UBSan -- 48, 9018, 35 and 105
+  checks, no failures -- against stb_image.h and j40.h fetched at their
+  pins (checked here against the SHA256s in this file). The three
+  sources also compiled on the ESP_PLATFORM path (the allocator through
+  heap_caps_*) against a stub header, at `-O2 -Wall -Wextra` with
+  IDF's `-Wno-unused-parameter`. Not built against ESP-IDF (no IDF, and
+  the registry is not reachable), not on a Tab5. Nothing links these
+  yet: Defeatist keeps its own copies until its adoption patch, which
+  also moves its gifstacktest (the stack the GIF decode needs, run on a
+  thread of exactly that size) to these sources. Next in the
+  component: PNG (pngle's streaming into a buffer), then the hardware
+  JPEG engine with the fallback order, an `img_decode()` over all of
+  them, and the draw and ABI section.
