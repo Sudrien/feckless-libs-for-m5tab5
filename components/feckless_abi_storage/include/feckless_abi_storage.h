@@ -9,12 +9,12 @@
 #include <stdint.h>
 #include "feckless_abi.h"
 
-#define FECKLESS_ABI_STORAGE_VERSION 1
+#define FECKLESS_ABI_STORAGE_VERSION 2    /* 5003: fast seek; 1 was without */
 
 /* Defined by a launcher that has the section; every app that takes a
  * name from it refers to it. A launcher without the section has no such
  * symbol, and esp_elf_relocate() refuses the app naming it. */
-#define FECKLESS_ABI_STORAGE_SYMBOL feckless_abi_storage_v1
+#define FECKLESS_ABI_STORAGE_SYMBOL feckless_abi_storage_v2
 extern const uint32_t FECKLESS_ABI_STORAGE_SYMBOL;
 
 /* An app that uses storage calls this first thing in app_main(), beside

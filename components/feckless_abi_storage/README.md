@@ -61,10 +61,14 @@ that differs:
 | `CONFIG_WL_SECTOR_SIZE=4096` | `FF_MAX_SS` |
 | `CONFIG_FATFS_PER_FILE_CACHE=y` | `FF_FS_TINY 0`: `FIL`'s buffer |
 | `CONFIG_FATFS_USE_DYN_BUFFERS=y` | `FIL`'s buffer a pointer |
-| `CONFIG_FATFS_USE_FASTSEEK=n` | `FIL`'s `cltbl` |
+| `CONFIG_FATFS_USE_FASTSEEK=y` | `FIL`'s `cltbl`: fast seek, since `storage_v2` (5003) |
 | `CONFIG_FATFS_FS_LOCK=0` | `FIL`'s and `FF_DIR`'s `lockid` |
 
-Changing one is a new section version, `storage_v2`.
+Changing one is a new section version. `storage_v2` (5003) is
+`storage_v1` with fast seek on, so an app can give a large file a
+cluster map (`f_lseek(&fp, CREATE_LINKMAP)` with `fp.cltbl` set) and
+seek it without walking its FAT chain. An app built for v1 is refused
+by a launcher on v2, by `feckless_abi_storage_v1`, before it runs.
 
 ## Licence
 

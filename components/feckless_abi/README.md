@@ -133,7 +133,7 @@ app that takes a section's names without referring to its symbol, so a
 launcher without the section refuses the app by that name -- in
 `esp_elf_relocate()`, before any of it runs -- rather than the app
 failing at its first call. The check reports what an ELF uses:
-`feckless_abi: 9 symbols, all in feckless_abi_v1 + feckless_abi_storage_v1`.
+`feckless_abi: 9 symbols, all in feckless_abi_v1 + feckless_abi_storage_v2`.
 
 A section's version is its own: adding a name is compatible, removing
 one or changing what one means is `<name>_v2`. Lothesome's analyzer
@@ -141,7 +141,7 @@ uses no section, and runs on any launcher on ABI v1.
 
 | Section | Component | Symbol | What |
 |---|---|---|---|
-| storage | `feckless_abi_storage` | `feckless_abi_storage_v1` | `feckless_storage_handler`, FatFs with exFAT, libc's and POSIX file I/O (3008) |
+| storage | `feckless_abi_storage` | `feckless_abi_storage_v2` | `feckless_storage_handler`, FatFs with exFAT and fast seek, libc's and POSIX file I/O (3008; v2, fast seek, 5003) |
 | nvs | `feckless_abi_nvs` | `feckless_abi_nvs_v1` | `feckless_nvs_handler`'s settings and saves, but `nvsh_init()`: the launcher brings NVS up (4004) |
 | camera | `feckless_abi_camera` | `feckless_abi_camera_v1` | `feckless_camera`'s luma frames; the camera runs under the launcher's configuration (4005) |
 

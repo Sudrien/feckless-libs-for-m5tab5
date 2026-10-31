@@ -263,3 +263,12 @@ histories stay in the archived repositories.
   (`__errno` is, already). Names added: still ABI v1. Built: Avoidant
   linking the table, every name resolved, 0x178100 bytes (0x30a0 more).
   Not built on 5.5.
+- **5003** The storage section's version 2: fast seek. Both sides now
+  build with CONFIG_FATFS_USE_FASTSEEK=y, so an app's FIL has a cltbl and
+  it can map a large file's clusters (Errant's ffread.c, Spurious's
+  sd_io_fatfs.c), and the section is feckless_abi_storage_v2. FIL is
+  laid out differently, so a v1 app is refused by name before it runs;
+  no app published so far takes storage. fprintf and vfprintf join the
+  list. Built: Avoidant without the option, refused at configure
+  (`CONFIG_FATFS_USE_FASTSEEK=y (FIL's cltbl, storage_v2)`); with it,
+  0x1784a0 bytes, feckless_abi_storage_v2 in the link. Not on a Tab5.

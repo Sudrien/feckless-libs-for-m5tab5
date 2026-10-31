@@ -3,7 +3,7 @@
 # The feckless ABI's storage section (3008). A launcher that links this
 # gives its apps the storage handler, FatFs and libc's file I/O: the
 # table esp_elf resolves them against, generated from feckless_abi's
-# sections/storage.txt, and feckless_abi_storage_v1, which every such app
+# sections/storage.txt, and feckless_abi_storage_v2, which every such app
 # refers to. An app names this component too, for the headers; its ELF
 # links none of it.
 #
@@ -69,8 +69,10 @@ if(NOT CMAKE_BUILD_EARLY_EXPANSION)
     if(NOT CONFIG_FATFS_USE_DYN_BUFFERS)
         list(APPEND _bad "CONFIG_FATFS_USE_DYN_BUFFERS=y (FIL's buf a pointer)")
     endif()
-    if(CONFIG_FATFS_USE_FASTSEEK)
-        list(APPEND _bad "CONFIG_FATFS_USE_FASTSEEK=n (FIL's cltbl)")
+    # 5003: on, since storage_v2. Errant's and Spurious's readers build a
+    # cluster map for their large files.
+    if(NOT CONFIG_FATFS_USE_FASTSEEK)
+        list(APPEND _bad "CONFIG_FATFS_USE_FASTSEEK=y (FIL's cltbl, storage_v2)")
     endif()
     if(NOT CONFIG_FATFS_FS_LOCK EQUAL 0)
         list(APPEND _bad "CONFIG_FATFS_FS_LOCK=0 (FIL's and FF_DIR's lockid, is ${CONFIG_FATFS_FS_LOCK})")
@@ -83,5 +85,5 @@ if(NOT CMAKE_BUILD_EARLY_EXPANSION)
     include("${_abi_dir}/cmake/abitable.cmake")
     feckless_abi_write_table("${_table}" "${_abi_dir}/sections/storage.txt"
                              g_feckless_abi_storage_elfsyms
-                             "\"feckless_abi_storage_v1\"" feckless_abi_storage_v1)
+                             "\"feckless_abi_storage_v2\"" feckless_abi_storage_v2)
 endif()
