@@ -1,0 +1,32 @@
+# The feckless ABI's image section, version 1 (7010).
+#
+# What an app's ELF may take from a launcher that links the section's
+# component, feckless_abi_image -- one symbol a line, as exports.txt.
+# The launcher defines the "@symbol"; an app that takes any name below
+# refers to it (feckless_abi_require_image()), so a launcher without the
+# section refuses the app by that name instead of failing on its first
+# cover. Lines that are not a bare name are ignored.
+#
+# Only the hardware JPEG engine is here: the P4 has one, the driver
+# keeps it as a singleton (a second jpeg_new_decoder_engine() fails), and
+# it owns DMA descriptors and an interrupt, so it is the host's to give.
+# Everything else feckless_image_handler does is plain code that links
+# into the app's ELF as it is -- stb_image, pngle, J40, and TJpgDec
+# (espressif/esp_jpeg; add its component to ELF_COMPONENTS). An app that
+# links img_esp_ops() takes the names below, so it calls
+# feckless_abi_require_image(), and a launcher without the section
+# refuses it at load.
+#
+# Adding a name is compatible. Removing one, or changing what one means,
+# is a new section version: image_v2.
+@symbol feckless_abi_image_v1
+
+# ---- esp_driver_jpeg: the decoder ---------------------------------------
+# The whole of driver/jpeg_decode.h but the encoder, which nothing here
+# uses. jpeg_alloc_decoder_mem() is the one an app cannot do without: the
+# engine DMAs out of memory it can reach, aligned as it asks.
+jpeg_alloc_decoder_mem
+jpeg_decoder_get_info
+jpeg_decoder_process
+jpeg_del_decoder_engine
+jpeg_new_decoder_engine

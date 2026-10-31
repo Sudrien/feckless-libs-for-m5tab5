@@ -571,3 +571,23 @@ histories stay in the archived repositories.
   `fittest`: 25 checks under ASan and UBSan -- sizes, identity through a
   padded stride, 3x blocks, reads inside the source in both directions,
   nothing written outside cw x ch.
+- **7010** The image section: feckless_abi's `sections/image.txt` and the
+  component `feckless_abi_image` -- the decoder half of
+  `driver/jpeg_decode.h`, five names under `feckless_abi_image_v1`
+  (`jpeg_new_decoder_engine`, `jpeg_del_decoder_engine`,
+  `jpeg_decoder_get_info`, `jpeg_alloc_decoder_mem`,
+  `jpeg_decoder_process`), the ones 7008's `image_esp.c` calls. Only the
+  hardware is the host's: the engine is a driver singleton (a second
+  `jpeg_new_decoder_engine()` fails) with DMA descriptors and an
+  interrupt. stb_image, pngle, J40 and the rest of
+  `feckless_image_handler` are plain code and link into the app's ELF;
+  TJpgDec likewise, by adding `espressif__esp_jpeg` to `ELF_COMPONENTS`.
+  The task and heap names `image_esp.c` calls were in the core list
+  already (`xTaskCreateStaticPinnedToCore`, `ulTaskGenericNotifyTake`,
+  `xTaskGenericNotify`, `heap_caps_*`, and the rest); `feckless_abi_run()`
+  registers the table through a new weak reference, as for every section.
+  An app that links `img_esp_ops()` calls `feckless_abi_require_image()`.
+  The encoder half is left out until something uses it. The table was
+  generated and compiled on a host; the names are IDF 5.4's, and the
+  build of a launcher that links the component is the check that each is
+  a real linker symbol.

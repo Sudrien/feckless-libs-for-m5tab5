@@ -145,6 +145,7 @@ uses no section, and runs on any launcher on ABI v1.
 | nvs | `feckless_abi_nvs` | `feckless_abi_nvs_v1` | `feckless_nvs_handler`'s settings and saves, but `nvsh_init()`: the launcher brings NVS up (4004) |
 | camera | `feckless_abi_camera` | `feckless_abi_camera_v1` | `feckless_camera`'s luma frames; the camera runs under the launcher's configuration (4005) |
 | network | `feckless_abi_network` | `feckless_abi_network_v1` | `feckless_network_handler`, lwIP's sockets, esp_netif, the HTTP server with WebSockets and the HTTP client with the certificate bundle; and the configuration both sides share (6004) |
+| image | `feckless_abi_image` | `feckless_abi_image_v1` | the P4's hardware JPEG decoder (`jpeg_new_decoder_engine` and the rest of the decoder half of `driver/jpeg_decode.h`); the decoders in `feckless_image_handler` link into the app (7010) |
 
 ## Configuration
 
