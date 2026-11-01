@@ -35,6 +35,29 @@ static bool host_part(const char *hdr, char *host, size_t cap, bool *bracket)
     return n > 0;
 }
 
+bool feckless_dns_label(const char *name, char *out, size_t out_size)
+{
+    if (out && out_size) out[0] = '\0';
+    if (!name || !out || !out_size) return false;
+    size_t n = 0;
+    bool dash = false;                  /* a '-' is owed before the next letter */
+    for (const char *p = name; *p && n < HOST_MAX && n + 1 < out_size; p++) {
+        const unsigned char c = (unsigned char)*p;
+        if (c < 0x80 && isalnum(c)) {
+            if (dash && n) {
+                if (n + 2 >= out_size || n + 1 >= HOST_MAX) break;
+                out[n++] = '-';
+            }
+            dash = false;
+            out[n++] = (char)tolower(c);
+        } else {
+            dash = true;
+        }
+    }
+    out[n] = '\0';
+    return n > 0;
+}
+
 static bool dotted_digits(const char *s)
 {
     bool digit = false;

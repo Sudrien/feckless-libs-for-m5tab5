@@ -755,3 +755,44 @@ histories stay in the archived repositories.
   redirect handler, and `certgen.c`, `devcert.c` and the PBKDF2 in
   `wifijoin.c` (which `wifi_psk()` already is) go; then the crypto section
   of 8003 shrinks to the one SHA-256 `approve.c` takes.
+- **8005** The name 8004's redirect sends a browser to now resolves:
+  `feckless_https_start()` starts an mDNS responder for it. 8004 said the
+  redirect to `<name>.local` is worse than useless without one; nothing in
+  Defeatist, Avoidant or this repository answered mDNS. On the first
+  successful start: `mdns_init()` (which returns OK when already up),
+  `mdns_hostname_set(name)`, `mdns_instance_name_set(name)` and an
+  `_https._tcp` service on the port. The interface is the one the IDF's
+  `mdns` predefines for the Wi-Fi station (`WIFI_STA_DEF`, which wifi.c
+  makes; `CONFIG_MDNS_PREDEF_NETIF_STA` is on by default, and so is the AP
+  one, which a setup portal gets). **USB Ethernet is not covered**: its
+  netifs have their own keys (ethernet.c's `attach()`), not `ETH_DEF`, and
+  registering them with `mdns_register_netif()` and driving them from the IP
+  events is a patch of its own, not guessed at here; over the cable the name
+  resolves only where the network's DNS knows it. A failure to start is a
+  log line and not fatal.
+  *The name is part of the identity.* It is stored with the key and
+  certificate in the same commit (`name`), and a load takes it from there, so
+  the mDNS hostname, the certificate's SAN and the redirect's target cannot
+  differ even if `feckless_https_set_name()` is later given another. That
+  function now makes its argument a DNS label (`feckless_dns_label()`: lower
+  case, anything else '-', no run or edge of them, 63 characters; pure, 14
+  new checks in `redirecttest`, 54 in all under ASan and UBSan), and ignores
+  one that leaves nothing. The default name moved into one function used by
+  both the identity and the redirect.
+  *Manifest:* `feckless_network_handler/idf_component.yml` gains
+  `espressif/mdns: ">=1.8.0"`, from the registry, which a session cannot
+  reach; a range and not a pin, on the reasoning the manifest already gives
+  for `esp_wifi_remote` (a pin the registry cannot satisfy stops the project
+  configuring). So **every project that names this component re-resolves its
+  lock on its next build**, and the diff wants reading. I read the API from
+  esp-protocols' `mdns-v1.14.1`: the four functions' signatures match the
+  stub the glue was compiled against, `mdns_init()` returns OK when already
+  initialised, and the component needs IDF >= 5.0.
+  *Checked:* the glue recompiled at `-O2 -Wall -Wextra -Werror` against stub
+  IDF headers and both Mbed TLS versions; the handler's host tests pass
+  (wifistore 10088, netlink 46, redirect 54). *Not checked:* that it links,
+  or answers a query on a Tab5 (`avahi-resolve -n feckless-xxxxxx.local`, or
+  `ping`, from another machine is the test; the log line is `answering mDNS
+  as ...`), that mDNS and the esp_hosted radio's multicast filtering agree
+  (the C6 firmware may drop 224.0.0.251: the first thing to look at if the
+  line is there and nothing resolves), the memory the responder takes.

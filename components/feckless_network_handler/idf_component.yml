@@ -76,3 +76,13 @@ dependencies:
   # that speaks ECM out of the box. Espressif's, in the registry; it
   # brings iot_usbh_cdc, and the same iot_eth the ASIX driver uses.
   espressif/iot_usbh_ecm: "*"
+
+  # 8004: mDNS, for the name the device's certificate carries and the
+  # port-80 redirect sends a browser to (feckless_https.c). From the
+  # registry, which a session cannot reach: ">=1.8.0" rather than a pin,
+  # on the reasoning of esp_wifi_remote above -- a pin the registry cannot
+  # satisfy stops the project configuring -- and dependencies.lock records
+  # what it resolved to. 1.14.1 is the newest tag of esp-protocols' mdns
+  # that was read when this was written (its API: mdns_init(),
+  # mdns_hostname_set(), mdns_service_add()).
+  espressif/mdns: ">=1.8.0"

@@ -84,6 +84,29 @@ int main(void)
     CHECK(feckless_redirect_target("1.2.3.4", "/", "N", 443, exact, sizeof exact) &&
           strcmp(exact, "https://n.local/") == 0);
 
+    /* feckless_dns_label */
+    char lb[64];
+    CHECK(feckless_dns_label("Feckless-A1B2C3", lb, sizeof lb) && strcmp(lb, "feckless-a1b2c3") == 0);
+    CHECK(feckless_dns_label("My Tab5!", lb, sizeof lb) && strcmp(lb, "my-tab5") == 0);
+    CHECK(feckless_dns_label("  --a__b  c--", lb, sizeof lb) && strcmp(lb, "a-b-c") == 0);
+    CHECK(feckless_dns_label("a.b", lb, sizeof lb) && strcmp(lb, "a-b") == 0);
+    CHECK(feckless_dns_label("\xc3\xa9t\xc3\xa9", lb, sizeof lb) && strcmp(lb, "t") == 0);   /* UTF-8 bytes are not letters */
+    CHECK(!feckless_dns_label("---", lb, sizeof lb) && !lb[0]);
+    CHECK(!feckless_dns_label("", lb, sizeof lb) && !lb[0]);
+    CHECK(!feckless_dns_label(NULL, lb, sizeof lb) && !lb[0]);
+    CHECK(!feckless_dns_label("a", NULL, 5));
+    CHECK(!feckless_dns_label("a", lb, 0));
+    {
+        char big[200], o[200];
+        memset(big, 'z', sizeof big - 1); big[sizeof big - 1] = '\0';
+        CHECK(feckless_dns_label(big, o, sizeof o) && strlen(o) == 63);
+        char small[4];
+        CHECK(feckless_dns_label("abcdefgh", small, sizeof small) && strcmp(small, "abc") == 0);
+        CHECK(feckless_dns_label("ab-cd", small, sizeof small) && strcmp(small, "ab") == 0);   /* no dangling '-' */
+        char one[1];
+        CHECK(!feckless_dns_label("abc", one, sizeof one) && !one[0]);
+    }
+
     /* is_address */
     CHECK(feckless_redirect_is_address("1.2.3.4"));
     CHECK(feckless_redirect_is_address("1.2.3.4:80"));

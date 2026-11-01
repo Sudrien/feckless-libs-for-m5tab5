@@ -16,7 +16,7 @@ idf_component_register(
              esp_hosted
              esp_http_server   # 8004: feckless_https.h's httpd_config_t
     PRIV_REQUIRES esp_timer lwip nvs_flash usb mbedtls   # mbedtls: 6003, wifi_psk(); 8004, feckless_cert
-             esp_https_server   # 8004: feckless_https.c
+             esp_https_server mdns   # 8004: feckless_https.c; mdns: the name the redirect sends to
              esp_usbh_asix iot_eth iot_usbh_ecm iot_usbh_cdc
 )
 

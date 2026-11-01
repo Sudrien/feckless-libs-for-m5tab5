@@ -21,6 +21,15 @@ extern "C" {
 #endif
 
 /*
+ * A name made fit to be a DNS label (and so an mDNS hostname, the CN and
+ * the "<name>.local" of the certificate): letters and digits kept, lower
+ * case; anything else becomes '-'; leading and trailing '-' dropped, runs
+ * of them made one; at most 63 characters. Returns false, with `out` empty,
+ * when nothing is left, or for a NULL argument or a zero `out_size`.
+ */
+bool feckless_dns_label(const char *name, char *out, size_t out_size);
+
+/*
  * Whether a Host header value (with or without ":port") is an address and
  * not a name: IPv4 in dotted form (digits and dots only), or an IPv6
  * literal in brackets. NULL or empty is an address too: there is no name

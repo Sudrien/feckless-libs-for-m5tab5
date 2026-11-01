@@ -19,6 +19,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "mdns.h"
 #include "nvs.h"
 
 #include "feckless_cert.h"
@@ -62,23 +63,38 @@ static int hw_rng(void *ctx, unsigned char *buf, size_t len)
 
 void feckless_https_set_name(const char *name)
 {
+    char label[NAME_CAP];
+    if (!feckless_dns_label(name, label, sizeof label)) return;
     SemaphoreHandle_t l = lock();
     xSemaphoreTake(l, portMAX_DELAY);
-    if (name && name[0]) {
-        snprintf(s_name, sizeof s_name, "%s", name);
-    }
+    snprintf(s_name, sizeof s_name, "%s", label);
     xSemaphoreGive(l);
+}
+
+/* The name when none was set: the chip's own MAC, which is there whether
+ * or not a radio is up. Under the lock. */
+static void default_name(void)
+{
+    if (s_name[0]) return;
+    uint8_t mac[6] = { 0 };
+    esp_efuse_mac_get_default(mac);
+    snprintf(s_name, sizeof s_name, "feckless-%02x%02x%02x", mac[3], mac[4], mac[5]);
 }
 
 static bool load(void)
 {
     nvs_handle_t h;
     if (nvs_open(NS, NVS_READONLY, &h) != ESP_OK) return false;
-    size_t kl = KEY_CAP, cl = CRT_CAP;
+    size_t kl = KEY_CAP, cl = CRT_CAP, nl = sizeof s_name;
+    char name[NAME_CAP];
     const bool ok = nvs_get_str(h, "key", s_key, &kl) == ESP_OK &&
-                    nvs_get_str(h, "crt", s_crt, &cl) == ESP_OK;
+                    nvs_get_str(h, "crt", s_crt, &cl) == ESP_OK &&
+                    nvs_get_str(h, "name", name, &nl) == ESP_OK && name[0];
     nvs_close(h);
     if (!ok) return false;
+    /* The name the certificate was made for, whatever set_name() said
+     * since: the mDNS name and the redirect must be the certificate's. */
+    snprintf(s_name, sizeof s_name, "%s", name);
     s_key_len = kl;         /* nvs_get_str counts the NUL */
     s_crt_len = cl;
     return true;
@@ -94,6 +110,7 @@ static bool store(void)
      * the certificate first for want of this). */
     const bool ok = nvs_set_str(h, "key", s_key) == ESP_OK &&
                     nvs_set_str(h, "crt", s_crt) == ESP_OK &&
+                    nvs_set_str(h, "name", s_name) == ESP_OK &&
                     nvs_commit(h) == ESP_OK;
     nvs_close(h);
     return ok;
@@ -122,12 +139,7 @@ static esp_err_t identity(const char **crt, size_t *crt_len, const char **key, s
         if (!s_key || !s_crt) {
             err = ESP_ERR_NO_MEM;
         } else if (!load()) {
-            if (!s_name[0]) {
-                /* The chip's own MAC: there whether or not a radio is up. */
-                uint8_t mac[6] = { 0 };
-                esp_efuse_mac_get_default(mac);
-                snprintf(s_name, sizeof s_name, "feckless-%02x%02x%02x", mac[3], mac[4], mac[5]);
-            }
+            default_name();
             const int64_t t0 = esp_timer_get_time();
             const int ret = feckless_cert_make(s_name, hw_rng, NULL, s_key, KEY_CAP, s_crt, CRT_CAP);
             if (ret == FECKLESS_CERT_ERR_NO_WRITER) {
@@ -156,6 +168,27 @@ static esp_err_t identity(const char **crt, size_t *crt_len, const char **key, s
     return err;
 }
 
+/* 8004: the name the certificate carries and the redirect sends a browser
+ * to has to be answered by something. mDNS, on the station interface the
+ * IDF predefines (CONFIG_MDNS_PREDEF_NETIF_STA); mdns_init() may be
+ * called again. The service record is for a browser or a scanner that
+ * looks; the hostname is what matters. Failure is logged and not fatal:
+ * the server is up, by IP address, and the redirect is the app's to
+ * leave off. */
+static void mdns_up(const char *name, uint16_t port)
+{
+    esp_err_t err = mdns_init();
+    if (err == ESP_OK) err = mdns_hostname_set(name);
+    if (err == ESP_OK) err = mdns_instance_name_set(name);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "mDNS did not start (%d): %s.local will not resolve by itself", (int)err, name);
+        return;
+    }
+    /* Already added by an earlier server on the same port: not an error. */
+    (void)mdns_service_add(NULL, "_https", "_tcp", port, NULL, 0);
+    ESP_LOGI(TAG, "answering mDNS as %s.local", name);
+}
+
 esp_err_t feckless_https_start(httpd_handle_t *out, const httpd_config_t *cfg, uint16_t port)
 {
     if (!out || !cfg || !port) return ESP_ERR_INVALID_ARG;
@@ -172,7 +205,15 @@ esp_err_t feckless_https_start(httpd_handle_t *out, const httpd_config_t *cfg, u
     ssl.prvtkey_pem = (const uint8_t *)key;
     ssl.prvtkey_len = key_len;
     const esp_err_t err = httpd_ssl_start(out, &ssl);
-    if (err == ESP_OK) s_port = port;
+    if (err == ESP_OK) {
+        char name[NAME_CAP];
+        SemaphoreHandle_t l = lock();
+        xSemaphoreTake(l, portMAX_DELAY);
+        s_port = port;
+        snprintf(name, sizeof name, "%s", s_name);
+        xSemaphoreGive(l);
+        mdns_up(name, port);
+    }
     return err;
 }
 
@@ -208,11 +249,7 @@ esp_err_t feckless_https_redirect(httpd_req_t *req)
     char name[NAME_CAP];
     SemaphoreHandle_t l = lock();
     xSemaphoreTake(l, portMAX_DELAY);
-    if (!s_name[0]) {
-        uint8_t mac[6] = { 0 };
-        esp_efuse_mac_get_default(mac);
-        snprintf(s_name, sizeof s_name, "feckless-%02x%02x%02x", mac[3], mac[4], mac[5]);
-    }
+    default_name();
     snprintf(name, sizeof name, "%s", s_name);
     const uint16_t port = s_port;
     xSemaphoreGive(l);

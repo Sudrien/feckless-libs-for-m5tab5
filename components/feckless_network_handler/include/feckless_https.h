@@ -60,9 +60,13 @@ esp_err_t feckless_https_stop(httpd_handle_t handle);
  * keeps the server, so it can stand down for a setup portal that needs
  * port 80, and its open_fn, so it can refuse what is off the network.
  *
- * Needs the name to resolve: something on the device has to answer mDNS
- * for "<name>.local" (a launcher's job, not the app's), or a browser sent
- * there finds nothing.
+ * It sends a browser to a name that has to resolve, so the first
+ * successful feckless_https_start() also starts an mDNS responder for it
+ * ("<name>.local", and an _https._tcp service on the port). That is the
+ * station interface and the IDF's predefined ones; the USB Ethernet
+ * interface is not registered with it (8004), so over the cable the name
+ * resolves only where the network's own DNS knows it. Call the app's
+ * server start before its redirect.
  */
 esp_err_t feckless_https_redirect(httpd_req_t *req);
 
@@ -77,8 +81,10 @@ bool feckless_https_fingerprint(char *out, size_t out_size);
 /*
  * Launcher only, not in the ABI: the name the certificate is made for,
  * before the first server starts (it is "feckless-" and the last three
- * bytes of the chip's MAC in hex if never set). A name given after the
- * identity exists changes nothing until NVS is erased.
+ * bytes of the chip's MAC in hex if never set). Made fit to be a DNS
+ * label (feckless_dns_label()); a name that leaves nothing is ignored.
+ * The name is kept with the certificate: a name given after the identity
+ * exists changes nothing until NVS is erased.
  */
 void feckless_https_set_name(const char *name);
 
