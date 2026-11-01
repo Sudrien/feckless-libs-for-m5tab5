@@ -926,3 +926,42 @@ histories stay in the archived repositories.
   without it. `filter_test` passes. Not built with ESP-IDF, not on a Tab5.
   A launcher re-links with one more entry; an app built with silent
   assertions needs a launcher at this tag or later.
+- **8010** `feckless_keyboard`: Spurious's on-screen keyboard, lifted. The
+  StarDict reader (spurious-stardict-reader-for-m5tab5, main.c at daa69a6)
+  has the only on-screen keyboard among the Tab5 projects: three rows of
+  ten -- q to p; a to l and an apostrophe; z to m, `-`, `.` and del --
+  lower case, each key a rectangle with its label centred. Defeatist has
+  none (its `portal.h`: one written for a passphrase typed once per network
+  would be the largest thing on the screen), and ESP-IDF's only keyboard
+  is LVGL's, which brings its own display stack beside gfx. Avoidant's
+  Wi-Fi page and Defeatist's search want one; this is the first step, the
+  code as it is, so the next ones (shift, digits and symbols, landscape,
+  masking, redrawing only what changed) are changes to one component
+  rather than to each app's copy.
+  The API: a `kbd_t` saying where the band is (`x`, `y`, `w`), each row's
+  height, the label scale and two colours; `kbd_draw()` puts every key in
+  the framebuffer and the caller blits; `kbd_hit()` gives the character
+  under a tap, `KBD_DEL`, or `KBD_NONE` outside the band; `kbd_edit()`
+  applies one to a string as Spurious did (del drops the last character, a
+  character is appended while one more fits). It owns no task and no touch:
+  the app's UI code draws it and hands it taps, so whatever writes the
+  screen stays the one thing that does (Defeatist's `ui_task`). Spurious's
+  fourth row -- Up, Down, space, sounds, clear -- stays Spurious's.
+  Plain code, so it links into an app's ELF (`ELF_COMPONENTS`), as
+  `feckless_image_handler`'s decoders do; it calls `gfx_fill_rect`,
+  `gfx_draw_text`, `gfx_text_w`, `strcmp` and `strlen`, all in the core
+  list. No ABI change. It REQUIRES `feckless_graphics_handler` (for
+  `gfx.h`) and nothing else; the gfx calls it makes are the same at v0.5.0,
+  the tag Spurious is on, as now.
+  *Checked:* `test/kbdtest` runs it against a copy of Spurious's own
+  table, `key()`, `draw_keyboard()`'s three rows and `search()`'s keyboard
+  branch, with the real `gfx.h` and the gfx calls recorded: the same 60
+  calls in the same order with the same arguments, and the same text after
+  a tap on each of the 720 x 264 pixels of the band on an empty, a short
+  and a full query (570,240 taps); plus a band moved and 725 wide (its five
+  leftover pixels are the tenth column's, as Spurious's were), taps outside
+  it, and the edit at its limits. ASan and UBSan; two deliberate breaks
+  (the last column, a label one pixel over) each fail it. The source
+  compiles with Espressif's esp-14.2.0 at `-O2 -Wall -Werror=all -Wextra
+  -Werror=extra -fPIC`, 768 bytes. CI runs the test. Not built with
+  ESP-IDF; Spurious using it is its own patch, after a tag.

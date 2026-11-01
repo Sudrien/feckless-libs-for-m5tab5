@@ -19,6 +19,9 @@ jobs:
         run: make -C components/feckless_graphics_handler/test
       - name: feckless_network_handler
         run: make -C components/feckless_network_handler/test
+      # 8010: against Spurious's code it was lifted from.
+      - name: feckless_keyboard
+        run: make -C components/feckless_keyboard/test
       # 8003: the ABI's section filter and the crypto list.
       - name: feckless_abi section filter
         run: cmake -P components/feckless_abi/test/filter_test.cmake

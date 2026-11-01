@@ -77,8 +77,8 @@ and -- once a board has run it -- what the log showed.
   built that way, or not at all.
 - **Host tests:** `make -C components/<name>/test` for
   feckless_drivers, feckless_graphics_handler,
-  feckless_network_handler, feckless_nvs_handler and
-  feckless_image_handler.
+  feckless_network_handler, feckless_nvs_handler,
+  feckless_image_handler and feckless_keyboard.
 - **`fatfs` is IDF's, patched at configure time** (3002). Its edits are
   `components/fatfs/tools/patch_fatfs.py`, checked in CI against the
   IDFs the Tab5 projects build with; a new IDF whose FatFs it refuses

@@ -11,6 +11,7 @@ under one tag:
 | `feckless_network_handler` | Wi-Fi through the ESP32-C6 (esp_hosted over SDIO2), a saved-network list in NVS, and USB Ethernet (ASIX, CDC-ECM) on the USB-A port, the wired link preferred when it can route |
 | `feckless_nvs_handler` | The NVS partition, a value at a time: brought up once (erased and brought up afresh if unusable), and read and written by namespace and key, with no handle to keep |
 | `feckless_image_handler` | Pictures from their bytes: the kind (JPEG, PNG, JPEG XL, GIF) by magic number, a JPEG's baseline-or-not and size, the whole-number fit for small art, and a favicon.ico as a PNG, and the software decoders (stb_image for JPEG and GIF, pngle for PNG, J40 for JPEG XL) to RGB565; the hardware JPEG engine and drawing to follow |
+| `feckless_keyboard` | An on-screen keyboard drawn with gfx and driven by the app's own taps: three rows of ten keys, lower case (Spurious's, lifted) |
 | `feckless_camera` | The SC202CS camera on MIPI CSI, as luma frames, through esp_video; it takes the I2C bus from `feckless_drivers`' tab5io as an argument |
 | `fatfs` | ESP-IDF's own fatfs with exFAT: it stands in for IDF's, and builds the installed IDF's FatFs from a copy patched at configure time |
 | `usb_host_msc` | Espressif's USB mass storage class driver 1.3.0, with the Tab5's fixes (Apache-2.0) |
@@ -79,6 +80,8 @@ component needs:
   supplies: the component's README says why.
 - `feckless_nvs_handler`: nothing by name; IDF's `nvs_flash`.
 - `feckless_image_handler`: nothing by name; IDF's `heap` for the allocator.
+- `feckless_keyboard`: `feckless_graphics_handler`, for gfx. It links into an
+  app's ELF (`ELF_COMPONENTS`); its gfx calls are the ABI's.
 - `feckless_graphics_handler`, `feckless_network_handler`,
   `feckless_nvs_handler`, `feckless_image_handler` and `feckless_camera`: nothing of each other's.
 
