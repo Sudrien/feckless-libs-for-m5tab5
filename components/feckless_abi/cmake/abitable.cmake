@@ -39,3 +39,36 @@ function(feckless_abi_write_table _out _exports _table _vname _vsym)
     file(WRITE "${_out}.tmp" "${_c}")
     configure_file("${_out}.tmp" "${_out}" COPYONLY)
 endfunction()
+
+# 8003: feckless_abi_filter_section(<section file> <out> <key> <value>)
+#
+# A section's names, for a launcher whose <key> is <value>: the bare
+# names outside any "@when", and those inside "@when <key> <value>".
+# A "@when" line starts a group, the next "@when" or an "@end" ends it;
+# a "@when" for another key or value drops its names. Written one name a
+# line, for feckless_abi_write_table(). The build check
+# (abicheck.cmake) reads the section file whole, so an app built for
+# either value passes it.
+function(feckless_abi_filter_section _in _out _key _value)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_in}")
+    file(STRINGS "${_in}" _lines REGEX "^(@when|@end|[A-Za-z_][A-Za-z0-9_]*$)")
+    set(_active TRUE)
+    set(_kept "")
+    foreach(_l IN LISTS _lines)
+        if(_l MATCHES "^@when +([A-Za-z0-9_]+) +([A-Za-z0-9_.]+) *$")
+            if(CMAKE_MATCH_1 STREQUAL "${_key}" AND CMAKE_MATCH_2 STREQUAL "${_value}")
+                set(_active TRUE)
+            else()
+                set(_active FALSE)
+            endif()
+        elseif(_l MATCHES "^@end *$")
+            set(_active TRUE)
+        elseif(_l MATCHES "^@")
+            message(FATAL_ERROR "feckless_abi: ${_in}: cannot read \"${_l}\"")
+        elseif(_active)
+            string(APPEND _kept "${_l}\n")
+        endif()
+    endforeach()
+    file(WRITE "${_out}.tmp" "${_kept}")
+    configure_file("${_out}.tmp" "${_out}" COPYONLY)
+endfunction()

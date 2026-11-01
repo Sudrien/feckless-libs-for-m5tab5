@@ -612,3 +612,59 @@ histories stay in the archived repositories.
   defined the same symbols twice. `stb_image.h`, `j40.h` and `pngle.h`
   come with it, which nothing is bothered by. Built: nothing to build on
   a host; the include path is the one `PRIV_INCLUDE_DIRS` had, moved.
+- **8003** The crypto section: `feckless_abi`'s `sections/crypto.txt` and the
+  component `feckless_abi_crypto`, `feckless_abi_crypto_v1`. Defeatist's
+  move to an ELF (its 8070) found three things the ABI lacks; this is the
+  one that is Mbed TLS: certgen.c (a self-signed P-256 certificate:
+  the key, the X.509 writer, PEM), wifijoin.c (PBKDF2-HMAC-SHA1 for a
+  Wi-Fi passphrase) and approve.c (a SHA-256). The launcher has Mbed TLS
+  already, for its HTTPS and HTTP; linking a second copy into the app
+  would be code twice for names the launcher can give.
+  The list is what those three files call, and no more: the pk layer,
+  `mbedtls_x509write_crt_*` and `mbedtls_x509_crt_*` on both majors;
+  `mbedtls_pk_setup`, `mbedtls_pk_info_from_type`, `mbedtls_ecp_gen_key`,
+  `mbedtls_sha256` and `mbedtls_pkcs5_pbkdf2_hmac_ext` on Mbed TLS 3.6
+  (IDF 5.x); `mbedtls_pk_copy_from_psa` and the `psa_*` functions for a
+  key, a hash and a key derivation on 4.0 (IDF 6.x), plus
+  `psa_crypto_init`, which may be called again. The static inline functions in Mbed TLS's headers
+  (`mbedtls_pk_ec()`, `psa_set_key_type()` and the other `psa_set_key_*`)
+  have no symbol; `mbedtls_pk_ec()` calls `mbedtls_pk_get_type()`, which
+  is in the list.
+  *Two majors.* IDF 5.5 ships Mbed TLS 3.6 and 6.1 ships 4.0, and the
+  names an app takes differ (Defeatist's files branch on
+  `MBEDTLS_VERSION_MAJOR`, as its 6031 did), as do the structures they
+  take. So a section can now hold names for one value of a key only:
+  `@when mbedtls 3` ... `@end` in the file, `feckless_abi_filter_section()`
+  in `cmake/abitable.cmake` for the launcher's table (its own major's names
+  only, read from the Mbed TLS header, IDF's version if there is none), and
+  the build check unchanged, since it reads the file whole. Each major has
+  a marker symbol, `feckless_abi_crypto_mbedtls3` or `..._mbedtls4`,
+  defined by a launcher of that major only; `feckless_abi_require_crypto()`
+  refers to it and to `feckless_abi_crypto_v1`, so an app built for 3 on a
+  launcher with 4 fails in `esp_elf_relocate()` naming the marker, not
+  later with a `mbedtls_pk_context` of the wrong size. The component fails
+  the build on Mbed TLS 4 without `CONFIG_MBEDTLS_X509_CREATE_C` (Defeatist's
+  `sdkconfig.defaults.idf6` says IDF 6 puts the X.509 writer behind it).
+  `feckless_abi.c` registers the new table through a weak reference, as for
+  every section.
+  *Checked:* each of the 27 Mbed TLS names for 3.6 and 33 for 4.0 (each
+  list also holds its marker) against the real sources (Mbed TLS 3.6.3, and 4.0.0 with TF-PSA-Crypto at its submodule's
+  commit): every one is declared in a header and defined in a `.c`, none is
+  `static inline`. The five names the 3.6 side takes that 4.0 keeps in
+  private headers (`mbedtls_pk_setup`, `mbedtls_pk_info_from_type`,
+  `mbedtls_ecp_gen_key`, `mbedtls_sha256`, `mbedtls_pkcs5_pbkdf2_hmac_ext`)
+  are in 4.0's sources too but are left out of its list, because Defeatist
+  uses PSA there. `test/filter_test.cmake` (host, 19 checks): the filter's
+  groups and `@end`, comments with brackets and semicolons, each major's
+  marker and only its own, the names for 3 only and 4 only, no duplicate;
+  it fails when a name is moved to the wrong group. `feckless_abi_crypto.c`
+  and the header compiled at `-O2 -Wall -Wextra -Werror` against both
+  Mbed TLS versions' headers: the launcher defines `_v1` and its major's
+  marker, an app refers to `_v1` and its own.
+  *Not built, no ESP-IDF in the session:* that a launcher links the table
+  (every name a real linker symbol in IDF's own Mbed TLS build, with IDF's
+  `sdkconfig`: IDF's Mbed TLS is a fork with ESP ports for SHA and the
+  rest, so a name that is in upstream's sources can still be configured
+  out), which is the first thing a launcher's build says; and not run on a
+  Tab5. Avoidant has to link `feckless_abi_crypto` and move to this tag
+  to give the section; Defeatist then calls `feckless_abi_require_crypto()`.

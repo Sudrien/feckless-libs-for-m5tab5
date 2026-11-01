@@ -29,6 +29,7 @@ extern esp_elf_symbol_table_t g_feckless_abi_nvs_elfsyms[] __attribute__((weak))
 extern esp_elf_symbol_table_t g_feckless_abi_camera_elfsyms[] __attribute__((weak));   /* 4005 */
 extern esp_elf_symbol_table_t g_feckless_abi_network_elfsyms[] __attribute__((weak));  /* 6004 */
 extern esp_elf_symbol_table_t g_feckless_abi_image_elfsyms[] __attribute__((weak));    /* 7010 */
+extern esp_elf_symbol_table_t g_feckless_abi_crypto_elfsyms[] __attribute__((weak));   /* 8003 */
 
 static esp_elf_symbol_table_t *const s_sections[] = {
     g_feckless_abi_storage_elfsyms,
@@ -36,6 +37,7 @@ static esp_elf_symbol_table_t *const s_sections[] = {
     g_feckless_abi_camera_elfsyms,
     g_feckless_abi_network_elfsyms,
     g_feckless_abi_image_elfsyms,
+    g_feckless_abi_crypto_elfsyms,
 };
 #define SECTION_COUNT (sizeof s_sections / sizeof s_sections[0])
 
