@@ -1,4 +1,4 @@
-version: "0.8.3"
+version: "0.8.4"
 description: >-
   The feckless ABI's image section: the P4's hardware JPEG decoder for an
   app's ELF, from a launcher that links this.

@@ -1,4 +1,4 @@
-version: "0.8.3"
+version: "0.8.4"
 description: >-
   The feckless ABI's camera section: feckless_camera's luma frames for an
   app's ELF, from a launcher that links this.
