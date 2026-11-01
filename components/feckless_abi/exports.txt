@@ -270,6 +270,11 @@ uart_write_bytes
 
 # ---- libc --------------------------------------------------------------
 __assert_func
+# 8009: an app built with CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_SILENT
+# calls abort() from every ESP_ERROR_CHECK() (esp_err.h; the silent
+# assert() still calls __assert_func, with NULLs). esp_libc's abort.c on
+# IDF 6, newlib's on 5: a real function on both.
+abort
 atof
 _ctype_b
 __errno

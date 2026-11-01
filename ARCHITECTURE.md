@@ -907,3 +907,22 @@ histories stay in the archived repositories.
   `feckless_abi_audio` to give the section. Defeatist then names it,
   calls `feckless_abi_require_audio()`, and drops esp_audio_codec from
   `ELF_COMPONENTS` and 8090's link-line loop.
+- **8009** `abort` in the core list. Defeatist set
+  `CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_SILENT` (its 8095, for the
+  .bin's 3 MB slot), and its ELF's next clean build failed the ABI check on
+  one name: `abort`. With assertions silent, IDF's `esp_err.h` makes
+  `ESP_ERROR_CHECK()` call `abort()` where it called
+  `_esp_error_check_failed()` (exported); the silent `assert()` still calls
+  `__assert_func`, with NULLs, which is exported already. `abort` is a real
+  function on both majors (`esp_libc/src/abort.c` in release/v6.1,
+  `newlib/src/abort.c` in v5.5.1), so the launcher's table can point at it.
+  Adding a name is compatible: the ABI's version stands.
+  *Checked* with Espressif's esp-14.2.0 toolchain: the core table generated
+  by `feckless_abi_write_table()` compiles at `-O2 -Wall -Wextra -Werror`
+  with `extern int abort;` (the existing pragma covers the builtin's
+  mismatch, as for `memcpy`) and refers to `abort`. An app ELF whose
+  `app_main()` is a silent `ESP_ERROR_CHECK()`, linked as `project_elf()`
+  does, passes `abicheck.cmake` with this list and fails naming `abort`
+  without it. `filter_test` passes. Not built with ESP-IDF, not on a Tab5.
+  A launcher re-links with one more entry; an app built with silent
+  assertions needs a launcher at this tag or later.
