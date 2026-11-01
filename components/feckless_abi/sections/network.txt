@@ -105,6 +105,18 @@ esp_netif_get_ip_info
 esp_netif_set_dns_info
 esp_wifi_get_mac
 
+# ---- the device's HTTPS identity (8004) --------------------------------
+# feckless_https.h: the launcher makes and keeps the certificate and starts
+# the TLS server with it; an app is never handed the key. These stand in
+# for httpd_ssl_start() and httpd_ssl_stop(), which are not here and are
+# not wanted: a certificate the app made would be the app's, and one per
+# app. feckless_https_redirect is a handler for the app's own port-80
+# server. feckless_https_set_name() is the launcher's alone.
+feckless_https_fingerprint
+feckless_https_redirect
+feckless_https_start
+feckless_https_stop
+
 # ---- esp_http_server, with WebSockets ----------------------------------
 httpd_get_client_list
 httpd_query_key_value

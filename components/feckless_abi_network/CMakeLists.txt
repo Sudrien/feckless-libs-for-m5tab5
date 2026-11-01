@@ -84,6 +84,14 @@ if(NOT CMAKE_BUILD_EARLY_EXPANSION)
         string(REPLACE ";" "\n  " _bad "${_bad}")
         message(FATAL_ERROR "feckless_abi_network: the network section needs\n  ${_bad}")
     endif()
+    # 8004: feckless_https_start() is httpd_ssl_start() behind the device
+    # certificate, which esp_https_server only builds with this. A launcher
+    # without it fails to link; an app's own build does not need it, so it
+    # is not an error here.
+    if(NOT CONFIG_ESP_HTTPS_SERVER_ENABLE)
+        message(WARNING "feckless_abi_network: CONFIG_ESP_HTTPS_SERVER_ENABLE=y is needed "
+                "by a launcher: the section's feckless_https_start() calls httpd_ssl_start()")
+    endif()
     # Not fatal: the launcher's sockets are every app's, and Defeatist
     # wants 28 (its sdkconfig.defaults says why).
     if(CONFIG_LWIP_MAX_SOCKETS LESS 16)

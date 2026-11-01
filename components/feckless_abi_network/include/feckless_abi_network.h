@@ -10,6 +10,7 @@
 #include <stdint.h>
 #include "feckless_abi.h"
 #include "wifi.h"
+#include "feckless_https.h"   /* 8004 */
 
 #define FECKLESS_ABI_NETWORK_VERSION 1
 

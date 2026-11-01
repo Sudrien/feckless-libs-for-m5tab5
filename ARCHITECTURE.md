@@ -668,3 +668,90 @@ histories stay in the archived repositories.
   out), which is the first thing a launcher's build says; and not run on a
   Tab5. Avoidant has to link `feckless_abi_crypto` and move to this tag
   to give the section; Defeatist then calls `feckless_abi_require_crypto()`.
+- **8004** The device's HTTPS identity is the launcher's: `feckless_https.h`,
+  `feckless_cert.h` and `feckless_redirect.h` in `feckless_network_handler`,
+  and four names in the ABI's network section. Defeatist's remote made its
+  own certificate (certgen.c, devcert.c, 5121) and handed it to
+  `httpd_ssl_start()`; with apps loaded by a launcher, and sandboxing
+  planned, the key belongs to the launcher or, in an app's standalone .bin,
+  its shim, which link this component either way. One certificate for the
+  device, so one browser exception covers every app on it and survives
+  firmware updates; and an app that is never given the key cannot leak it
+  (today an ELF shares the launcher's address space and could read it: the
+  boundary is the point of the design, not yet a wall).
+  *`feckless_cert`*: certgen.c moved with its name changed and two changes:
+  `O=Feckless`, and on Mbed TLS 4 `psa_crypto_init()` before the PSA key
+  (it is idempotent, and without it `psa_generate_key()` is
+  `PSA_ERROR_BAD_STATE`; Defeatist relied on the TLS stack having called
+  it). Built without the X.509 writer (IDF 6 without
+  `CONFIG_MBEDTLS_X509_CREATE_C`) it is two stubs returning
+  `FECKLESS_CERT_ERR_NO_WRITER`, so a project that only includes the header
+  or builds the component without starting a server is not asked to enable
+  the writer; a launcher that tries to start one is told by log line and
+  `ESP_ERR_NOT_SUPPORTED`. Hostname only in the certificate, as it was
+  (`DNS:<name>.local`, no IP), so its fingerprint survives DHCP.
+  *`feckless_https`*: `feckless_https_start(&h, &httpd_config, port)` is
+  `httpd_ssl_start()` with the launcher's identity: the app's
+  `httpd_config_t` is copied (handlers' `open_fn` included, which runs on
+  the server task as for `httpd_start()`), the port is the argument. The
+  identity is made at the first start (`feckless-` and the chip MAC's last
+  three bytes unless the launcher called `feckless_https_set_name()` first,
+  which is not in the ABI), kept in NVS namespace `feckless_https` with the
+  key and certificate in one commit, loaded from there afterwards.
+  `feckless_https_stop()`, and `feckless_https_fingerprint()` for the
+  screen that shows it. Plain NVS, not `feckless_nvs_handler`: that would
+  put another component into every app's manifest. One lock, created on
+  first use.
+  *Redirect*: `feckless_https_redirect` is a handler for the app's own
+  port-80 server, which the app keeps (it steps aside for a setup portal;
+  its `open_fn` refuses what is off the network). A request that reached
+  port 80 by IP address (dotted IPv4, a bracketed IPv6 literal, no Host
+  header, or a Host that is not a plain name) goes to `https://<name>.local`;
+  one that came by a name keeps it; the HTTPS port is added when it is not
+  443; the path is kept or becomes `/` (never cut). The status is 307, not
+  Defeatist's 301: a 301 is kept by a browser for good, and this one
+  depends on a name that must resolve. The decision is `feckless_redirect.c`,
+  pure.
+  **The name has to resolve, and nothing here makes it.** Defeatist serves no
+  mDNS (no `mdns`, no hostname in the tree), so `feckless-xxxxxx.local`
+  resolves only where the network's own DNS knows it. A redirect to a name
+  that does not resolve is worse than leaving the IP alone. The launcher
+  needs an mDNS responder for the name `feckless_https_set_name()` /
+  the default gives (IDF's `mdns`, a registry component, so a manifest
+  change and a new `dependencies.lock`): the next patch, or this redirect
+  is not to be turned on. Also: Android's browsers do not all resolve
+  `.local`.
+  *ABI*: `feckless_https_start`, `_stop`, `_fingerprint` and `_redirect`
+  under `feckless_abi_network_v1` (adding names is compatible);
+  `httpd_ssl_start()` and `httpd_ssl_stop()` are deliberately not
+  exported. `feckless_abi_network.h` includes `feckless_https.h`. The
+  network section's CMake warns without `CONFIG_ESP_HTTPS_SERVER_ENABLE`
+  (a launcher fails to link; an app's own build is not affected, so it is
+  not an error). `feckless_network_handler` gains `esp_http_server` and
+  `esp_https_server` in its REQUIRES, both IDF's.
+  *Checked.* On a host against the real Mbed TLS 3.6.3 and 4.0.0
+  (built from source): `test/certtest.c`, 26 checks per version, and
+  `test/certcheck.sh`, which has OpenSSL read what was made -- subject,
+  issuer, lower-case SAN with no IP, CA:FALSE, digitalSignature,
+  ecdsa-with-SHA256, P-256, v3, validity 2026-01-01 to 2049-12-31,
+  self-verification, key and certificate a pair, fingerprint equal to
+  OpenSSL's, a 16-byte positive serial. `test/certnowriter.c` builds the
+  file with the writer undefined and links it with no Mbed TLS.
+  `test/redirecttest.c`, 40 checks under ASan and UBSan: address to name,
+  name kept, header injection and host-looking junk refused, the path kept
+  or "/", 63-character names, a path too long, exact-fit buffers. The
+  glue (`feckless_https.c`) compiled at `-O2 -Wall -Wextra -Werror` against
+  stub IDF headers and both Mbed TLS versions' real ones; that found a
+  `/*` inside a comment, now fixed. `make -C test` (wifistore 10088,
+  netlink 46, redirect 40) passes; the cert tests need a built Mbed TLS of
+  each major (`make run-cert MBED36=... MBED40=...`) and are not in CI.
+  *Not checked:* any of it linked or run on a Tab5 -- no ESP-IDF in the
+  session. That `esp_https_server`'s `httpd_ssl_config_t` and the
+  `HTTPD_SSL_CONFIG_DEFAULT()` it fills are as the stub assumed (the
+  fields are the ones Defeatist's remote.c set); that `port_secure` is
+  what `httpd_ssl_start()` binds; NVS's string size limit for the key and
+  the certificate; the time it takes to make the key on the P4.
+  Defeatist follows: `remote.c` calls `feckless_https_start()` and its
+  redirect handler, and `certgen.c`, `devcert.c` and the PBKDF2 in
+  `wifijoin.c` (which `wifi_psk()` already is) go; then the crypto section
+  of 8003 shrinks to the one SHA-256 `approve.c` takes.

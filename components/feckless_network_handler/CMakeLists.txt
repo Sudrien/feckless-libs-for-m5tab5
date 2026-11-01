@@ -10,10 +10,13 @@
 idf_component_register(
     SRCS "src/feckless_net.c" "src/wifistore.c" "src/wifi.c" "src/ethernet.c"
          "src/hostedwrap.c"
+         "src/feckless_cert.c" "src/feckless_https.c" "src/feckless_redirect.c"   # 8004
     INCLUDE_DIRS "include"
     REQUIRES esp_driver_i2c esp_wifi esp_netif esp_event esp_wifi_remote
              esp_hosted
-    PRIV_REQUIRES esp_timer lwip nvs_flash usb mbedtls   # mbedtls: 6003, wifi_psk()
+             esp_http_server   # 8004: feckless_https.h's httpd_config_t
+    PRIV_REQUIRES esp_timer lwip nvs_flash usb mbedtls   # mbedtls: 6003, wifi_psk(); 8004, feckless_cert
+             esp_https_server   # 8004: feckless_https.c
              esp_usbh_asix iot_eth iot_usbh_ecm iot_usbh_cdc
 )
 
