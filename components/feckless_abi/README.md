@@ -146,7 +146,7 @@ uses no section, and runs on any launcher on ABI v1.
 | camera | `feckless_abi_camera` | `feckless_abi_camera_v1` | `feckless_camera`'s luma frames; the camera runs under the launcher's configuration (4005) |
 | network | `feckless_abi_network` | `feckless_abi_network_v1` | `feckless_network_handler`, lwIP's sockets, esp_netif, the HTTP server with WebSockets and the HTTP client with the certificate bundle; and the configuration both sides share (6004) |
 | image | `feckless_abi_image` | `feckless_abi_image_v1` | the P4's hardware JPEG decoder (`jpeg_new_decoder_engine` and the rest of the decoder half of `driver/jpeg_decode.h`); the decoders in `feckless_image_handler` link into the app (7010) |
-| crypto | `feckless_abi_crypto` | `feckless_abi_crypto_v1` | Mbed TLS's keys, X.509 writer and hashing: the pk layer and `mbedtls_x509write_*` on both majors, `mbedtls_ecp_gen_key`, `mbedtls_sha256` and PBKDF2 on 3.6 (IDF 5.x), the same through PSA on 4.0 (IDF 6.x); the app's Mbed TLS major must be the launcher's, a marker symbol per major says so (8003) |
+| crypto | `feckless_abi_crypto` | `feckless_abi_crypto_v2` | a SHA-256: `mbedtls_sha256` on Mbed TLS 3.6 (IDF 5.x), `psa_hash_compute` on 4.0 (IDF 6.x); the app's Mbed TLS major must be the launcher's, a marker symbol per major says so (8003, shrunk in 8007; v1 also had keys and X.509, which are the launcher's now) |
 
 A section's file may hold names for one Mbed TLS major only (crypto, 8003):
 a `@when <key> <value>` line starts a group of names that a launcher

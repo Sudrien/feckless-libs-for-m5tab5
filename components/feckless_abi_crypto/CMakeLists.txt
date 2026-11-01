@@ -1,10 +1,10 @@
 # feckless-libs-for-m5tab5: feckless_abi_crypto
 #
-# The feckless ABI's crypto section (8003). A launcher that links this
-# gives its apps Mbed TLS's keys, X.509 writer and hashing: the table
+# The feckless ABI's crypto section (8003; hashing only since 8007). A
+# launcher that links this gives its apps a SHA-256: the table
 # esp_elf resolves them against, generated from feckless_abi's
 # sections/crypto.txt for this launcher's Mbed TLS major (3 on IDF 5.x,
-# 4 on IDF 6.x), and feckless_abi_crypto_v1, which every such app refers
+# 4 on IDF 6.x), and feckless_abi_crypto_v2, which every such app refers
 # to. An app names this component too, for the header; its ELF links none
 # of it.
 #
@@ -65,18 +65,11 @@ if(NOT CMAKE_BUILD_EARLY_EXPANSION)
                 "sections/crypto.txt has names for 3 and 4")
     endif()
 
-    # IDF 5 always built Mbed TLS's X.509 writer; IDF 6 puts it behind
-    # this, and the section's mbedtls_x509write_* are in the table.
-    if(_tls_major EQUAL 4 AND NOT CONFIG_MBEDTLS_X509_CREATE_C)
-        message(FATAL_ERROR "feckless_abi_crypto: needs CONFIG_MBEDTLS_X509_CREATE_C=y "
-                "on Mbed TLS 4: the section exports the X.509 writer")
-    endif()
-
     include("${_abi_dir}/cmake/abitable.cmake")
     set(_names "${CMAKE_CURRENT_BINARY_DIR}/crypto_names.txt")
     feckless_abi_filter_section("${_abi_dir}/sections/crypto.txt" "${_names}"
                                 mbedtls ${_tls_major})
     feckless_abi_write_table("${_table}" "${_names}"
                              g_feckless_abi_crypto_elfsyms
-                             "\"feckless_abi_crypto_v1\"" feckless_abi_crypto_v1)
+                             "\"feckless_abi_crypto_v2\"" feckless_abi_crypto_v2)
 endif()

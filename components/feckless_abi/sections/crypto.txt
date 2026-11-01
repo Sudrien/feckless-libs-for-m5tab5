@@ -1,92 +1,46 @@
-# The feckless ABI's crypto section, version 1 (8003).
+# The feckless ABI's crypto section, version 2 (8003, shrunk in 8007).
 #
 # What an app's ELF may take from a launcher that links the section's
 # component, feckless_abi_crypto -- one symbol a line, as exports.txt.
 # The launcher defines the "@symbol"; an app that takes any name below
 # refers to it (feckless_abi_require_crypto()), so a launcher without the
 # section refuses the app by that name instead of failing on its first
-# certificate. Lines that are not a bare name are ignored.
+# hash. Lines that are not a bare name are ignored.
 #
-# Mbed TLS is in the launcher already (the HTTPS server, the HTTP client),
-# and IDF 5.5 ships 3.6 where IDF 6.1 ships 4.0, which moved the public
-# surface: no ecp.h or sha256.h, keys and hashes through PSA. The names an
-# app takes depend on which it was built against, so a "@when mbedtls N"
-# line starts the names that exist for that major only, until the next
-# "@when" or an "@end"; the launcher's table lists its own major's, and
-# the build check accepts either. Every structure below (mbedtls_pk_context,
-# mbedtls_x509write_cert, psa_key_attributes_t) is laid out by the Mbed TLS
-# that compiled it, so the app's major must be the launcher's: each
-# major has a marker symbol that only a launcher of that major defines, and
-# feckless_abi_require_crypto() refers to the app's. An app built for the
-# other one fails in esp_elf_relocate() naming it.
+# It is hashing: a SHA-256 in one call. Keys, certificates and TLS are the
+# launcher's -- it owns the device's HTTPS identity (feckless_https_*, in
+# the network section), and an app never makes or holds a key. Version 1
+# (8003) also listed the pk layer, the X.509 writer, key generation and
+# PBKDF2 for an app that would make its own certificate; the one app that
+# did (Defeatist) no longer does (its 8073), and PBKDF2 for a Wi-Fi PSK is
+# wifi_psk() in the network handler. Nothing required version 1, so no
+# launcher or app needs both.
 #
-# The launcher's Mbed TLS must be built with what the names below need:
-# on IDF 6, CONFIG_MBEDTLS_X509_CREATE_C (the X.509 writer, which IDF 5
-# always built); the component fails the build without it. Where the
-# structures depend on other options, the same rule as the network
-# section's: the app is compiled with the launcher's configuration.
-#
-# What is not here: the TLS stack, which an app reaches through the
-# network section's HTTP client and server, and the PSA functions
-# nothing in this repository's apps calls. The static inline functions in
-# Mbed TLS's headers (mbedtls_pk_ec(), psa_set_key_type() and the other
-# psa_set_key_*) have no symbol; mbedtls_pk_ec() calls
-# mbedtls_pk_get_type(), which is here.
+# IDF 5.5 ships Mbed TLS 3.6 where IDF 6.1 ships 4.0, which moved the
+# public surface: no sha256.h, hashes through PSA. The name an app takes
+# depends on which it was built against, so a "@when mbedtls N" line
+# starts the names that exist for that major only, until the next "@when"
+# or an "@end"; the launcher's table lists its own major's, and the build
+# check accepts either. Each major has a marker symbol that only a
+# launcher of that major defines, and feckless_abi_require_crypto() refers
+# to the app's, so an app built for the other one fails in
+# esp_elf_relocate() naming it and not a function.
 #
 # Adding a name is compatible. Removing one, or changing what one means,
-# is a new section version: crypto_v2.
-@symbol feckless_abi_crypto_v1
-
-# ---- both majors: keys and X.509 ---------------------------------------
-mbedtls_pk_init
-mbedtls_pk_free
-mbedtls_pk_get_type
-mbedtls_pk_write_key_pem
-mbedtls_x509_crt_init
-mbedtls_x509_crt_free
-mbedtls_x509_crt_parse
-mbedtls_x509write_crt_init
-mbedtls_x509write_crt_free
-mbedtls_x509write_crt_pem
-mbedtls_x509write_crt_set_version
-mbedtls_x509write_crt_set_validity
-mbedtls_x509write_crt_set_serial_raw
-mbedtls_x509write_crt_set_md_alg
-mbedtls_x509write_crt_set_subject_name
-mbedtls_x509write_crt_set_issuer_name
-mbedtls_x509write_crt_set_subject_key
-mbedtls_x509write_crt_set_issuer_key
-mbedtls_x509write_crt_set_key_usage
-mbedtls_x509write_crt_set_basic_constraints
-mbedtls_x509write_crt_set_subject_key_identifier
-mbedtls_x509write_crt_set_subject_alternative_name
+# is a new section version: crypto_v3.
+@symbol feckless_abi_crypto_v2
 
 # ---- Mbed TLS 3.6 (IDF 5.x) -------------------------------------------
-# A P-256 key through the pk layer, a SHA-256 in one call, and PBKDF2 by
-# the old function.
 @when mbedtls 3
 feckless_abi_crypto_mbedtls3
-mbedtls_pk_setup
-mbedtls_pk_info_from_type
-mbedtls_ecp_gen_key
 mbedtls_sha256
-mbedtls_pkcs5_pbkdf2_hmac_ext
 @end
 
 # ---- Mbed TLS 4.0 (IDF 6.x) -------------------------------------------
-# The same through PSA. psa_crypto_init() may be called again, so an app
-# that cannot know whether the launcher has called it may.
+# psa_crypto_init() may be called again, so an app that cannot know
+# whether the launcher has called it may; the launcher's TLS has.
 @when mbedtls 4
 feckless_abi_crypto_mbedtls4
-mbedtls_pk_copy_from_psa
 psa_crypto_init
-psa_generate_key
-psa_destroy_key
-psa_reset_key_attributes
 psa_hash_compute
-psa_key_derivation_setup
-psa_key_derivation_input_integer
-psa_key_derivation_input_bytes
-psa_key_derivation_output_bytes
-psa_key_derivation_abort
 @end
