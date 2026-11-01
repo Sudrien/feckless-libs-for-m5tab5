@@ -540,8 +540,14 @@ static void test_poly_basics(void)
 /* The tables became 4x6 tiles kept only where they change from the
  * previous glyph's (ark12.h), 441427 -> 382580 bytes. No glyph moved: the
  * count and hash below are the ones before, checked when it was done. */
-#define ARK12_GOLDEN_COUNT  32032
-#define ARK12_GOLDEN_HASH   0x36285A88u
+/* 8015: Latin Extended-B and Greek from Ark, and 88 IPA glyphs drawn by
+ * tools/ipa12.py, 302 glyphs. Not one of the 32032 before changed: the
+ * old table and the new decode to the same rows for every one of them
+ * (gen_ark12.py's reencode(), compared), so the old count and hash,
+ * 32032 and 0x36285A88, still hold for the glyphs outside what was
+ * added. */
+#define ARK12_GOLDEN_COUNT  32334
+#define ARK12_GOLDEN_HASH   0x17BD66D7u
 
 /* Galmuri's Hangul: every syllable and letter is there, fullwidth, in
  * the rows Ark's CJK uses (1-11), so a Korean title is not boxes and
@@ -569,6 +575,60 @@ static void test_hangul(void)
     int x0, y0, x1, y1;
     CHECK(ink_bbox(&x0, &y0, &x1, &y1) && y0 >= 11 && y1 <= 21,
           "Korean drew outside rows 1-11: %d..%d", y0 - 10, y1 - 10);
+}
+
+/* 8015: IPA. Every letter a pronunciation uses is a halfwidth glyph, not
+ * a box; ə is Ark's e turned, ɔ its c mirrored; the stress marks sit above
+ * and below the x-height; a transcription draws in its own cells. */
+static void test_ipa(void)
+{
+    static const uint16_t need[] = {
+        0x0250, 0x0251, 0x0252, 0x0254, 0x0255, 0x0256, 0x0257, 0x0258, 0x0259,
+        0x025A, 0x025B, 0x025C, 0x025D, 0x025E, 0x025F, 0x0260, 0x0261, 0x0262,
+        0x0263, 0x0264, 0x0265, 0x0266, 0x0267, 0x0268, 0x026A, 0x026B, 0x026C,
+        0x026D, 0x026E, 0x026F, 0x0270, 0x0271, 0x0272, 0x0273, 0x0274, 0x0275,
+        0x0276, 0x0278, 0x0279, 0x027A, 0x027B, 0x027D, 0x027E, 0x0280, 0x0281,
+        0x0282, 0x0283, 0x0284, 0x0288, 0x0289, 0x028A, 0x028B, 0x028C, 0x028D,
+        0x028E, 0x028F, 0x0290, 0x0291, 0x0292, 0x0294, 0x0295, 0x0298, 0x0299,
+        0x029B, 0x029D, 0x029F, 0x02A1, 0x02A2, 0x01C0, 0x01C1, 0x01C2, 0x01C3,
+        0x02B0, 0x02B1, 0x02B2, 0x02B7, 0x02BC, 0x02C8, 0x02CC, 0x02D0, 0x02D1,
+        0x02DE, 0x02E0, 0x02E4, 0x1D7B, 0x1D7F, 0x2C71,
+        0x00E6, 0x00E7, 0x00F0, 0x00F8, 0x014B, 0x0153, 0x03B2, 0x03B8, 0x03C7,
+    };
+    int ok = 0;
+    for (size_t i = 0; i < sizeof need / sizeof need[0]; i++) {
+        uint16_t rows[ARK12_H];
+        int w = -1;
+        const bool have = ark12_glyph(need[i], &w, rows);
+        CHECK(have && w == ARK12_HALF_W, "U+%04X: %s, width %d", need[i],
+              have ? "drawn" : "not in the font", w);
+        if (have && w == ARK12_HALF_W) ok++;
+    }
+    CHECK(ok == (int)(sizeof need / sizeof need[0]), "%d IPA letters drawn", ok);
+
+    uint16_t e[ARK12_H], schwa[ARK12_H], c[ARK12_H], oo[ARK12_H];
+    int w;
+    CHECK(ark12_glyph('e', &w, e) && ark12_glyph(0x0259, &w, schwa), "e, schwa");
+    CHECK(ark12_glyph('c', &w, c) && ark12_glyph(0x0254, &w, oo), "c, open o");
+    for (int y = 0; y < ARK12_H; y++)
+        for (int x = 0; x < 5; x++) {
+            const int yt = 13 - y, xt = 4 - x;
+            const int want_t = (yt >= 0 && yt < ARK12_H) ? (e[yt] >> xt & 1) : 0;
+            CHECK((schwa[y] >> x & 1) == want_t, "schwa (%d,%d) is not e turned", x, y);
+            CHECK((oo[y] >> x & 1) == (c[y] >> (4 - x) & 1), "open o (%d,%d) is not c mirrored", x, y);
+        }
+
+    int x0, y0, x1, y1;
+    clear();
+    gfx_draw_text(10, 10, "\xcb\x88", 1, W - 20, INK);                 /* ˈ */
+    CHECK(ink_bbox(&x0, &y0, &x1, &y1) && y1 - 10 < 4, "primary stress reaches row %d", y1 - 10);
+    clear();
+    gfx_draw_text(10, 10, "\xcb\x8c", 1, W - 20, INK);                 /* ˌ */
+    CHECK(ink_bbox(&x0, &y0, &x1, &y1) && y0 - 10 > 9, "secondary stress starts at row %d", y0 - 10);
+    /* həˈləʊ: six halfwidth cells, each as wide as h */
+    const char *hello = "h\xc9\x99\xcb\x88l\xc9\x99\xca\x8a";
+    CHECK(gfx_text_w(hello, 1) == 6 * gfx_text_w("h", 1), "h\u0259\u02c8l\u0259\u028a is %d px wide, not six h",
+          gfx_text_w(hello, 1));
 }
 
 static void test_font_unchanged_by_tiling(void)
@@ -881,6 +941,7 @@ int main(void)
     test_poly_basics();
     test_star_has_five_points();
     test_font_unchanged_by_tiling();                     /* 5247 */
+    test_ipa();                                          /* 8015 */
     test_wrap();                                         /* 6018 */
     test_arabic();                                       /* 6029 */
 

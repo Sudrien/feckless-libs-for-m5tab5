@@ -46,18 +46,19 @@ syllables being made of the same letters -- the table going from
 
 ## Coverage
 
-**32,032 glyphs, 382,580 bytes of flash** -- stored as shared 4×6 tiles
-(192,192 tiles, 23,711 distinct) where a glyph keeps a tile only where it
-differs from the glyph before it (141,127 kept), one rule for every script.
+**32,334 glyphs, 385,513 bytes of flash** -- stored as shared 4×6 tiles
+(194,004 tiles, 23,867 distinct) where a glyph keeps a tile only where it
+differs from the glyph before it (142,125 kept), one rule for every script.
 Before that, shared 6×6 tiles took 441,427 bytes (5247), and one 16-bit
 value per row took about 864 KB. See the header of `ark12.h` for the
 layout. Two cell sizes, and the table records which each
 glyph is rather than inferring it from the codepoint:
 
-- **6×12 halfwidth** (554 glyphs) — Basic Latin (U+0020–U+007E),
-  Latin-1 Supplement, Latin Extended-A, Cyrillic, and General
-  Punctuation's quotes, en dash and ellipsis (… ‘ ’ “ ” –).
-- **12×12 fullwidth** (20,151 glyphs) — the rest of General
+- **6×12 halfwidth** (856 glyphs) — Basic Latin (U+0020–U+007E),
+  Latin-1 Supplement, Latin Extended-A and -B, Greek, Cyrillic, the IPA
+  drawn here (below), and General Punctuation's quotes, en dash and
+  ellipsis (… ‘ ’ “ ” –).
+- **12×12 fullwidth** (31,478 glyphs, Hangul among them) — the rest of General
   Punctuation drawn (— ― • † ‡ ‰ ※ among them), CJK Symbols and Punctuation,
   Hiragana, Katakana, CJK Unified Ideographs and Extension A, and
   Halfwidth and Fullwidth Forms.
@@ -85,9 +86,10 @@ absent: the Compatibility Jamo block exists, but Hangul Syllables — what
 Korean is actually written in — has no glyphs at this size, and jamo alone
 cannot compose a title.
 
-Latin Extended-B and Latin Extended Additional (Vietnamese) are
-available upstream and excluded here. Add the range to `RANGES` in
-`tools/gen_ark12.py` and rerun.
+Latin Extended-B and Greek are in since 8015, for IPA (a dictionary's
+pronunciations use β θ χ and Extended-B's letters). Latin Extended
+Additional (Vietnamese) is available upstream and excluded here. Add the
+range to `RANGES` in `tools/gen_ark12.py` and rerun.
 
 ## Notes: glyphs drawn here, not by Ark
 
@@ -114,6 +116,32 @@ Modified Version of them.
 
 Text that uses it writes `"\uE000"`; anything that logs such a label
 should print something else, since a terminal has no glyph for it.
+
+### IPA (8015)
+
+Ark has no glyph at 12px, in any cut, for IPA Extensions (U+0250–02AF),
+the Spacing Modifier Letters IPA uses, or ᵻ ᵿ -- so a dictionary's
+pronunciation came out as boxes. Galmuri has the letters, but its Latin
+is 7 px wide on an 8-row x-height against Ark's 5 on 6, a different
+and larger font in the middle of a line. So 88 are drawn for Ark's cell
+in `tools/ipa12.py`, which `add_ipa()` adds on every path:
+
+- **turned** Ark letters, as IPA defines them -- ɐ ə ɥ ɯ ɹ ʌ ʍ ʎ, and ɒ ʁ
+  from the drawn ɑ ʀ;
+- **mirrored** ones -- ɔ ɘ, and ɜ ʕ ʢ from drawn ɛ ʔ ʡ;
+- **copied** -- ɡ is Ark's single-storey g, ǀ its |, ǃ its !, ʼ its ’;
+- **drawn** -- the rest, in Ark's metrics: x-height rows 4–9, ascenders
+  from row 2, descenders to row 11, the letter in columns 0–4, column 5
+  only for a retroflex tail. Stress ˈ sits on rows 1–3 and ˌ below the
+  baseline on 10–11.
+
+The generator stops if Ark draws a codepoint `ipa12.py` also draws, so an
+ARK_COMMIT that adds IPA is seen rather than overridden. Combining marks
+(U+0300–036F: the nasal tilde, the tie bar of t͡ʃ, syllabic and
+non-syllabic marks) are not here: they need gfx to draw a mark over the
+letter before it with no advance of its own, which it does not yet. Under
+the OFL, like the rest of these files: turned and mirrored from Ark's,
+and drawn to sit among them.
 
 ## Regenerating
 

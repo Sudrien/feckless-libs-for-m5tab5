@@ -6,7 +6,7 @@ under one tag:
 | Component | What it is |
 |---|---|
 | `feckless_drivers` | The USB-A host and its USB audio and HID class drivers, the battery monitor, the RX8130 clock, the touch controller (GT911 or ST7123, probed), audio out |
-| `feckless_graphics_handler` | The ST7121 panel and backlight, and gfx: a rotating RGB565 framebuffer with a DMA2D blit, Ark Pixel 12px text with CJK, Galmuri 12px Hangul, Arabic shaping and right-to-left lines |
+| `feckless_graphics_handler` | The ST7121 panel and backlight, and gfx: a rotating RGB565 framebuffer with a DMA2D blit, Ark Pixel 12px text with CJK, Greek and IPA, Galmuri 12px Hangul, Arabic shaping and right-to-left lines |
 | `feckless_storage_handler` | The microSD slot and USB-A mass storage, mounted and watched, with one arbiter that leases the volume per read |
 | `feckless_network_handler` | Wi-Fi through the ESP32-C6 (esp_hosted over SDIO2), a saved-network list in NVS, and USB Ethernet (ASIX, CDC-ECM) on the USB-A port, the wired link preferred when it can route |
 | `feckless_nvs_handler` | The NVS partition, a value at a time: brought up once (erased and brought up afresh if unusable), and read and written by namespace and key, with no handle to keep |

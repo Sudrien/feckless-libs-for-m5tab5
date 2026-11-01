@@ -125,14 +125,20 @@ GALMURI_RANGES = [
 # Extension A is 1,480 codepoints of its own and stays behind, so cutting
 # the main block is most but not all of the saving.
 #
-# Latin Extended-B and Latin Extended Additional (Vietnamese) are still
-# excluded on the original grounds -- a long tail this player is unlikely
-# to meet on an SD card. Add the range here and rerun if that turns out to
-# be wrong.
+# Latin Extended-B and Greek are in since 8015, for IPA: a dictionary's
+# pronunciations (Spurious) use β θ χ and the Latin Extended-B letters,
+# and Ark draws both blocks in the monospaced cut. The IPA letters Ark has
+# no glyph for at all -- IPA Extensions, the stress and length marks, the
+# superscripts -- are drawn for this cell in tools/ipa12.py (add_ipa()).
+# Latin Extended Additional (Vietnamese) is still out, on the original
+# grounds -- a long tail. Add the range here and rerun if that turns out
+# to be wrong.
 RANGES = [
     (0x0020, 0x007E),  # Basic Latin, minus the control codes and DEL
     (0x00A0, 0x00FF),  # Latin-1 Supplement
     (0x0100, 0x017F),  # Latin Extended-A
+    (0x0180, 0x024F),  # Latin Extended-B (8015, for IPA)
+    (0x0370, 0x03FF),  # Greek and Coptic (8015: IPA's β θ χ; monospaced cut)
     (0x0400, 0x04FF),  # Cyrillic (halfwidth; monospaced cut, 12px only)
     (0x2000, 0x206F),  # General Punctuation (mixed: … ‘’“” halfwidth, — • fullwidth)
     (0x2150, 0x218F),  # Number Forms: ⅓ ⅔ and the other vulgar fractions, Ⅰ-Ⅻ
@@ -694,7 +700,7 @@ def emit(glyphs: dict[int, tuple[int, list[int]]], outdir: str, commit: str) -> 
     # that the font does not draw at this size produces a working build
     # and no glyphs, and nothing else here would say so.
     print("  per range:", file=sys.stderr)
-    for lo, hi in RANGES + GALMURI_RANGES:
+    for lo, hi in RANGES + GALMURI_RANGES + IPA_RANGES:
         n = sum(1 for cp in order if lo <= cp <= hi)
         flag = "   <-- EMPTY, is this range drawn at this size?" if n == 0 else ""
         print(f"    U+{lo:04X}..U+{hi:04X}  {n:6d}{flag}", file=sys.stderr)
@@ -842,6 +848,30 @@ def add_hand(glyphs: dict[int, tuple[int, list[int]]]) -> None:
     glyphs[PUA_THREE_HALVES] = (w, rows)
 
 
+# What tools/ipa12.py draws, for the per-range report.
+IPA_RANGES = [
+    (0x0250, 0x02AF),  # IPA Extensions (drawn)
+    (0x02B0, 0x02FF),  # Spacing Modifier Letters (drawn: stress, length, superscripts)
+    (0x1D7B, 0x1D7F),  # ᵻ ᵿ (drawn)
+]
+
+
+def add_ipa(glyphs: dict[int, tuple[int, list[int]]]) -> None:
+    """8015: the IPA letters Ark has no glyph for, drawn for this cell in
+    tools/ipa12.py -- turned and mirrored Ark letters, and bitmaps. A
+    codepoint Ark draws is never replaced: that stops the run, so a new
+    ARK_COMMIT that starts drawing IPA shows up rather than being hidden."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import ipa12
+    drawn = ipa12.glyphs(glyphs)
+    clash = sorted(cp for cp in drawn if cp in glyphs)
+    if clash:
+        sys.exit("ipa12 draws what Ark has: "
+                 + ", ".join(f"U+{cp:04X}" for cp in clash))
+    glyphs.update(drawn)
+    print(f"ipa12: {len(drawn)} IPA glyphs drawn", file=sys.stderr)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--src", help="an ark-pixel-font checkout; downloads if absent")
@@ -856,14 +886,22 @@ def main() -> None:
     if args.reencode:
         g = reencode(args.reencode)
         g.pop(PUA_THREE_HALVES, None)       # rebuilt, not carried over
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import ipa12
+        for cp in list(g):
+            if cp in ipa12.DRAWN or cp in ipa12.COPIED or cp in ipa12.TURNED \
+                    or cp in ipa12.MIRRORED:
+                del g[cp]               # likewise
         add_galmuri(g, galmuri_bdf(args.galmuri))
         add_hand(g)
+        add_ipa(g)
         emit(g, args.out, "a local checkout")
         return
     if args.src:
         g = collect(args.src)
         add_galmuri(g, galmuri_bdf(args.galmuri))
         add_hand(g)
+        add_ipa(g)
         emit(g, args.out, "a local checkout")
         return
 
@@ -876,6 +914,7 @@ def main() -> None:
         g = collect(root)
         add_galmuri(g, galmuri_bdf(args.galmuri))
         add_hand(g)
+        add_ipa(g)
         emit(g, args.out, ARK_COMMIT)
 
 

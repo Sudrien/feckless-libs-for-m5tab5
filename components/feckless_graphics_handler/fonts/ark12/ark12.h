@@ -36,7 +36,7 @@
  * or full, is cut into the same 6 tiles of 4 columns by 6 rows: three
  * across and two down, position p = 3 * row + column. A half-width glyph
  * is 6 pixels wide, so its third column is blank and costs almost
- * nothing. The 192192 tiles of the font are only 23711 distinct -- blank
+ * nothing. The 194004 tiles of the font are only 23867 distinct -- blank
  * corners, shared radicals, the same jamo -- so each distinct tile is
  * stored once in ark12_tiles, 24 bits (3 bytes), row 0 in the low 4 bits,
  * bit 0 of a row leftmost.
@@ -54,8 +54,8 @@
  * ark12_litbase[p] is where p's literals start in ark12_lit. A glyph's
  * number is its run's `g` plus its place in the run.
  *
- * 382580 bytes, where one uint16_t row per scanline and a codepoint and
- * a width per glyph took 864864.
+ * 385513 bytes, where one uint16_t row per scanline and a codepoint and
+ * a width per glyph took 873018.
  *
  * SPDX-License-Identifier: OFL-1.1
  */
@@ -67,19 +67,19 @@
 #define ARK12_H       12
 #define ARK12_HALF_W  6
 #define ARK12_FULL_W  12
-#define ARK12_COUNT   32032
-#define ARK12_TILES   23711
-#define ARK12_RUNS    3295
+#define ARK12_COUNT   32334
+#define ARK12_TILES   23867
+#define ARK12_RUNS    3350
 
 #define ARK12_NPOS         6    /* tiles a glyph: 3 across, 2 down */
 #define ARK12_IBITS        15   /* bits a literal: ceil(log2(ARK12_TILES)) */
 #define ARK12_BLOCK_SHIFT  7    /* one checkpoint every 1 << this glyphs */
-#define ARK12_FLAG_WORDS   1001  /* uint32_t a position's flags take */
-#define ARK12_CKPTS        251   /* checkpoints a position has */
+#define ARK12_FLAG_WORDS   1011  /* uint32_t a position's flags take */
+#define ARK12_CKPTS        253   /* checkpoints a position has */
 
 /* 6 bytes a run: the width is the top bit of `count`, since a run is
  * never 32768 long. A run is consecutive codepoints of one width, and
- * there are 3295 of them (the CJK blocks are not drawn whole). */
+ * there are 3350 of them (the CJK blocks are not drawn whole). */
 #define ARK12_RUN_FULL  0x8000u
 typedef struct {
     uint16_t first;     /* the run's first codepoint */

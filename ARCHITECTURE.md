@@ -1073,3 +1073,26 @@ histories stay in the archived repositories.
   component's scan of `components/` now lists. *Checked:* the fixture
   gains a vendored component with esp_ipa's licence file and manifest;
   `make -C components/feckless_libversions/test`, both runs.
+- **8015** Ark12 draws IPA. Spurious's pronunciations came out as boxes:
+  Ark has no glyph at 12px, in any cut, for IPA Extensions, the stress
+  and length marks or the superscripts, and Galmuri's, which it has, are
+  a larger font (7 px wide on an 8-row x-height against Ark's 5 on 6).
+  `RANGES` gains Latin Extended-B and Greek (β θ χ), both in Ark's
+  monospaced cut; `tools/ipa12.py` draws the other 88 for Ark's 6×12
+  cell -- turned and mirrored Ark letters where IPA defines them so (ə is
+  e turned, ɔ is c mirrored), Ark's own glyph where IPA's is the same
+  shape (ɡ ǀ ǃ ʼ), and bitmaps in Ark's metrics for the rest -- added by
+  `add_ipa()` on every path, which stops if Ark already draws one.
+  32,334 glyphs, 302 more; 385,513 bytes, 2,933 more. Combining marks
+  (the tie bar, the nasal tilde) are not drawn: gfx has no zero-advance
+  mark yet.
+  *Checked:* the generator first reproduced the committed `ark12.c` and
+  `ark12.h` byte for byte from Ark at ARK_COMMIT and Galmuri 2.40.3;
+  regenerated, every one of the 32,032 glyphs before decodes to the same
+  rows (`reencode()`, compared) and only the 302 are new. The graphics
+  handler's texttest gains `test_ipa()` -- 96 IPA letters drawn
+  halfwidth, ə is e turned and ɔ c mirrored pixel for pixel, ˈ above row
+  4 and ˌ below row 9, həˈləʊ six cells -- and its golden count and hash
+  move to the new table: 423,979 checks, no failures. The keyboard's test,
+  which draws with the real font, passes. A sheet of transcriptions drawn
+  from the new table was looked at. Not built with ESP-IDF.
