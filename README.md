@@ -21,6 +21,7 @@ under one tag:
 | `feckless_abi_camera` | The ABI's camera section: `feckless_camera` for apps, from a launcher that links it and is configured for the camera |
 | `feckless_abi_image` | The ABI's image section: the hardware JPEG decoder for apps, from a launcher that links it |
 | `feckless_abi_crypto` | The ABI's crypto section: a SHA-256 for apps (Mbed TLS 3.6 on IDF 5.x, PSA on 4.0 on IDF 6.x), from a launcher that links it |
+| `feckless_abi_audio` | The ABI's audio section: Espressif's esp_audio_codec decoders for apps, from a launcher that links it |
 | `feckless_abi_network` | The ABI's network section: the network handler, sockets, esp_netif and HTTP for apps, from a launcher that links it, and the configuration both sides share |
 
 Each is in `components/`, with its own README.
@@ -59,6 +60,7 @@ component needs:
 - `feckless_abi_camera`: `feckless_abi` and `feckless_camera`.
 - `feckless_abi_image`: `feckless_abi` (the hardware decoder is IDF's `esp_driver_jpeg`).
 - `feckless_abi_crypto`: `feckless_abi` (the functions are IDF's `mbedtls`).
+- `feckless_abi_audio`: `feckless_abi`, and `espressif/esp_audio_codec` 2.5.0 from the registry, which its manifest pins.
 - `feckless_abi_network`: `feckless_abi` and `feckless_network_handler`.
 - `feckless_drivers`: a `usb_host_uac` component, by name -- since
   v0.3.0 `usb_host_uac` from here, which every project using the

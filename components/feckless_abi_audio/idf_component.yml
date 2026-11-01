@@ -1,0 +1,21 @@
+version: "0.8.2"
+description: >-
+  The feckless ABI's audio section: Espressif's esp_audio_codec decoders
+  for an app's ELF, from a launcher that links this.
+url: https://github.com/Sudrien/feckless-libs-for-m5tab5
+license: MIT
+
+dependencies:
+  idf:
+    version: ">=5.4.2"
+  # Exactly, not a range. The app compiles the structures it hands the
+  # codec from its copy of these headers and the launcher's codec reads
+  # them, so both sides must have the same version, and a project at this
+  # tag gets this one whichever side it is. 2.5.0 because 2.6 and later
+  # need ESP32-P4 silicon revision 3.0, and the Tab5s so far are v1.3
+  # (Defeatist's manifest says so, and its lock has held 2.5.0 throughout).
+  # Moving this pin to a version whose structures differ is audio_v2.
+  espressif/esp_audio_codec: "2.5.0"
+  # feckless_abi is this repository's, required by name and named by the
+  # project at the same tag. elf_loader comes through feckless_abi's
+  # manifest.

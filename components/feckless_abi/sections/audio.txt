@@ -1,0 +1,67 @@
+# The feckless ABI's audio section, version 1 (8008).
+#
+# What an app's ELF may take from a launcher that links the section's
+# component, feckless_abi_audio -- one symbol a line, as exports.txt.
+# The launcher defines the "@symbol"; an app that takes any name below
+# refers to it (feckless_abi_require_audio()), so a launcher without the
+# section refuses the app by that name instead of failing on its first
+# track. Lines that are not a bare name are ignored.
+#
+# Espressif's esp_audio_codec, the decoder half. It cannot link into an
+# app's ELF: its decoders are precompiled archives built without -fPIC,
+# and a -shared link of them stops on R_RISCV_HI20 ("can not be used when
+# making a shared object; recompile with -fPIC"), 76 times for 2.5.0's
+# esp32p4 libraries. Only Espressif can rebuild them, so the launcher
+# links the codec and the app takes it from here. The codec's own
+# imports (libc, libm, esp_log, esp_chip_info, operator new) are the
+# launcher's then, and never reach an app's build check.
+#
+# The structures these functions take (esp_audio_simple_dec_cfg_t, each
+# decoder's cfg, the info and frame structs) are compiled into the app
+# from its copy of the codec's headers. feckless_abi_audio pins
+# esp_audio_codec exactly, so an app and a launcher at the same tag have
+# the same headers. Moving that pin to a version whose structures differ
+# is a new section version: audio_v2.
+#
+# Which decoders esp_audio_dec_register_default() registers is the
+# launcher's Kconfig (CONFIG_AUDIO_DECODER_*_SUPPORT, all on by default),
+# not the app's.
+#
+# Adding a name is compatible. Removing one, or changing what one means,
+# is a new section version: audio_v2.
+@symbol feckless_abi_audio_v1
+
+# ---- esp_audio_codec_version.h ------------------------------------------
+esp_audio_codec_get_version
+
+# ---- decoder/esp_audio_dec.h: one decoder, by type ----------------------
+esp_audio_dec_check_audio_type
+esp_audio_dec_close
+esp_audio_dec_get_info
+esp_audio_dec_open
+esp_audio_dec_process
+esp_audio_dec_reset
+
+# ---- decoder/esp_audio_dec_default.h ------------------------------------
+esp_audio_dec_register_default
+esp_audio_dec_unregister_default
+
+# ---- simple_dec/esp_audio_simple_dec.h: a container's stream ------------
+# What Defeatist's decoder.c and netdec.c call: open, process, get_info
+# and close, after both register_default()s.
+esp_audio_simple_check_audio_type
+esp_audio_simple_dec_close
+esp_audio_simple_dec_get_info
+esp_audio_simple_dec_get_name
+esp_audio_simple_dec_open
+esp_audio_simple_dec_process
+esp_audio_simple_dec_reset
+
+# ---- simple_dec/esp_audio_simple_dec_default.h --------------------------
+esp_audio_simple_dec_register_default
+esp_audio_simple_dec_unregister_default
+
+# Left out until something uses them: the encoder, and the _reg.h
+# registration of a decoder or parser of the app's own (a table of
+# function pointers into the ELF, kept by the launcher's codec after the
+# app has gone).
