@@ -1,4 +1,4 @@
-version: "0.8.4"
+version: "0.8.5"
 description: >-
   An on-screen keyboard for the M5Stack Tab5's apps, drawn with gfx and
   driven by the app's own taps: three rows of ten keys, lower case.
