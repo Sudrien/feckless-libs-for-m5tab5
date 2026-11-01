@@ -796,3 +796,27 @@ histories stay in the archived repositories.
   as ...`), that mDNS and the esp_hosted radio's multicast filtering agree
   (the C6 firmware may drop 224.0.0.251: the first thing to look at if the
   line is there and nothing resolves), the memory the responder takes.
+- **8006** The network section no longer lists `httpd_resp_send_404`, which
+  stopped Avoidant linking on IDF 6.1 (`undefined reference to
+  'httpd_resp_send_404'` from `g_feckless_abi_network_elfsyms`). In
+  `esp_http_server.h` it is a `static inline` wrapper over
+  `httpd_resp_send_err(r, HTTPD_404_NOT_FOUND, NULL)`, so there is no linker
+  symbol for the table to point at. I read the header of both `v5.5.5`
+  (line 1366) and `release/v6.1` (line ~1457): it is inline in both, so this
+  was not a 6.1 change. 7003 added the name from a scan of Defeatist's
+  source and said none of its names was an inline; that was wrong for this
+  one. A launcher that linked the network section with this name could not
+  have linked, so none I know of exports it (I have not checked how
+  Avoidant built the section before 0046), and removing it is not an ABI
+  break: the section's version stands. An app that
+  calls it compiles the body into itself and calls `httpd_resp_send_err`,
+  which stays exported, so nothing that loads depends on the name; none of
+  the apps' sources import it. No weak stand-in was added (as was done for
+  `__issignalingf`): there is nothing to be compatible with.
+  *Not checked:* the other names in this section and the core list. I
+  scanned them against sparse copies of the IDF headers; the scan cannot
+  tell an inline wrapper from a real function with an inline neighbour, and
+  the sparse trees have no lwip, so the `lwip_*` socket calls and
+  `ipaddr_addr` (real functions in lwip's `sockets.c` and `ip4_addr.c`, from
+  memory) are unverified. If the next link names another symbol, the fix is
+  the same one line. Not built with ESP-IDF, not on a Tab5.
