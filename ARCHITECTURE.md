@@ -1012,3 +1012,33 @@ histories stay in the archived repositories.
   compiles with Espressif's esp-14.2.0 at `-O2 -Wall -Werror=all -Wextra
   -Werror=extra -fPIC`, 1,218 bytes, calling only `gfx_fill_rect`,
   `gfx_draw_text`, `gfx_text_w` and `strlen`. Not built with ESP-IDF.
+- **8012** `feckless_libversions`: the library and licence list, made one
+  copy, as 8010 made the keyboard one. Avoidant's 0028
+  `cmake/libversions.cmake` (Lothesome's, Mahjong's and Defeatist's
+  before it) becomes `cmake/libversions.cmake` here, called through
+  `feckless_libversions(<target> NAME <app> LICENSE <spdx>)` from
+  `project_include.cmake`. What it reads is as it was -- the lock, the
+  project's vendored `components/`, Ark Pixel's commit from
+  `gen_ark12.py`, the app's git commit -- with three changes: a
+  component's directory is the build's own when it is one of the build's
+  components (so `IDF_COMPONENT_MANAGER=0` and an ELF build of fewer
+  components find their licences), else `managed_components/` beside the
+  lock; Galmuri and Arabixel Basic are listed beside Ark Pixel, since
+  their licences travel with the firmware too; and the table is
+  `libv_t { module, checkout, licence }`, not `char *[3]`.
+  `libv_draw()` draws Avoidant's settings page's three columns into a
+  band (module, checkout, licence at 0, 45% and 70%), as many rows as
+  fit and "and N more" when they do not, returning how many it drew so
+  an app can page. No snprintf; calls only `gfx_draw_text`.
+  **An app changes with it** when it moves to this tag: its own
+  `cmake/libversions.cmake` goes, `k_libversions[i][0]` becomes
+  `.module`, and its loop becomes `libv_draw()`; Spurious, which has no
+  list yet, gets one with the call in `elf/CMakeLists.txt` and the
+  component in `ELF_COMPONENTS`.
+  *Checked:* `test/libvtest` -- rows, column positions and cut widths,
+  colours, "and N more" (and 12,344 more), paging through to the end,
+  zero-row and out-of-range bands -- against recorded gfx calls, ASan and
+  UBSan; `make gen` runs the generator in script mode on a fixture lock
+  and vendored component and checks every row, cmake_utilities left out,
+  and the header compiling at `-Wall -Wextra -Werror`. Run in script mode
+  on Avoidant's lock: 43 entries. Not built with ESP-IDF.

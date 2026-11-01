@@ -22,6 +22,9 @@ jobs:
       # 8010: against Spurious's code it was lifted from.
       - name: feckless_keyboard
         run: make -C components/feckless_keyboard/test
+      # 8012: the list's drawing, and its generator on a fixture.
+      - name: feckless_libversions
+        run: make -C components/feckless_libversions/test
       # 8003: the ABI's section filter and the crypto list.
       - name: feckless_abi section filter
         run: cmake -P components/feckless_abi/test/filter_test.cmake
