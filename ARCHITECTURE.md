@@ -1042,3 +1042,27 @@ histories stay in the archived repositories.
   and vendored component and checks every row, cmake_utilities left out,
   and the header compiling at `-Wall -Wextra -Werror`. Run in script mode
   on Avoidant's lock: 43 entries. Not built with ESP-IDF.
+- **8013** `feckless_libversions` is data only. Compared against the
+  other four apps' copies before the tag: every one draws the list its
+  own way (columns sized to the text, two lines in portrait, paging,
+  Lothesome's landscape text, Defeatist's one string a row), so
+  `libv_draw()` and the component's source go, and with them the
+  dependency on `feckless_graphics_handler`; the header is all that is
+  left, and the generated one defines `libv_t` itself, so code including
+  it needs no REQUIRES. Alongside `libversions.h`, `libversions.tsv`:
+  the same rows tab-separated under a header line, for documentation
+  (standards.md asks for the list there too) or a release, at
+  `LIBVERSIONS_TSV`. From the copies: `EXTRA "module|checkout|licence"`
+  rows, last and in order, for what only the app knows (Mahjong's
+  README-pinned vendored files, Noto glyphs and MurmurHash2; Errant's
+  BMI270 blob, world tile and cJSON on IDF 5); `NO_IDF`, as Defeatist
+  leaves ESP-IDF out; pngle, stb_image and J40 at
+  `feckless_image_handler`'s pins, for any build that has it (Defeatist's
+  8069 rows, now everyone's); esp_jpeg's licence with "+ TJpgDec (ChaN)";
+  CC0-1.0 recognised. A `\` or `"` in a row is escaped in the header.
+  *Checked:* `make -C components/feckless_libversions/test` runs the
+  generator in script mode on the fixture -- now with esp_jpeg and the
+  image handler -- with three EXTRA rows (one with quotes, one bare) and
+  with NO_IDF, checks every row of both files and the EXTRA order, and
+  compiles a file including the header and the public one together at
+  `-Wall -Wextra -Werror`. Not built with ESP-IDF.
