@@ -1,7 +1,8 @@
 version: "0.8.5"
 description: >-
   An on-screen keyboard for the M5Stack Tab5's apps, drawn with gfx and
-  driven by the app's own taps: three rows of ten keys, lower case.
+  driven by the app's own taps: four rows staggered as a real keyboard's,
+  a number row, shift and caps lock, and a symbol page.
 url: https://github.com/Sudrien/feckless-libs-for-m5tab5
 license: MIT
 

@@ -1,7 +1,9 @@
-# Host test for feckless_keyboard (8010):
-#   kbdtest   feckless_keyboard.c against Spurious's code it was lifted
-#             from: the same gfx calls, and the same text after a tap on
-#             every pixel of the band
+# Host test for feckless_keyboard:
+#   kbdtest   the stagger, every pixel's tap against the key drawn over
+#             it, shift, the symbol page, and every printable character
+#             having a key (8011; 8010's checked the lift against Spurious)
+#   preview   render.c: the four states drawn by the real gfx.c, as PPMs;
+#             not part of `all`, for looking at
 #
 #   make -C components/feckless_keyboard/test
 #
@@ -31,7 +33,15 @@ run: kbdtest
 warn:
 	$(CC) $(WARNCFLAGS) -c -o /dev/null ../src/feckless_keyboard.c
 
-clean:
-	rm -f kbdtest
+GFXSRC := $(GFX)/test/shim.c $(GFX)/src/gfx.c $(GFX)/fonts/ark12/ark12.c \
+          $(GFX)/fonts/arabixel/arabixel_tab.c $(GFX)/fonts/arabixel/arabixel_shape.c
 
-.PHONY: all run warn clean
+preview: render.c ../src/feckless_keyboard.c ../include/feckless_keyboard.h
+	$(CC) -std=c11 -O1 -D_GNU_SOURCE -Wno-unused-parameter $(INC) -I$(GFX)/fonts/arabixel \
+	    -o render render.c ../src/feckless_keyboard.c $(GFXSRC) -lm
+	./render
+
+clean:
+	rm -f kbdtest render kb_*.ppm
+
+.PHONY: all run warn preview clean

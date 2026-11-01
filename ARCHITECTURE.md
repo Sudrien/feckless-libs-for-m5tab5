@@ -965,3 +965,50 @@ histories stay in the archived repositories.
   compiles with Espressif's esp-14.2.0 at `-O2 -Wall -Werror=all -Wextra
   -Werror=extra -fPIC`, 768 bytes. CI runs the test. Not built with
   ESP-IDF; Spurious using it is its own patch, after a tag.
+- **8011** `feckless_keyboard` becomes a keyboard: four rows, staggered as
+  an ANSI one is, a number row, shift, and a symbol page. 8010 was
+  Spurious's three rows of ten, lower case, as they were; with it in one
+  place, this is the change Avoidant's Wi-Fi page and Defeatist's search
+  were waiting for.
+  *The layout,* in quarters of a key, eleven keys across (`KBD_UNITS`), so
+  65 px keys on a 720 px portrait screen and 116 in landscape:
+  `1`-`0` and `-` from the left edge; `q`-`p` half a key in; `a`-`l` and
+  `'` a quarter further; `z`-`m`, `,` and `.` half a key further again --
+  the offsets of a real keyboard. The stagger's spaces on the left hold
+  `#+` (before `a`) and `shift` (before `z`), and `del` follows `.`; the
+  rows' other ends are left empty. Each key is a span in quarters
+  (`kkey_t` tables, one per row), and drawing and hit-testing both place it
+  with one function, `key_x()`, so they cannot disagree.
+  *shift* is a phone's: once for the next key (the number row's
+  `!@#$%^&*()_`, capitals, `" < >`), used up by the character it types but
+  not by `del` or `#+`; twice to lock, which is capitals only, as caps lock
+  is, and is labelled `SHIFT`; a third time off. *`#+`* (`ab` while on)
+  turns the three letter rows into the symbols shift does not give:
+  ``= + [ ] { } \ | ; :``, `` ` ~ / ? @ # $ % & ``, `! * ( ) _ < >`; the
+  number row stays digits and a shift waits for the letters. With the two,
+  every printable ASCII character but space has a key; space, enter and
+  the like are the app's, as Spurious's row under the keyboard is. A lit
+  modifier is drawn in the new `on` colour. The font has no arrows or
+  keycap symbols (Ark12's subset has none of U+2190-21FF or U+2300-23FF),
+  so the modifiers are words a scale smaller than the characters.
+  **The API changes, so an app changes with it** when it moves to this
+  tag: `KBD_ROWS` 4 and `kbd_h()` with it; `kbd_t` gains `on` and the state
+  (`shift`, `symbols`, zero to start); `kbd_hit()` takes the `kbd_t`
+  mutable and returns `KBD_STATE` for shift or `#+` -- redraw after
+  anything but `KBD_NONE`; `kbd_edit()` ignores `KBD_STATE`. Spurious, at
+  v0.8.5, keeps 8010's until its next patch; its `static const kbd_t` will
+  not compile against this one.
+  *Checked:* `test/kbdtest`, rewritten: each row's first key where ANSI
+  puts it, at 720, 725 and 1280 px wide (and the q/a/z offsets as a half,
+  a quarter and a half key, to a pixel); no key past the band or over
+  another; every pixel of the band in all four states taps the key drawn
+  over it, or nothing in the stagger's gaps (1,013,760 taps); shift's
+  states, what uses up a shift and what does not, lock as capitals only,
+  the symbol page and back; a key for each of the 94 printable characters;
+  taps off the band; `kbd_edit()`. ASan and UBSan; three deliberate breaks
+  (a shift never used up, `a` a quarter out, taps a pixel off the drawing)
+  each fail it. `make preview` (new, `render.c`) draws the four states with
+  the real gfx.c and Ark12 into PPMs, and they were looked at. The source
+  compiles with Espressif's esp-14.2.0 at `-O2 -Wall -Werror=all -Wextra
+  -Werror=extra -fPIC`, 1,218 bytes, calling only `gfx_fill_rect`,
+  `gfx_draw_text`, `gfx_text_w` and `strlen`. Not built with ESP-IDF.
