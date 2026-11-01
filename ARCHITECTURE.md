@@ -1066,3 +1066,10 @@ histories stay in the archived repositories.
   with NO_IDF, checks every row of both files and the EXTRA order, and
   compiles a file including the header and the public one together at
   `-Wall -Wextra -Werror`. Not built with ESP-IDF.
+- **8014** `feckless_libversions` reads esp_ipa's licence as Espressif
+  MIT: its file opens "ESPRESSIF MIT License", which matched neither
+  "Espressif Modified MIT" nor anything but the plain "MIT License" test.
+  Found moving Unprofitable Mahjong to it, whose vendored esp_ipa the
+  component's scan of `components/` now lists. *Checked:* the fixture
+  gains a vendored component with esp_ipa's licence file and manifest;
+  `make -C components/feckless_libversions/test`, both runs.
