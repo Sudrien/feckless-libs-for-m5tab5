@@ -12,6 +12,7 @@ under one tag:
 | `feckless_nvs_handler` | The NVS partition, a value at a time: brought up once (erased and brought up afresh if unusable), and read and written by namespace and key, with no handle to keep |
 | `feckless_image_handler` | Pictures from their bytes: the kind (JPEG, PNG, JPEG XL, GIF) by magic number, a JPEG's baseline-or-not and size, the whole-number fit for small art, and a favicon.ico as a PNG, and the software decoders (stb_image for JPEG and GIF, pngle for PNG, J40 for JPEG XL) to RGB565; the hardware JPEG engine and drawing to follow |
 | `feckless_keyboard` | An on-screen keyboard drawn with gfx and driven by the app's own taps: four rows staggered as a real keyboard's, a number row, shift and caps lock, and a symbol page |
+| `feckless_mail` | The outgoing mail account -- SMTP server, TLS or STARTTLS, login, app password, From and To -- in NVS for a launcher and its apps to share, and a form to set it, drawn with gfx and typed on `feckless_keyboard` or a USB keyboard |
 | `feckless_libversions` | The libraries an app was built from, with versions and licences, as a table: `libversions.h` and `libversions.tsv`, generated at configure time from the lock, vendored components, the fonts, the image decoders' pins and the app's own rows; drawing it is the app's |
 | `feckless_camera` | The SC202CS camera on MIPI CSI, as luma frames, through esp_video; it takes the I2C bus from `feckless_drivers`' tab5io as an argument |
 | `fatfs` | ESP-IDF's own fatfs with exFAT: it stands in for IDF's, and builds the installed IDF's FatFs from a copy patched at configure time |
@@ -83,6 +84,9 @@ component needs:
 - `feckless_image_handler`: nothing by name; IDF's `heap` for the allocator.
 - `feckless_keyboard`: `feckless_graphics_handler`, for gfx. It links into an
   app's ELF (`ELF_COMPONENTS`); its gfx calls are the ABI's.
+- `feckless_mail`: `feckless_nvs_handler`, `feckless_graphics_handler` and
+  `feckless_keyboard`. It links into an app's ELF; its NVS calls are the
+  ABI's nvs section, its gfx calls the core list's.
 - `feckless_libversions`: nothing; nothing to link. In the build that
   compiles the code including it (an ELF's `elf/`), with the component in
   that build (main `REQUIRES` it, or it is in `COMPONENTS`), after

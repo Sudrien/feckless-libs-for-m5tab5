@@ -1096,3 +1096,34 @@ histories stay in the archived repositories.
   move to the new table: 423,979 checks, no failures. The keyboard's test,
   which draws with the real font, passes. A sheet of transcriptions drawn
   from the new table was looked at. Not built with ESP-IDF.
+- **8016** `feckless_mail`: the outgoing mail account, and a form to set
+  it. Jinxed Writer's spec (section 6) mails notes out over SMTP and wants
+  the host, port, login, app password and recipient kept "the same way the
+  saved Wi-Fi networks are", and set from a settings page; set once in a
+  launcher, an app it runs should find it, as the networks are found.
+  `mailcfg.h`: a `mailcfg_t` (host, port -- 0 for 465 or 587 --, TLS or
+  STARTTLS, login, password, From -- "" for the login --, To) as one
+  versioned blob under `acct` in the `feckless_mail` namespace (or the
+  caller's), through `feckless_nvs_handler`, so it links into an ELF and
+  runs on the launcher's NVS (the nvs section). No encryption of its own,
+  for wifistore.h's reasons. `mailcfg_check()` refuses control characters
+  anywhere (a CR or LF would be a second SMTP line or header), a host
+  without a dot, an empty login or password, and a From or To that is not
+  one plain address, each with a sentence naming the field;
+  `mailcfg_save()` stores nothing that fails it and zeroes the strings'
+  tails. `mailcfg_domain()` gives `@example.com` for the writer's status
+  line. Plain SMTP is not offered.
+  `mailform.h`: the form, in feckless_keyboard's manner -- no task, no
+  touch: a rectangle and a row height from the app, `mailform_draw()`,
+  taps to `mailform_tap()` and a USB keyboard's characters, Tab, Enter and
+  Escape to `mailform_key()`. A row a field, Security as two buttons, the
+  password masked with Show, Cancel and Save, and with `osk` the on-screen
+  keyboard and a space bar under them. Save runs the check and puts its
+  sentence under the rows with the field it names focused. Sending is not
+  here yet.
+  *Checked:* `make -C components/feckless_mail/test` (CI runs it): the
+  checks, the NVS round trip against a fake, and the form driven by keys
+  and taps through the real gfx.c and feckless_keyboard at 720 x 1280 with
+  the keyboard and 1280 x 720 without, every pixel of each band tapped
+  (ASan, UBSan); both sources at `-O2 -Wall -Wextra -Werror`. Every call it
+  makes is in the core list or the nvs section. Not built with ESP-IDF.
