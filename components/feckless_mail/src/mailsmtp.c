@@ -29,12 +29,16 @@
 static mailsend_err_t fail(smtp_t *s, mailsend_err_t e, const char *what)
 {
     s->res->err = e;
+    /* Ours, then the server's words, cut to fit. strlcpy/strlcat rather
+     * than snprintf: the line can be 512 bytes and why is 128, and the
+     * firmware's -Wformat-truncation stops the build on a %s that may
+     * not fit, whatever the precision says (9002). Cutting is intended. */
+    char *w = s->res->why;
+    const size_t n = sizeof s->res->why;
+    strlcpy(w, what, n);
     if (s->line[0]) {
-        /* The server's words after ours, cut to fit. */
-        snprintf(s->res->why, sizeof s->res->why, "%s: %.*s", what,
-                 (int)(sizeof s->res->why / 2), s->line);
-    } else {
-        snprintf(s->res->why, sizeof s->res->why, "%s", what);
+        strlcat(w, ": ", n);
+        strlcat(w, s->line, n);
     }
     return e;
 }

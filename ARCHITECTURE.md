@@ -1170,3 +1170,15 @@ one new thing was 8016. The 9000s start after that tag.
   `-O2 -Wall -Werror=all -Wextra -Werror=extra` against Mbed TLS v3.6.2's
   and v4.0.0's real headers with stubs for IDF's. Not built with ESP-IDF;
   not yet run against a real server.
+- **9002** `mailsmtp.c`'s failure sentence without snprintf. Jinxed
+  Writer's build stopped on `fail()`: `"%s: %.*s"` into the 128-byte
+  `why`, a caller's sentence and up to 64 bytes of the server's line,
+  which the RISC-V GCC's `-Werror=format-truncation` counts as up to 140.
+  Host GCC said nothing at `-O2 -Wall -Wextra -Werror`, nor at
+  `-Wformat-truncation=2`, which is how 9001 passed its check. Now
+  strlcpy and strlcat, which cut where they must and have no format to
+  warn about; the server's words get whatever room the caller's leave.
+  *Checked:* `make -C components/feckless_mail/test` (smtptest's refused
+  login still finds "Login refused: 535 5.7.8" in the sentence). Not
+  built with ESP-IDF -- the failing build was the user's, and it is the
+  one to rerun.
