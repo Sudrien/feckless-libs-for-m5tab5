@@ -1127,3 +1127,46 @@ histories stay in the archived repositories.
   the keyboard and 1280 x 720 without, every pixel of each band tapped
   (ASan, UBSan); both sources at `-O2 -Wall -Wextra -Werror`. Every call it
   makes is in the core list or the nvs section. Not built with ESP-IDF.
+
+## The 9000 series, after v0.9.0
+
+The 8000s ran on through the v0.8.x point releases and into v0.9.0, whose
+one new thing was 8016. The 9000s start after that tag.
+
+- **9001** `feckless_mail` sends: `mailsend()`, SMTP over TLS or STARTTLS.
+  Jinxed Writer's settings page wants a test button for the account 8016
+  keeps, and its spec (section 6) a background send. `mailsend.h`: one
+  plain-text message, subject and body UTF-8, from `mailcfg_from()` to the
+  account's To, within one `timeout_ms`; a `mailsend_result_t` with a code
+  (config, memory, DNS, connect, TLS, auth, rejected, protocol, timeout),
+  the last SMTP code, and a sentence that carries the server's own words
+  and never the password. `mailsmtp.c` is the conversation alone over a
+  transport of four calls: greeting, EHLO and its capabilities, STARTTLS
+  when the account says so -- refused outright, password unsent, when the
+  server does not offer it, and refused when the server sends anything
+  before the handshake (RFC 3207 4.2) -- then AUTH PLAIN, or LOGIN where
+  PLAIN is not offered, MAIL, RCPT, DATA with the body made CRLF and
+  dot-stuffed and a non-ASCII subject as RFC 2047 encoded words cut on
+  letter boundaries, a CR or LF in the subject refused before a byte is
+  sent, and QUIT. `mailsend.c` is the transport: getaddrinfo, a connect
+  bounded by select(), SO_RCVTIMEO/SO_SNDTIMEO set to what is left of the
+  deadline before each call, and Mbed TLS over the same socket through
+  set_bio (not esp-tls, which cannot upgrade a connection that has carried
+  plain SMTP), verifying against `esp_crt_bundle` and the host name. On
+  Mbed TLS 3.6 a CTR-DRBG is given to the config; on 4.0, which has no
+  such call, `psa_crypto_init()` -- feckless_cert.c's split. Not in the
+  ABI: an ELF app that calls it fails the check on the Mbed TLS names;
+  one that does not never pulls the object in.
+  *Checked:* `make -C components/feckless_mail/test` gains `smtptest`: a
+  scripted server checking every line the client sends, each script run
+  with replies whole and a byte at a time -- SMTPS with PLAIN, STARTTLS
+  with LOGIN only (and an unanswered QUIT still a success), no STARTTLS
+  offered with no AUTH on the wire, data before the handshake, a failed
+  handshake, a refused login (multi-line 535 in the sentence, the password
+  not), no usable login method, a refused recipient, a timeout, a drop, a
+  greeting that is not SMTP, the subject's encoded words, RFC 4648's
+  base64 vectors and the Date header (ASan, UBSan). `mailtest` still
+  passes. mailsmtp.c at `-O2 -Wall -Wextra -Werror`; mailsend.c at
+  `-O2 -Wall -Werror=all -Wextra -Werror=extra` against Mbed TLS v3.6.2's
+  and v4.0.0's real headers with stubs for IDF's. Not built with ESP-IDF;
+  not yet run against a real server.

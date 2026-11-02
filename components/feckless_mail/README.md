@@ -15,10 +15,29 @@ The outgoing mail account for the Tab5's apps, and a form to set it.
   keyboard and a space bar. The app blits and hands it taps
   (`mailform_tap`) and USB keyboard characters (`mailform_key`); on
   `MAILFORM_SAVE` it stores the account with `mailcfg_save()`.
+- `mailsend.h`: one plain-text message with that account, SMTP over TLS
+  from the first byte or after STARTTLS, logged in with AUTH PLAIN or
+  LOGIN, the server's certificate checked against IDF's CA bundle. A
+  server that does not offer STARTTLS gets no password. Blocking, on a
+  task with `MAILSEND_MIN_STACK` and the network up, bounded by one
+  timeout; the result is a code and a sentence for a person.
 
-No task and no hardware: it links into an app's ELF (`ELF_COMPONENTS`).
-Its NVS calls are `feckless_nvs_handler`'s (the ABI's nvs section), its
-drawing gfx's. Sending the mail is not here yet.
+No task and no hardware: mailcfg and mailform link into an app's ELF
+(`ELF_COMPONENTS`). Their NVS calls are `feckless_nvs_handler`'s (the
+ABI's nvs section), the drawing gfx's. `mailsend()` reaches lwIP and
+Mbed TLS, which the ABI does not export, so for now it is a standalone
+firmware's: an ELF app that calls it fails the ABI check, and one that
+does not is unaffected.
+
+```c
+mailcfg_t c;
+mailsend_result_t r;
+if (mailcfg_load(NULL, &c) &&
+    mailsend(&c, "Test", "It works.\n", 0, MAILSEND_TIMEOUT_MS, &r) != MAILSEND_OK) {
+    show(r.why);                 /* "Login refused: 535 5.7.8 ..." */
+}
+mailcfg_wipe(&c);
+```
 
 ```c
 mailform_t f = { .x = 0, .y = 160, .w = 720, .row_h = 80, .scale = 3, .osk = true,

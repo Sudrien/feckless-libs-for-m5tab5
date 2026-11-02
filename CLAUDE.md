@@ -34,14 +34,17 @@ gives `0009-<subject>.patch`. Write the subject as the subject.
 entry in the series at the end of `ARCHITECTURE.md`, which every patch
 adds itself to. Take the next one.
 
-**Where the numbering is now: the 8000 series, toward v0.8.0.** A
-series is named for the release it leads to -- the 0000s toward v0.1.0,
+**Where the numbering is now: the 9000 series, after v0.9.0.** The
+8000s ran on through v0.8.x and into v0.9.0 (8016, `feckless_mail`, is
+in it), so the 9000s start after the v0.9.0 tag and carry the work
+toward the next release. A series is named for the release it leads to -- the 0000s toward v0.1.0,
 the 2000s toward v0.2.0, the 3000s toward v0.3.0, the 4000s toward
 v0.4.0 (and 4003-4006, which came after its tag, in v0.4.1), the 5000s
 toward v0.5.0, the 6000s toward v0.6.0 (and 6005-6006, in v0.6.1 and
 v0.6.2), the 7000s toward v0.7.0 (7001-7010: nvs migration, the ABI's
 last name gaps, `feckless_image_handler`, the image ABI section), the
-8000s toward v0.8.0 -- so a patch number
+8000s toward v0.8.0 and on into v0.9.0, the 9000s after v0.9.0 -- so a
+patch number
 says which release it went into. A point release does not start a
 series. Since v0.2.0 every feckless library is here; 1.0.0 waits on the
 ABI settling, with file I/O in it. **The first patch after a tag updates this
