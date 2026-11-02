@@ -1,4 +1,4 @@
-version: "0.8.7"
+version: "0.9.0"
 description: >-
   An on-screen keyboard for the M5Stack Tab5's apps, drawn with gfx and
   driven by the app's own taps: four rows staggered as a real keyboard's,
