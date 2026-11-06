@@ -1279,7 +1279,7 @@ static void blit_glyph_style(const uint16_t *g, int w, int x, int y, int scale,
     const int passes = (style & GFX_STYLE_HEAVY) ? 3 : (style & GFX_STYLE_BOLD) ? 2 : 1;
     const bool italic = (style & GFX_STYLE_ITALIC) != 0;
     if (!italic) {
-        for (int p = 0; p < passes; p++) blit_glyph(g, w, x + p, y, scale, c);
+        for (int p = 0; p < passes; p++) blit_glyph(g, w, x + p * scale, y, scale, c);
         return;
     }
     const int base = ITALIC_BASE_ROW * scale;
@@ -1291,7 +1291,7 @@ static void blit_glyph_style(const uint16_t *g, int w, int x, int y, int scale,
             const int dx = floor_div4(base - 1 - py);
             for (int col = 0; col < w; col++) {
                 if (!(bits & (1u << col))) continue;
-                gfx_fill_rect(x + col * scale + dx, y + py, scale + passes - 1, 1, c);
+                gfx_fill_rect(x + col * scale + dx, y + py, scale * passes, 1, c);
             }
         }
     }

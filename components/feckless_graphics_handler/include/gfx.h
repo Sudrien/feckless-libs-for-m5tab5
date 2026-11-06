@@ -266,11 +266,13 @@ void gfx_draw_text(int x, int y, const char *s, int scale, int max_w, uint16_t c
  * bold, heavy headings and italic. Drawn from the same glyphs, so the
  * advance, gfx_text_w() and every column stay what they are unstyled:
  *
- *   GFX_STYLE_BOLD    a second pass one screen pixel to the right. Every
- *                     glyph has an empty column after it, so it stays in
- *                     its cell at any scale.
- *   GFX_STYLE_HEAVY   two more passes, one and two pixels right (a third
- *                     of a stroke each at scale 3). Wins over BOLD.
+ *   GFX_STYLE_BOLD    a second pass one font pixel (`scale` screen
+ *                     pixels, 9007) to the right: every stroke two font
+ *                     pixels wide. Every glyph has an empty column after
+ *                     it, so it stays in its cell.
+ *   GFX_STYLE_HEAVY   a third pass, two font pixels right (9007): three
+ *                     wide. That runs one font pixel past the cell, so a
+ *                     heavy letter can touch the next. Wins over BOLD.
  *   GFX_STYLE_ITALIC  sheared: each screen row moved right a pixel for
  *                     every four it sits above the baseline (the bottom
  *                     of glyph row 9), so descenders lean back left. The

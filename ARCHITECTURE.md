@@ -1309,3 +1309,13 @@ one new thing was 8016. The 9000s start after that tag.
   a p's descender left of its cell, clipping by whole cells, the strike
   inside the x-height. Drawn to an image on the host and looked at. Not
   built with ESP-IDF; not run on a board.
+- **9007** `gfx_draw_text_style()`'s bold offset is a font pixel, not a
+  screen pixel: `GFX_STYLE_BOLD`'s second pass is `scale` screen pixels
+  right, so a stroke is two font pixels wide at any size -- 9006's one
+  screen pixel was a third of a stroke at scale 3 and barely showed.
+  `GFX_STYLE_HEAVY`'s third pass is two font pixels over, one past the
+  cell, so heavy letters can touch; italic's rows widen to match. Checked:
+  `make -C components/feckless_graphics_handler/test`, `test_style()`
+  with bold exactly `scale` wider than plain and heavy at most a font
+  pixel past the advance; drawn to an image and looked at. Not built
+  with ESP-IDF.

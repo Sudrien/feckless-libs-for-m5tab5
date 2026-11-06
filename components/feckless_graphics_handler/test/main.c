@@ -946,8 +946,21 @@ static void test_style(void)
         clear();
         gfx_draw_text_style(10, 100, s, scale, W, INK, GFX_STYLE_HEAVY);
         CHECK(ink_count() > bold, "s=%d: heavy over bold", scale);
-        CHECK(ink_bbox(&x0, &y0, &x1, &y1) && x1 < 10 + adv,
-              "s=%d: heavy stays inside the advance, drew to %d", scale, x1);
+        /* 9007: heavy's third pass is two font pixels over, one past
+         * the last cell and no further. */
+        CHECK(ink_bbox(&x0, &y0, &x1, &y1) && x1 < 10 + adv + scale,
+              "s=%d: heavy runs at most a font pixel past, drew to %d", scale, x1);
+        /* 9007: the offset is a font pixel, so bold's ink is the plain
+         * glyph's twice over less the overlap -- at every scale, one
+         * pass's stroke is exactly `scale` wide more. */
+        clear();
+        gfx_draw_text_style(10, 100, "l", scale, W, INK, GFX_STYLE_BOLD);
+        int bx0, by0, bx1, by1;
+        ink_bbox(&bx0, &by0, &bx1, &by1);
+        clear();
+        gfx_draw_text(10, 100, "l", scale, W, INK);
+        ink_bbox(&x0, &y0, &x1, &y1);
+        CHECK(bx1 - x1 == scale, "s=%d: bold is a font pixel wider (%d)", scale, bx1 - x1);
 
         /* Italic: the same rows, leaning -- the top right of the
          * baseline, the descenders left of it. */
