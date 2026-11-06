@@ -297,16 +297,12 @@ static void boundary(char *b, size_t size, const char *body)
     }
 }
 
-/* The parts after the headers: the body inline, then the file. */
-static bool put_mixed(smtp_t *s, const char *body, const mailsend_attach_t *a, const char *b)
+/* One file's part, from its boundary line to its last base64 line. */
+static bool put_file(smtp_t *s, const mailsend_attach_t *a, const char *b)
 {
     const char *type = a->type ? a->type : "application/octet-stream";
     const bool text = strncmp(type, "text/", 5) == 0;
-    bool ok = puts_(s, "\r\n--") && puts_(s, b) && puts_(s, "\r\n"
-                  "Content-Type: text/plain; charset=UTF-8\r\n"
-                  "Content-Transfer-Encoding: 8bit\r\n\r\n") &&
-              put_body(s, body) &&
-              puts_(s, "--") && puts_(s, b) && puts_(s, "\r\nContent-Type: ") && puts_(s, type) &&
+    bool ok = puts_(s, "--") && puts_(s, b) && puts_(s, "\r\nContent-Type: ") && puts_(s, type) &&
               (!text || puts_(s, "; charset=UTF-8")) &&
               puts_(s, "; name=\"") && puts_(s, a->name) && puts_(s, "\"\r\n"
                   "Content-Disposition: attachment; filename=\"") && puts_(s, a->name) &&
@@ -320,6 +316,18 @@ static bool put_mixed(smtp_t *s, const char *body, const mailsend_attach_t *a, c
         const size_t n = smtp_b64(line, sizeof line, d + i, k);
         ok = put(s, line, n) && put(s, "\r\n", 2);
     }
+    return ok;
+}
+
+/* The parts after the headers: the body inline, then each file. */
+static bool put_mixed(smtp_t *s, const char *body, const mailsend_attach_t *a, size_t n,
+                      const char *b)
+{
+    bool ok = puts_(s, "\r\n--") && puts_(s, b) && puts_(s, "\r\n"
+                  "Content-Type: text/plain; charset=UTF-8\r\n"
+                  "Content-Transfer-Encoding: 8bit\r\n\r\n") &&
+              put_body(s, body);
+    for (size_t i = 0; ok && i < n; i++) ok = put_file(s, &a[i], b);
     return ok && puts_(s, "--") && puts_(s, b) && puts_(s, "--\r\n");
 }
 
@@ -377,8 +385,12 @@ mailsend_err_t smtp_dialog(smtp_t *s, const smtp_io_t *io, const mailcfg_t *c,
     if (!m->subject || strchr(m->subject, '\r') || strchr(m->subject, '\n') || !m->body) {
         return fail(s, MAILSEND_ERR_CONFIG, "The subject must be one line");
     }
-    if (m->att && (!name_ok(m->att->name) || !type_ok(m->att->type) || (m->att->len && !m->att->data))) {
-        return fail(s, MAILSEND_ERR_CONFIG, "The attachment's name or type cannot go in a message");
+    if (m->n_att && !m->att) return fail(s, MAILSEND_ERR_CONFIG, "No attachments where some were counted");
+    for (size_t i = 0; i < m->n_att; i++) {
+        const mailsend_attach_t *a = &m->att[i];
+        if (!name_ok(a->name) || !type_ok(a->type) || (a->len && !a->data)) {
+            return fail(s, MAILSEND_ERR_CONFIG, "An attachment's name or type cannot go in a message");
+        }
     }
 
     int r = reply(s, false);
@@ -437,11 +449,11 @@ mailsend_err_t smtp_dialog(smtp_t *s, const smtp_io_t *io, const mailcfg_t *c,
     ok = ok && puts_(s, "From: <") && puts_(s, mailcfg_from(c)) && puts_(s, ">\r\n") &&
          puts_(s, "To: <") && puts_(s, c->to) && puts_(s, ">\r\n") &&
          put_subject(s, m->subject) && puts_(s, "MIME-Version: 1.0\r\n");
-    if (m->att) {
+    if (m->n_att) {
         char b[32];
         boundary(b, sizeof b, m->body);
         ok = ok && puts_(s, "Content-Type: multipart/mixed; boundary=\"") && puts_(s, b) &&
-             puts_(s, "\"\r\n") && put_mixed(s, m->body, m->att, b);
+             puts_(s, "\"\r\n") && put_mixed(s, m->body, m->att, m->n_att, b);
     } else {
         ok = ok && puts_(s, "Content-Type: text/plain; charset=UTF-8\r\n"
                              "Content-Transfer-Encoding: 8bit\r\n\r\n") &&

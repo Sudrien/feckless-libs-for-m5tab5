@@ -430,7 +430,7 @@ static void test_attach(void)
     const mailsend_attach_t att = { .name = "2026-11-06.md", .type = "text/markdown",
                                     .data = file, .len = sizeof file };
     const smtp_msg_t m = { .subject = "Notes", .body = "# notes\n.dot\n--=_feckless_5eed0000\n",
-                           .ehlo_name = "feckless.local", .att = &att };
+                           .ehlo_name = "feckless.local", .att = &att, .n_att = 1 };
     mailsend_result_t res;
     fake_t *fk = calloc(1, sizeof *fk);
     CHECK(run(st, &k_tls, &m, &res, fk) == MAILSEND_OK);
@@ -456,12 +456,53 @@ static void test_attach(void)
 
     /* No type: octet-stream, no charset. Empty data: no base64 lines. */
     const mailsend_attach_t bin = { .name = "x.bin", .data = NULL, .len = 0 };
-    const smtp_msg_t mb = { .subject = "s", .body = "b", .ehlo_name = "feckless.local", .att = &bin };
+    const smtp_msg_t mb = { .subject = "s", .body = "b", .ehlo_name = "feckless.local", .att = &bin, .n_att = 1 };
     fk = calloc(1, sizeof *fk);
     CHECK(run(st, &k_tls, &mb, &res, fk) == MAILSEND_OK);
     CHECK(strstr(fk->data, "Content-Type: application/octet-stream; name=\"x.bin\"\r\n"));
     CHECK(strstr(fk->data, "base64\r\n\r\n--=_feckless_5eed0000--\r\n"));
     free(fk);
+
+    /* 9010: two files, in order, each with its own part; one bad name
+     * among good ones refuses the lot. */
+    static const uint8_t log0[] = { 'J', 'X', 'L', 'G', 0, 1, 2, 0xFF };
+    const mailsend_attach_t two[] = {
+        { .name = "2026-11-06.md", .type = "text/markdown", .data = "# hi\n", .len = 5 },
+        { .name = "2026-11-06.md.h0", .data = log0, .len = sizeof log0 },
+    };
+    const smtp_msg_t m2 = { .subject = "s", .body = "b", .ehlo_name = "feckless.local", .att = two, .n_att = 2 };
+    fk = calloc(1, sizeof *fk);
+    CHECK(run(st, &k_tls, &m2, &res, fk) == MAILSEND_OK);
+    {
+        const char *p1 = strstr(fk->data, "filename=\"2026-11-06.md\"");
+        const char *p2 = strstr(fk->data, "filename=\"2026-11-06.md.h0\"");
+        CHECK(p1 && p2 && p1 < p2);
+        CHECK(strstr(fk->data, "Content-Type: application/octet-stream; name=\"2026-11-06.md.h0\""));
+        const char *x = p2 ? strstr(p2, "base64\r\n\r\n") : NULL;
+        uint8_t back[16];
+        CHECK(x && unb64(back, x + strlen("base64\r\n\r\n")) == sizeof log0 && !memcmp(back, log0, sizeof log0));
+        int parts = 0;
+        for (const char *q = fk->data; (q = strstr(q, "\r\n--=_feckless_5eed0000\r\n")); q++) parts++;
+        CHECK(parts == 3);
+        CHECK(strstr(fk->data, "\r\n--=_feckless_5eed0000--\r\n.\r\n"));
+    }
+    free(fk);
+    {
+        const mailsend_attach_t mixed[] = { two[0], { .name = "a\"b" } };
+        const smtp_msg_t mx = { .subject = "s", .body = "b", .ehlo_name = "e", .att = mixed, .n_att = 2 };
+        static const step_t none0[] = { { END, NULL } };
+        fk = calloc(1, sizeof *fk);
+        fk->st = none0;
+        const smtp_io_t io = { f_send, f_recv, f_starttls, f_expired, fk };
+        CHECK(smtp_dialog(&s_smtp, &io, &k_tls, &mx, &res) == MAILSEND_ERR_CONFIG && fk->sent_all_len == 0);
+        free(fk);
+        const smtp_msg_t nul = { .subject = "s", .body = "b", .ehlo_name = "e", .att = NULL, .n_att = 1 };
+        fk = calloc(1, sizeof *fk);
+        fk->st = none0;
+        const smtp_io_t io2 = { f_send, f_recv, f_starttls, f_expired, fk };
+        CHECK(smtp_dialog(&s_smtp, &io2, &k_tls, &nul, &res) == MAILSEND_ERR_CONFIG && fk->sent_all_len == 0);
+        free(fk);
+    }
 
     /* Names and types that would break the headers: refused, nothing sent. */
     static const mailsend_attach_t bad[] = {
@@ -475,7 +516,7 @@ static void test_attach(void)
     };
     static const step_t none[] = { { END, NULL } };
     for (size_t i = 0; i < sizeof bad / sizeof bad[0]; i++) {
-        const smtp_msg_t mx = { .subject = "s", .body = "b", .ehlo_name = "e", .att = &bad[i] };
+        const smtp_msg_t mx = { .subject = "s", .body = "b", .ehlo_name = "e", .att = &bad[i], .n_att = 1 };
         fk = calloc(1, sizeof *fk);
         fk->st = none;
         const smtp_io_t io = { f_send, f_recv, f_starttls, f_expired, fk };

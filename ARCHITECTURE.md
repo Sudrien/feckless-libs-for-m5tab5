@@ -1349,3 +1349,13 @@ one new thing was 8016. The 9000s start after that tag.
   an empty file, and seven bad names and types refused with nothing
   sent; `warn` at -O2 -Werror. Not built with ESP-IDF; not run on a
   board.
+- **9010** `mailsend_with()` takes any number of files: `att` and
+  `n_att`, each file its own part after the inline body, in order. One
+  bad name or type among them refuses the message with nothing sent. A
+  signature change to 9009's function, which no release has had yet.
+  For Jinxed Writer's notes with both their `.md` and their log.
+  *Checked:* `make -C components/feckless_mail/test`, `test_attach()`:
+  two files in order, the second's bytes (binary, 0x00 and 0xFF among
+  them) back through its base64, three parts and one closing boundary;
+  a bad name after a good one, and a count with no files, refused with
+  nothing sent; 9009's cases again. Not built with ESP-IDF.

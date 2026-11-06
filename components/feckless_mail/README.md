@@ -21,8 +21,8 @@ The outgoing mail account for the Tab5's apps, and a form to set it.
   server that does not offer STARTTLS gets no password. Blocking, on a
   task with `MAILSEND_MIN_STACK` and the network up, bounded by one
   timeout; the result is a code and a sentence for a person.
-  `mailsend_with()` (9009) sends a file with it: the text still inline,
-  the file attached, multipart/mixed.
+  `mailsend_with()` (9009, 9010) sends files with it: the text still
+  inline, each file attached after it, multipart/mixed.
 
 No task and no hardware: mailcfg and mailform link into an app's ELF
 (`ELF_COMPONENTS`). Their NVS calls are `feckless_nvs_handler`'s (the

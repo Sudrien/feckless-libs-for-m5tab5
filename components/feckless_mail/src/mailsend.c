@@ -255,11 +255,11 @@ static mailsend_err_t open_tcp(conn_t *c, const char *host, uint16_t port, mails
 mailsend_err_t mailsend(const mailcfg_t *cfg, const char *subject, const char *body,
                         int64_t date, uint32_t timeout_ms, mailsend_result_t *res)
 {
-    return mailsend_with(cfg, subject, body, NULL, date, timeout_ms, res);
+    return mailsend_with(cfg, subject, body, NULL, 0, date, timeout_ms, res);
 }
 
 mailsend_err_t mailsend_with(const mailcfg_t *cfg, const char *subject, const char *body,
-                             const mailsend_attach_t *att,
+                             const mailsend_attach_t *att, size_t n_att,
                              int64_t date, uint32_t timeout_ms, mailsend_result_t *res)
 {
     mailsend_result_t local;
@@ -298,7 +298,7 @@ mailsend_err_t mailsend_with(const mailcfg_t *cfg, const char *subject, const ch
         const smtp_io_t io = { .send = io_send, .recv = io_recv, .starttls = tls_start,
                                .expired = expired, .io = c };
         const smtp_msg_t m = { .subject = subject, .body = body, .date = date,
-                               .ehlo_name = "feckless.local", .att = att };
+                               .ehlo_name = "feckless.local", .att = att, .n_att = n_att };
         e = smtp_dialog(&c->smtp, &io, cfg, &m, res);
     }
     res->err = e;

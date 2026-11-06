@@ -85,14 +85,15 @@ typedef struct {
 } mailsend_attach_t;
 
 /*
- * mailsend(), and with `att` (not NULL) the message is multipart/mixed:
- * `body` first, inline and 8bit as mailsend() sends it, so it is still
- * what a reader shows and a search finds; then `att`, base64, as an
- * attachment. A name or type that does not pass the rules above is
- * MAILSEND_ERR_CONFIG, before anything is sent. att NULL is mailsend().
+ * mailsend(), and with files -- `n_att` of them at `att` -- the message
+ * is multipart/mixed: `body` first, inline and 8bit as mailsend() sends
+ * it, so it is still what a reader shows and a search finds; then each
+ * file in order, base64, as an attachment (9010: any number; 9009 took
+ * one). A name or type that does not pass the rules above is
+ * MAILSEND_ERR_CONFIG, before anything is sent. n_att 0 is mailsend().
  */
 mailsend_err_t mailsend_with(const mailcfg_t *c, const char *subject, const char *body,
-                             const mailsend_attach_t *att,
+                             const mailsend_attach_t *att, size_t n_att,
                              int64_t date, uint32_t timeout_ms, mailsend_result_t *res);
 
 #ifdef __cplusplus
