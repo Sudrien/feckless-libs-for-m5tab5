@@ -43,6 +43,7 @@ typedef struct {
     const char *body;
     int64_t     date;       /* 0: no Date header */
     const char *ehlo_name;  /* what we call ourselves in EHLO */
+    const mailsend_attach_t *att;   /* 9009: NULL for text/plain alone */
 } smtp_msg_t;
 
 /* The whole dialogue, greeting to QUIT. The account has passed

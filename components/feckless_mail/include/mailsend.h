@@ -60,6 +60,7 @@ typedef struct {
 
 /*
  * Send `body` (UTF-8, any line endings) with `subject` (UTF-8, one line)
+ * -- as text/plain, alone; mailsend_with() below adds a file --
  * from mailcfg_from(c) to c->to, giving up after timeout_ms in all.
  * `date` is the Date header's time as a Unix epoch, or 0 to leave the
  * header for the server to add (it will). *res is filled either way and
@@ -67,6 +68,32 @@ typedef struct {
  */
 mailsend_err_t mailsend(const mailcfg_t *c, const char *subject, const char *body,
                         int64_t date, uint32_t timeout_ms, mailsend_result_t *res);
+
+/*
+ * 9009: a file to go with the message. `name` is the file name the mail
+ * reader shows -- printable ASCII, no quote, backslash or slash, at most
+ * MAILSEND_NAME_MAX bytes. `type` is its MIME type ("text/markdown"),
+ * letters, digits and "/.+-" only; NULL is application/octet-stream.
+ * A text/ type is labelled UTF-8. `data` is `len` bytes, any bytes.
+ */
+#define MAILSEND_NAME_MAX   (100)
+typedef struct {
+    const char *name;
+    const char *type;
+    const void *data;
+    size_t      len;
+} mailsend_attach_t;
+
+/*
+ * mailsend(), and with `att` (not NULL) the message is multipart/mixed:
+ * `body` first, inline and 8bit as mailsend() sends it, so it is still
+ * what a reader shows and a search finds; then `att`, base64, as an
+ * attachment. A name or type that does not pass the rules above is
+ * MAILSEND_ERR_CONFIG, before anything is sent. att NULL is mailsend().
+ */
+mailsend_err_t mailsend_with(const mailcfg_t *c, const char *subject, const char *body,
+                             const mailsend_attach_t *att,
+                             int64_t date, uint32_t timeout_ms, mailsend_result_t *res);
 
 #ifdef __cplusplus
 }

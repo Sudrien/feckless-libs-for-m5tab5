@@ -257,6 +257,72 @@ static bool put_body(smtp_t *s, const char *b)
     return bol || put(s, "\r\n", 2);
 }
 
+/* ---- an attachment (9009) ---------------------------------------------- */
+
+static bool name_ok(const char *n)
+{
+    if (!n || !n[0] || strlen(n) > MAILSEND_NAME_MAX) return false;
+    for (; *n; n++) {
+        const unsigned char c = (unsigned char)*n;
+        if (c < 0x20 || c > 0x7E || c == '"' || c == '\\' || c == '/') return false;
+    }
+    return true;
+}
+
+static bool type_ok(const char *t)
+{
+    if (!t) return true;
+    const char *slash = strchr(t, '/');
+    if (!slash || slash == t || !slash[1] || strchr(slash + 1, '/')) return false;
+    for (; *t; t++) {
+        const char c = *t;
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+              c == '/' || c == '.' || c == '+' || c == '-')) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/*
+ * The boundary: "=_feckless_" and a number, which base64 can never hold
+ * ("=_" is not in its alphabet) and which is checked against the body,
+ * the next number tried until the body does not hold it either.
+ */
+static void boundary(char *b, size_t size, const char *body)
+{
+    for (unsigned n = 0;; n++) {
+        snprintf(b, size, "=_feckless_%08x", 0x5eed0000u + n);
+        if (!strstr(body, b)) return;
+    }
+}
+
+/* The parts after the headers: the body inline, then the file. */
+static bool put_mixed(smtp_t *s, const char *body, const mailsend_attach_t *a, const char *b)
+{
+    const char *type = a->type ? a->type : "application/octet-stream";
+    const bool text = strncmp(type, "text/", 5) == 0;
+    bool ok = puts_(s, "\r\n--") && puts_(s, b) && puts_(s, "\r\n"
+                  "Content-Type: text/plain; charset=UTF-8\r\n"
+                  "Content-Transfer-Encoding: 8bit\r\n\r\n") &&
+              put_body(s, body) &&
+              puts_(s, "--") && puts_(s, b) && puts_(s, "\r\nContent-Type: ") && puts_(s, type) &&
+              (!text || puts_(s, "; charset=UTF-8")) &&
+              puts_(s, "; name=\"") && puts_(s, a->name) && puts_(s, "\"\r\n"
+                  "Content-Disposition: attachment; filename=\"") && puts_(s, a->name) &&
+              puts_(s, "\"\r\nContent-Transfer-Encoding: base64\r\n\r\n");
+    /* 57 bytes a line: 76 of base64, RFC 2045's limit. No line of it can
+     * start with a dot, so none needs stuffing. */
+    const uint8_t *d = a->data;
+    for (size_t i = 0; ok && i < a->len; i += 57) {
+        char line[80];
+        const size_t k = a->len - i < 57 ? a->len - i : 57;
+        const size_t n = smtp_b64(line, sizeof line, d + i, k);
+        ok = put(s, line, n) && put(s, "\r\n", 2);
+    }
+    return ok && puts_(s, "--") && puts_(s, b) && puts_(s, "--\r\n");
+}
+
 /* ---- the dialogue ------------------------------------------------------- */
 
 static mailsend_err_t login(smtp_t *s, const mailcfg_t *c)
@@ -310,6 +376,9 @@ mailsend_err_t smtp_dialog(smtp_t *s, const smtp_io_t *io, const mailcfg_t *c,
 
     if (!m->subject || strchr(m->subject, '\r') || strchr(m->subject, '\n') || !m->body) {
         return fail(s, MAILSEND_ERR_CONFIG, "The subject must be one line");
+    }
+    if (m->att && (!name_ok(m->att->name) || !type_ok(m->att->type) || (m->att->len && !m->att->data))) {
+        return fail(s, MAILSEND_ERR_CONFIG, "The attachment's name or type cannot go in a message");
     }
 
     int r = reply(s, false);
@@ -367,11 +436,18 @@ mailsend_err_t smtp_dialog(smtp_t *s, const smtp_io_t *io, const mailcfg_t *c,
     }
     ok = ok && puts_(s, "From: <") && puts_(s, mailcfg_from(c)) && puts_(s, ">\r\n") &&
          puts_(s, "To: <") && puts_(s, c->to) && puts_(s, ">\r\n") &&
-         put_subject(s, m->subject) &&
-         puts_(s, "MIME-Version: 1.0\r\n"
-                  "Content-Type: text/plain; charset=UTF-8\r\n"
-                  "Content-Transfer-Encoding: 8bit\r\n\r\n") &&
-         put_body(s, m->body) && puts_(s, ".\r\n") && flush_out(s);
+         put_subject(s, m->subject) && puts_(s, "MIME-Version: 1.0\r\n");
+    if (m->att) {
+        char b[32];
+        boundary(b, sizeof b, m->body);
+        ok = ok && puts_(s, "Content-Type: multipart/mixed; boundary=\"") && puts_(s, b) &&
+             puts_(s, "\"\r\n") && put_mixed(s, m->body, m->att, b);
+    } else {
+        ok = ok && puts_(s, "Content-Type: text/plain; charset=UTF-8\r\n"
+                             "Content-Transfer-Encoding: 8bit\r\n\r\n") &&
+             put_body(s, m->body);
+    }
+    ok = ok && puts_(s, ".\r\n") && flush_out(s);
     if (!ok) return io_fail(s, "The connection dropped while sending the message");
     r = reply(s, false);
     if (r < 0) return io_fail(s, "The connection dropped after the message");

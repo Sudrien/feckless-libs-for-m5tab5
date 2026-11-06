@@ -396,6 +396,95 @@ static void test_subject(void)
     free(fk);
 }
 
+/* 9009: a file with the message. */
+static size_t unb64(uint8_t *out, const char *in)
+{
+    static const char T[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    uint32_t v = 0;
+    int bits = 0;
+    size_t n = 0;
+    for (; *in && *in != '-'; in++) {
+        const char *p = strchr(T, *in);
+        if (!p || !*in) continue;               /* CRLF, '=' */
+        v = v << 6 | (uint32_t)(p - T);
+        bits += 6;
+        if (bits >= 8) { bits -= 8; out[n++] = (uint8_t)(v >> bits); }
+    }
+    return n;
+}
+
+static void test_attach(void)
+{
+    static const step_t st[] = {
+        { S, "220 mx\r\n" }, { C, "EHLO feckless.local" }, { S, "250 AUTH PLAIN\r\n" },
+        { C, "AUTH PLAIN " PLAIN }, { S, "235 ok\r\n" },
+        { C, "MAIL FROM:<me@example.com>" }, { S, "250 ok\r\n" },
+        { C, "RCPT TO:<notes@example.org>" }, { S, "250 ok\r\n" },
+        { C, "DATA" }, { S, "354 go\r\n" }, { DATA, NULL }, { S, "250 ok\r\n" },
+        { C, "QUIT" }, { S, "221 bye\r\n" }, { END, NULL },
+    };
+    /* 200 bytes, every value, so four lines of base64 and a short one;
+     * and a body that holds the first boundary, and a dot to stuff. */
+    uint8_t file[200];
+    for (int i = 0; i < 200; i++) file[i] = (uint8_t)(i * 37 + 11);
+    const mailsend_attach_t att = { .name = "2026-11-06.md", .type = "text/markdown",
+                                    .data = file, .len = sizeof file };
+    const smtp_msg_t m = { .subject = "Notes", .body = "# notes\n.dot\n--=_feckless_5eed0000\n",
+                           .ehlo_name = "feckless.local", .att = &att };
+    mailsend_result_t res;
+    fake_t *fk = calloc(1, sizeof *fk);
+    CHECK(run(st, &k_tls, &m, &res, fk) == MAILSEND_OK);
+    const char *d = fk->data;
+    CHECK(strstr(d, "MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=\"=_feckless_5eed0001\"\r\n\r\n--=_feckless_5eed0001\r\n"));
+    CHECK(!strstr(d, "Content-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n--"));
+    CHECK(strstr(d, "Content-Transfer-Encoding: 8bit\r\n\r\n# notes\r\n..dot\r\n--=_feckless_5eed0000\r\n--=_feckless_5eed0001\r\n"));
+    CHECK(strstr(d, "Content-Type: text/markdown; charset=UTF-8; name=\"2026-11-06.md\"\r\n"
+                    "Content-Disposition: attachment; filename=\"2026-11-06.md\"\r\n"
+                    "Content-Transfer-Encoding: base64\r\n\r\n"));
+    CHECK(strstr(d, "\r\n--=_feckless_5eed0001--\r\n.\r\n"));
+    /* The base64: lines of 76, and back to the same bytes. */
+    const char *b64 = strstr(d, "base64\r\n\r\n");
+    CHECK(b64);
+    if (b64) {
+        b64 += strlen("base64\r\n\r\n");
+        const char *e = strchr(b64, '\r');
+        CHECK(e && e - b64 == 76);
+        uint8_t back[256];
+        CHECK(unb64(back, b64) == sizeof file && !memcmp(back, file, sizeof file));
+    }
+    free(fk);
+
+    /* No type: octet-stream, no charset. Empty data: no base64 lines. */
+    const mailsend_attach_t bin = { .name = "x.bin", .data = NULL, .len = 0 };
+    const smtp_msg_t mb = { .subject = "s", .body = "b", .ehlo_name = "feckless.local", .att = &bin };
+    fk = calloc(1, sizeof *fk);
+    CHECK(run(st, &k_tls, &mb, &res, fk) == MAILSEND_OK);
+    CHECK(strstr(fk->data, "Content-Type: application/octet-stream; name=\"x.bin\"\r\n"));
+    CHECK(strstr(fk->data, "base64\r\n\r\n--=_feckless_5eed0000--\r\n"));
+    free(fk);
+
+    /* Names and types that would break the headers: refused, nothing sent. */
+    static const mailsend_attach_t bad[] = {
+        { .name = "a\"b.md", .type = "text/plain" },
+        { .name = "a\r\nBcc: x@y.z", .type = "text/plain" },
+        { .name = "../x", .type = "text/plain" },
+        { .name = "", .type = "text/plain" },
+        { .name = "ok.md", .type = "text" },
+        { .name = "ok.md", .type = "text/plain; x=1" },
+        { .name = "ok.md", .type = "text/plain", .data = NULL, .len = 3 },
+    };
+    static const step_t none[] = { { END, NULL } };
+    for (size_t i = 0; i < sizeof bad / sizeof bad[0]; i++) {
+        const smtp_msg_t mx = { .subject = "s", .body = "b", .ehlo_name = "e", .att = &bad[i] };
+        fk = calloc(1, sizeof *fk);
+        fk->st = none;
+        const smtp_io_t io = { f_send, f_recv, f_starttls, f_expired, fk };
+        CHECK(smtp_dialog(&s_smtp, &io, &k_tls, &mx, &res) == MAILSEND_ERR_CONFIG);
+        CHECK(fk->sent_all_len == 0);
+        free(fk);
+    }
+}
+
 static void test_b64(void)
 {
     static const struct { const char *in, *out; } v[] = {
@@ -426,6 +515,7 @@ int main(void)
     test_rcpt_refused();
     test_timeout_and_drop();
     test_subject();
+    test_attach();
     if (fails) { printf("smtptest: %d failed\n", fails); return 1; }
     printf("smtptest: ok\n");
     return 0;

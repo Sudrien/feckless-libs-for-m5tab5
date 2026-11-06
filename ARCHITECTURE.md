@@ -1332,3 +1332,20 @@ one new thing was 8016. The 9000s start after that tag.
   advances a font pixel more a glyph and stays inside its cells, bold and
   italic advance as plain, bold and heavy m keep both gaps open. Not
   built with ESP-IDF.
+- **9009** `mailsend_with()`: a message with a file. With an attachment
+  (name, MIME type, bytes) the message is multipart/mixed -- the body
+  inline and 8bit as `mailsend()` sends it, so a reader shows it and a
+  search finds it, then the file in base64, 76 to a line. The boundary
+  is `=_feckless_` and a number base64 cannot hold, checked against the
+  body. A name or type that could break the headers (a quote, CR or LF,
+  a slash, a parameter in the type) is refused before a byte is sent.
+  `mailsend()` is `mailsend_with()` with none, unchanged. Not in the ABI,
+  as `mailsend()` is not. For Jinxed Writer's notes, sent with their
+  `.md`. *Checked:* `make -C components/feckless_mail/test`, smtptest's
+  new `test_attach()`, each script whole and a byte at a time: the
+  multipart's headers and both parts, the body's dot stuffed, a body
+  holding the first boundary taking the next, the base64 in lines of 76
+  decoding to the same 200 bytes, no type as application/octet-stream,
+  an empty file, and seven bad names and types refused with nothing
+  sent; `warn` at -O2 -Werror. Not built with ESP-IDF; not run on a
+  board.
