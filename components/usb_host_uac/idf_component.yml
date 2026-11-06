@@ -1,5 +1,5 @@
 ## IDF Component Manager Manifest File
-version: "0.9.6"
+version: "0.9.7"
 license: "Apache-2.0"
 # Modified from Espressif's usb_host_uac 1.5.0 (esp-usb,
 # host/class/uac/usb_host_uac): Defeatist's 5026, 5032 and 6062, marked
