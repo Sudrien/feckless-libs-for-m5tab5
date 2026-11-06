@@ -1,4 +1,4 @@
-version: "0.9.3"
+version: "0.9.4"
 description: >-
   The feckless ABI's audio section: Espressif's esp_audio_codec decoders
   for an app's ELF, from a launcher that links this.
