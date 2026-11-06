@@ -263,16 +263,19 @@ void gfx_draw_text(int x, int y, const char *s, int scale, int max_w, uint16_t c
 
 /*
  * 9006: styled text, for a text editor's markdown -- Jinxed Writer's
- * bold, heavy headings and italic. Drawn from the same glyphs, so the
- * advance, gfx_text_w() and every column stay what they are unstyled:
+ * bold, heavy headings and italic. Drawn from the same glyphs, so for
+ * bold and italic the advance, gfx_text_w() and every column stay what
+ * they are unstyled; heavy is a font pixel wider a glyph (9008):
  *
- *   GFX_STYLE_BOLD    a second pass one font pixel (`scale` screen
- *                     pixels, 9007) to the right: every stroke two font
- *                     pixels wide. Every glyph has an empty column after
- *                     it, so it stays in its cell.
- *   GFX_STYLE_HEAVY   a third pass, two font pixels right (9007): three
- *                     wide. That runs one font pixel past the cell, so a
- *                     heavy letter can touch the next. Wins over BOLD.
+ *   GFX_STYLE_BOLD    every lit font pixel doubled one to the right
+ *                     (9007: before scaling) -- but where the added one
+ *                     would close a one-pixel gap it is drawn a screen
+ *                     pixel short, so m, w and @ stay open (9008). Every
+ *                     glyph has an empty column after it, so bold stays
+ *                     in its cell.
+ *   GFX_STYLE_HEAVY   the same twice, and a font pixel more between
+ *                     letters (9008): its cells are GFX_HEAVY_W(scale)
+ *                     wide, not GFX_GLYPH_W(scale). Wins over BOLD.
  *   GFX_STYLE_ITALIC  sheared: each screen row moved right a pixel for
  *                     every four it sits above the baseline (the bottom
  *                     of glyph row 9), so descenders lean back left. The
@@ -280,7 +283,9 @@ void gfx_draw_text(int x, int y, const char *s, int scale, int max_w, uint16_t c
  *                     only lit pixels are drawn, so it overlaps there.
  *
  * Clipped at max_w by whole glyphs, with no ellipsis: an editor's line is
- * already broken to fit. No other difference from gfx_draw_text().
+ * already broken to fit. Bold's and italic's advances are the unstyled
+ * ones; heavy's are a font pixel more, measured by gfx_text_w_style().
+ * bold.png beside this component shows them at scales 2 to 4.
  * Strikethrough and underline are the caller's: a rectangle, at
  * GFX_STRIKE_Y(scale) for a line through the x-height.
  */
@@ -292,6 +297,9 @@ void gfx_draw_text(int x, int y, const char *s, int scale, int max_w, uint16_t c
 
 void gfx_draw_text_style(int x, int y, const char *s, int scale, int max_w,
                          uint16_t c, unsigned style);
+/* Width as gfx_draw_text_style() advances: gfx_text_w() unless heavy. */
+int gfx_text_w_style(const char *s, int scale, unsigned style);
+#define GFX_HEAVY_W(scale)  (GFX_GLYPH_W(scale) + (scale))
 
 /* Same, but the tail is kept rather than the head -- for paths, where the
  * end is the part that identifies the directory. */

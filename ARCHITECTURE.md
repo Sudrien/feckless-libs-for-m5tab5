@@ -1319,3 +1319,16 @@ one new thing was 8016. The 9000s start after that tag.
   with bold exactly `scale` wider than plain and heavy at most a font
   pixel past the advance; drawn to an image and looked at. Not built
   with ESP-IDF.
+- **9008** Bold and heavy keep one-pixel gaps open, and heavy is spaced.
+  Each added font pixel is drawn one screen pixel short where it would
+  close a one-pixel gap, so m, w and @ stay open in bold and heavy, at
+  full weight -- 9007 filled them. Heavy adds a font pixel between
+  letters: its cells are `GFX_HEAVY_W(scale)`, measured by the new
+  `gfx_text_w_style()`; bold's and italic's advances are unchanged.
+  Arrived at by previews, the last of which is
+  `components/feckless_graphics_handler/bold.png`, drawn by this code,
+  and linked from the component's README. *Checked:* `make -C
+  components/feckless_graphics_handler/test`, `test_style()`: heavy
+  advances a font pixel more a glyph and stays inside its cells, bold and
+  italic advance as plain, bold and heavy m keep both gaps open. Not
+  built with ESP-IDF.

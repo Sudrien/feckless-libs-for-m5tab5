@@ -1273,28 +1273,65 @@ int gfx_draw_para(int x, int y, const char *s, int scale, int max_w,
 
 static int floor_div4(int v) { return v >= 0 ? v / 4 : -((-v + 3) / 4); }
 
+/*
+ * 9008: bold and heavy add a font pixel to the right of every lit one
+ * (heavy does it twice), and where the added pixel would close a
+ * one-pixel gap -- the pixel after it is lit -- it is drawn one screen
+ * pixel short, so the gap stays open a screen pixel wide: m, w and @
+ * keep their insides. Italic shears every screen row as before.
+ */
 static void blit_glyph_style(const uint16_t *g, int w, int x, int y, int scale,
                              uint16_t c, unsigned style)
 {
-    const int passes = (style & GFX_STYLE_HEAVY) ? 3 : (style & GFX_STYLE_BOLD) ? 2 : 1;
+    const int extra = (style & GFX_STYLE_HEAVY) ? 2 : (style & GFX_STYLE_BOLD) ? 1 : 0;
     const bool italic = (style & GFX_STYLE_ITALIC) != 0;
-    if (!italic) {
-        for (int p = 0; p < passes; p++) blit_glyph(g, w, x + p * scale, y, scale, c);
-        return;
-    }
     const int base = ITALIC_BASE_ROW * scale;
     for (int row = 0; row < ARK12_H; row++) {
-        const uint16_t bits = g[row];
+        const uint32_t bits = g[row] & ((1u << w) - 1u);
         if (!bits) continue;
-        for (int sub = 0; sub < scale; sub++) {
+        /* Each pass: the pixels it adds, and which of them are short. */
+        uint32_t add[2] = { 0, 0 }, shut[2] = { 0, 0 }, cur = bits;
+        for (int p = 0; p < extra; p++) {
+            add[p]  = (cur << 1) & ~cur;
+            shut[p] = add[p] & (cur >> 1);
+            cur |= add[p];
+        }
+        for (int sub = 0; sub < (italic ? scale : 1); sub++) {
             const int py = row * scale + sub;
-            const int dx = floor_div4(base - 1 - py);
-            for (int col = 0; col < w; col++) {
-                if (!(bits & (1u << col))) continue;
-                gfx_fill_rect(x + col * scale + dx, y + py, scale * passes, 1, c);
+            const int dx = italic ? floor_div4(base - 1 - py) : 0;
+            const int h  = italic ? 1 : scale;
+            for (int col = 0; col < w + extra; col++) {
+                const uint32_t m = 1u << col;
+                int px = 0;
+                if (bits & m) px = scale;
+                for (int p = 0; p < extra && !px; p++) {
+                    if (add[p] & m) px = (shut[p] & m) ? scale - 1 : scale;
+                }
+                if (px > 0) gfx_fill_rect(x + col * scale + dx, y + py, px, h, c);
             }
         }
     }
+}
+
+/* 9008: a heavy glyph's cell is a font pixel wider. */
+static int style_adv(const glyph_t *g, int scale, unsigned style)
+{
+    return (g->adv + ((style & GFX_STYLE_HEAVY) ? 1 : 0)) * scale;
+}
+
+int gfx_text_w_style(const char *s, int scale, unsigned style)
+{
+    if (!s) return 0;
+    if (!(style & GFX_STYLE_HEAVY)) return gfx_text_w(s, scale);
+    int w = 0;
+    text_iter_t it;
+    text_init(&it, s);
+    uint32_t cp;
+    while ((cp = text_next(&it)) != 0) {
+        glyph_t g = glyph_for(cp);
+        if (g.bits) w += style_adv(&g, scale, style);
+    }
+    return w;
 }
 
 void gfx_draw_text_style(int x, int y, const char *s, int scale, int max_w,
@@ -1309,9 +1346,10 @@ void gfx_draw_text_style(int x, int y, const char *s, int scale, int max_w,
     while ((cp = text_next(&it)) != 0) {
         glyph_t g = glyph_for(cp);
         if (!g.bits) continue;
-        if (cx + g.adv * scale > x + max_w) break;
+        const int adv = style_adv(&g, scale, style);
+        if (cx + adv > x + max_w) break;
         blit_glyph_style(g.rows, g.w, cx, y, scale, c, style);
-        cx += g.adv * scale;
+        cx += adv;
     }
 }
 

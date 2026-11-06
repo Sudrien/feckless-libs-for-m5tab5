@@ -17,6 +17,12 @@ came along unchanged.
 | `logcut.h` | Shortening a UTF-8 string for a log line without splitting a letter. Header-only |
 | `ark12.h`, `arabixel.h` | The two font tables gfx draws from |
 
+Styled text -- `gfx_draw_text_style()`, bold, heavy and italic from the
+same glyphs, for Jinxed Writer's markdown -- looks like this at scales 2
+to 4 (9006-9008):
+
+![Bold, italic, bold italic and heavy at scales 2, 3 and 4](bold.png)
+
 Rev 2 Tabs only: the rev 1 board's ILI9881C has never been brought up
 here.
 

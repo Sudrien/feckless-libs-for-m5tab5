@@ -946,10 +946,32 @@ static void test_style(void)
         clear();
         gfx_draw_text_style(10, 100, s, scale, W, INK, GFX_STYLE_HEAVY);
         CHECK(ink_count() > bold, "s=%d: heavy over bold", scale);
-        /* 9007: heavy's third pass is two font pixels over, one past
-         * the last cell and no further. */
-        CHECK(ink_bbox(&x0, &y0, &x1, &y1) && x1 < 10 + adv + scale,
-              "s=%d: heavy runs at most a font pixel past, drew to %d", scale, x1);
+        /* 9008: heavy's cells are a font pixel wider, and its ink stays
+         * inside them. */
+        const int hadv = gfx_text_w_style(s, scale, GFX_STYLE_HEAVY);
+        CHECK(hadv == adv + (int)strlen(s) * scale,
+              "s=%d: heavy advances a font pixel more a glyph (%d)", scale, hadv);
+        CHECK(ink_bbox(&x0, &y0, &x1, &y1) && x1 < 10 + hadv,
+              "s=%d: heavy stays inside its cells, drew to %d", scale, x1);
+        CHECK(gfx_text_w_style(s, scale, GFX_STYLE_BOLD) == adv &&
+              gfx_text_w_style(s, scale, GFX_STYLE_ITALIC) == adv,
+              "s=%d: bold and italic advance as plain", scale);
+        CHECK(GFX_HEAVY_W(scale) == GFX_GLYPH_W(scale) + scale, "s=%d: GFX_HEAVY_W", scale);
+
+        /* 9008: a one-pixel gap stays open -- m's insides, bold and
+         * heavy: along its middle row, unlit pixels between the strokes. */
+        for (int st = 0; st < 2 && scale >= 2; st++) {
+            const unsigned sty = st ? GFX_STYLE_HEAVY : GFX_STYLE_BOLD;
+            clear();
+            gfx_draw_text_style(10, 100, "m", scale, W, INK, sty);
+            ink_bbox(&x0, &y0, &x1, &y1);
+            const int ym = 100 + 7 * scale;
+            int holes = 0;
+            for (int x = x0 + 1; x < x1; x++)
+                holes += fb[ym * W + x] != INK && fb[ym * W + x - 1] == INK;
+            CHECK(holes >= 2, "s=%d: %s m keeps both gaps open (%d)",
+                  scale, st ? "heavy" : "bold", holes);
+        }
         /* 9007: the offset is a font pixel, so bold's ink is the plain
          * glyph's twice over less the overlap -- at every scale, one
          * pass's stroke is exactly `scale` wide more. */
