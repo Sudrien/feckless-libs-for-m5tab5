@@ -12,6 +12,7 @@ came along unchanged.
 | `wifi.h` | The C6 radio over esp_hosted/SDIO2: power through the IO expander, station, background join, scan, the AP for a setup portal, SNTP |
 | `feckless_https.h` | The device's HTTPS identity, for a launcher and the shim of a standalone app: one self-signed certificate made on the device and kept in NVS, a TLS server started with it for an app that never sees the key, the fingerprint, and the handler for a port-80 server that redirects to the name (8004) |
 | `feckless_cert.h` | The self-signed P-256 certificate itself, in Mbed TLS 3.6 or 4.0; pure, host-tested against both |
+| `feckless_fetch.h` | One file downloaded to a volume, resumably: redirects followed, a part file renamed only when whole and the caller's check says yes, resumed with `Range`/`If-Range` against a saved map, up to three connections in 1 MB stripes, one writer leasing the card in 16 KB slices. Defeatist's podcast downloader less the podcast; host-tested (9003) |
 | `feckless_redirect.h` | Where a plain-HTTP request goes: an IP address to `<name>.local`, a name kept; pure, host-tested |
 | `wifistore.h` | Up to `WIFISTORE_MAX` saved networks, one NVS blob, ranked against a scan |
 | `ethernet.h` | ASIX AX88772 and CDC-ECM (RTL8152/8153) adapters on the USB-A port; `net_online()`, `net_probe()`, which interface is the default route |
@@ -88,6 +89,18 @@ DMA-pool settings the player tuned for streaming; read it before copying
 any of those. Then `rm sdkconfig` before the next build: the defaults
 only fill keys an existing sdkconfig lacks.
 
+**Name `feckless_storage_handler` too** (9003). `feckless_fetch.c`
+writes through its `storage_io` lease, so this component requires it by
+name, and the application's manifest must list it as it lists every
+feckless component it uses.
+
+**Allow task stacks in PSRAM for a download's extra connections**
+(`CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM=y`). Without it
+`feckless_fetch` works, on one connection.
+
+**Count a download's sockets** if the application budgets
+`CONFIG_LWIP_MAX_SOCKETS`: a download holds up to its `conns` at once.
+
 **Do not try to update the C6's firmware.** The M5 slave reports no
 version, so esp_hosted logs a major-version mismatch at every start and
 works anyway. `idf_component.yml` has the details.
@@ -98,8 +111,10 @@ works anyway. `idf_component.yml` has the details.
 make -C test
 ```
 
-The store against a fake NVS, and `netlink.h`'s decisions. Neither needs
-ESP-IDF.
+The store against a fake NVS, `netlink.h`'s decisions, the redirect,
+and `feckless_fetch.c` against an in-memory server with its tasks on
+pthreads (9003; `make -C test run-fetch-tsan` runs that one under
+ThreadSanitizer). None needs ESP-IDF.
 
 ## Licence
 

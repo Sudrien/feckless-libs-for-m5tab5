@@ -1,2 +1,4 @@
 test/wifistoretest
 test/netlinktest
+test/fetchtest
+test/fetchtest-tsan

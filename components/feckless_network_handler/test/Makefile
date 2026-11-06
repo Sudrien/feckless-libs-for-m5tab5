@@ -17,7 +17,7 @@ CFLAGS  := -std=c11 -g -O1 -Wall -Wextra -Wno-unused-parameter \
            -fno-omit-frame-pointer -I. -Ifake -I../include
 LDFLAGS := -fsanitize=address,undefined -lm
 
-all: run-wifistore run-netlink run-redirect
+all: run-wifistore run-netlink run-redirect run-fetch
 
 redirecttest: redirecttest.c ../src/feckless_redirect.c ../include/feckless_redirect.h
 	$(CC) $(WARNCFLAGS) -c redirecttest.c -o /dev/null
@@ -75,6 +75,28 @@ run-certnowriter40: certnowriter40
 
 run-cert: $(if $(MBED36),run-cert36 run-certnowriter36) $(if $(MBED40),run-cert40 run-certnowriter40)
 
+# 9003: feckless_fetch.c, its tasks on pthreads and the network an
+# in-memory server (fake/fetchfake.c). Also under ThreadSanitizer with
+# `make run-fetch-tsan`, which is not part of `all`.
+FETCHSRC := fetchtest.c ../src/feckless_fetch.c fake/fetchfake.c
+FETCHDEP := $(FETCHSRC) ../include/feckless_fetch.h fake/fetchfake.h fake/esp_http_client.h
+
+fetchtest: $(FETCHDEP)
+	$(CC) $(WARNCFLAGS) -c ../src/feckless_fetch.c -o /dev/null
+	$(CC) $(WARNCFLAGS) -c fake/fetchfake.c -o /dev/null
+	$(CC) $(WARNCFLAGS) -c fetchtest.c -o /dev/null
+	$(CC) $(CFLAGS) -D_GNU_SOURCE -o $@ $(FETCHSRC) $(LDFLAGS) -lpthread
+
+run-fetch: fetchtest
+	ASAN_OPTIONS=detect_leaks=1:abort_on_error=0 ./fetchtest
+
+fetchtest-tsan: $(FETCHDEP)
+	$(CC) -std=c11 -g -O1 -D_GNU_SOURCE -fsanitize=thread -I. -Ifake -I../include \
+	    -o $@ $(FETCHSRC) -lpthread
+
+run-fetch-tsan: fetchtest-tsan
+	./fetchtest-tsan
+
 wifistoretest: wifistoretest.c ../src/wifistore.c ../include/wifistore.h fake/wifistore_host.h
 	$(CC) $(CFLAGS) -DWIFISTORE_HOST -o $@ wifistoretest.c ../src/wifistore.c $(LDFLAGS)
 
@@ -89,6 +111,6 @@ run-netlink: netlinktest
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=0 ./netlinktest
 
 clean:
-	rm -f wifistoretest netlinktest redirecttest certtest36 certtest40 certnowriter36 certnowriter40
+	rm -f wifistoretest netlinktest redirecttest fetchtest fetchtest-tsan certtest36 certtest40 certnowriter36 certnowriter40
 
-.PHONY: all run-wifistore run-netlink run-redirect run-cert run-cert36 run-cert40 run-certnowriter36 run-certnowriter40 clean
+.PHONY: all run-wifistore run-netlink run-redirect run-fetch run-fetch-tsan run-cert run-cert36 run-cert40 run-certnowriter36 run-certnowriter40 clean

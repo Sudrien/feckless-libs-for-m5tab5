@@ -117,6 +117,23 @@ feckless_https_redirect
 feckless_https_start
 feckless_https_stop
 
+# ---- one file, downloaded resumably (9003) -----------------------------
+# feckless_fetch.h: Defeatist's podcast downloader, less the podcast. The
+# launcher's copy runs it: its tasks, the writer's lease on the card and
+# the part file's map are the launcher's, and an app starts, watches and
+# stops a download through these. feckless_fetch_opts_t and
+# feckless_fetch_ev_t are laid out by the app and read by the launcher, so
+# they are this section's as much as the names are: a field added to
+# either is a new section version.
+feckless_fetch_cancel
+feckless_fetch_discard
+feckless_fetch_live
+feckless_fetch_part
+feckless_fetch_pause
+feckless_fetch_start
+feckless_fetch_state
+feckless_fetch_why
+
 # ---- esp_http_server, with WebSockets ----------------------------------
 httpd_get_client_list
 httpd_query_key_value

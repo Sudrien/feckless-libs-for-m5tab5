@@ -1182,3 +1182,59 @@ one new thing was 8016. The 9000s start after that tag.
   login still finds "Login refused: 535 5.7.8" in the sentence). Not
   built with ESP-IDF -- the failing build was the user's, and it is the
   one to rerun.
+- **9003** `feckless_fetch`: one file downloaded to a volume, resumably,
+  in `feckless_network_handler`. Defeatist's podcast downloader (its
+  `poddl.c`, Defeatist 8020-8057, measured on the board there) less what
+  was a podcast's, so that Jinxed Writer's dictionary download and any
+  other can have what it learned. Its own ~220 s for 15 MB, one
+  connection reopening and fsyncing the file every 64 KB, is what made
+  the case: Defeatist's single connection measured three times that.
+  `feckless_fetch.h`: redirects by hand (relative, scheme-relative, up to
+  six; https only if asked), a part file renamed only when whole and the
+  caller's VERIFY says yes, resume with Range and If-Range against the
+  part file's `.id` (first reply's length and validator, a map of the
+  bytes on the card, written to `.id.tmp` and renamed), up to three
+  connections in 1 MB stripes for a file of 8 MB and up from a server
+  with `Accept-Ranges: bytes`, one writer task leasing the card
+  (`storage_io`, BACKGROUND) 16 KB at a time and gathering a segment
+  64 KB at a time, a failed connection retried 1, 3 and 10 s later,
+  pause, cancel, progress every 0.1 MB, play-while-downloading
+  (`feckless_fetch_live`), and `feckless_fetch_why()` for a status
+  line. What was Defeatist's alone -- the folder layout, the old part
+  file's move, the extension, the pictures and their sidecar, the
+  socket budget -- comes back to it through one callback: START,
+  HEADERS (may rename), VERIFY (may refuse), DONE, CANCELLED, on the
+  download's task with the card not leased. The code is poddl.c's, its
+  comments carried with their numbers written "Defeatist 8043" so they
+  are not read as this series'. Two changes from it: **a reply with no
+  Content-Length** (chunked) read nothing -- a segment ending at -1 was
+  "whole" before its first byte, and an empty file was renamed into
+  place -- and now reads to the stream's end; and **a scheme-relative
+  redirect** (`//host/path`) was taken for a path on the same host. Not
+  ported: the thirds of Defeatist 8043 (stripes only, though a map in
+  thirds still resumes) and the picture fetch. The network section
+  gains the eight names, and says that the two structs are its now.
+  `feckless_network_handler` requires `feckless_storage_handler` by
+  name, so an app naming the one names the other. Helpers need
+  `CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM`; without it, one
+  connection. *Checked:* `make -C components/feckless_network_handler/test`,
+  with the new `fetchtest`: the tasks on pthreads, an in-memory server
+  with Range, If-Range, ETags and redirects, and a storage fake that
+  fails the run if the lease is taken twice, held across a network
+  read or left held. Twelve cases, every file compared byte for byte:
+  one stream with its folders made and the events in order; three
+  connections on 20 MB (21 requests, three at once, every byte served
+  once); no Accept-Ranges; no Content-Length (which fails with
+  poddl.c's line put back); four redirect cases; pause and resume on
+  one and on three connections (8.3 of 12.6 MB served again, the
+  first request a Range); a resume whose file changed, which starts
+  over; a read broken mid-way, retried; 404, no connection, VERIFY
+  refusing, starting while one runs; cancel running, cancel paused,
+  discard; the name chosen at HEADERS. Under ASan and UBSan, and clean
+  under ThreadSanitizer (`run-fetch-tsan`). `feckless_fetch.c` compiles
+  against ESP-IDF v6.1's own `esp_http_client.h` and `esp_crt_bundle.h`
+  at -O2 with `-Wall -Wextra -Werror`, and at `-Wformat-truncation=2`
+  and `-Wformat-overflow=2` at -O2 and -Os, after the three copies into
+  a caller's buffer became `copy_out()` (9002's lesson). Not built with
+  ESP-IDF; not run on a board. Defeatist and Jinxed Writer change over
+  to it in their own repositories.

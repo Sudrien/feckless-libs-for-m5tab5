@@ -11,6 +11,7 @@ idf_component_register(
     SRCS "src/feckless_net.c" "src/wifistore.c" "src/wifi.c" "src/ethernet.c"
          "src/hostedwrap.c"
          "src/feckless_cert.c" "src/feckless_https.c" "src/feckless_redirect.c"   # 8004
+         "src/feckless_fetch.c"   # 9003
     INCLUDE_DIRS "include"
     REQUIRES esp_driver_i2c esp_wifi esp_netif esp_event esp_wifi_remote
              esp_hosted
@@ -18,6 +19,7 @@ idf_component_register(
     PRIV_REQUIRES esp_timer lwip nvs_flash usb mbedtls   # mbedtls: 6003, wifi_psk(); 8004, feckless_cert
              esp_https_server mdns   # 8004: feckless_https.c; mdns: the name the redirect sends to
              esp_usbh_asix iot_eth iot_usbh_ecm iot_usbh_cdc
+             esp_http_client feckless_storage_handler   # 9003: feckless_fetch.c
 )
 
 # 5092: esp_hosted's per-packet buffers from PSRAM. See src/hostedwrap.c.

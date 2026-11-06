@@ -74,7 +74,9 @@ component needs:
   exFAT cards and drives, `fatfs` from here as well -- IDF's own is
   FAT32 only.
 - `feckless_network_handler`: `esp_usbh_asix`, from
-  github.com/Sudrien/esp_usbh_asix at v0.1.0, which its manifest pins.
+  github.com/Sudrien/esp_usbh_asix at v0.1.0, which its manifest pins;
+  and since 9003 `feckless_storage_handler`, whose `storage_io` lease
+  `feckless_fetch` writes the card through.
 - `feckless_camera`: nothing by name; `camera_init()` takes the bus,
   and the panel's bring-up (`lcd_init()`) powers the MIPI PHY it shares,
   so it runs after that.
