@@ -1,4 +1,4 @@
-version: "0.9.1"
+version: "0.9.2"
 description: >-
   The feckless ABI's network section: feckless_network_handler, lwIP's
   sockets, esp_netif, the HTTP server and client for an app's ELF, from

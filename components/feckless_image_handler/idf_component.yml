@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-version: "0.9.1"
+version: "0.9.2"
 description: >-
   Pictures for the M5Stack Tab5's apps, from their bytes: the kind
   (JPEG, PNG, JPEG XL, GIF) by magic number, a JPEG's baseline-or-not
