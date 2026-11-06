@@ -40,6 +40,24 @@ do. A second call returns `ESP_OK` and does nothing. Before it, or if it
 failed, every other call returns `ESP_ERR_INVALID_STATE`, so a board
 whose NVS will not come up runs, and saves nothing.
 
+**What is there** (9005). `nvsh_log(NULL, false)` writes how full the
+partition is and every key in it to the console, a line each: integers
+with their values, strings and blobs with their sizes and an FNV-1a
+hash. `nvsh_log(NULL, true)` adds the contents of those that are text
+(UTF-8, no control characters but tab and newline), quoted, escaped and
+cut at 160 bytes -- **secrets included**, with a warning line first.
+`nvsh_list()` hands each entry, bytes and all, to a callback;
+`nvsh_stats()` is NVS's own count of used and free entries. A
+namespace instead of NULL narrows either to it.
+
+```
+NVS: 20 of 504 entries used, 484 free (358 for data), 4 namespaces
+  defeatist       pi_key          str  10 bytes, #68b9c60c "abc123KEY"
+  defeatist       nets            blob 4 bytes, #6fab6075
+  jinxed          rotation        u8   1
+NVS: 8 key(s)
+```
+
 Each call opens and closes the namespace: a handful of values at a time
 is what it is for. A namespace and a key are at most 15 characters.
 The partition is shared by everything the board runs, a launcher and

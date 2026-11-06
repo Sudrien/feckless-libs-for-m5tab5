@@ -111,6 +111,62 @@ typedef struct {
 esp_err_t nvsh_migrate(const char *to_ns, const nvsh_move_t *moves, size_t n,
                        size_t *moved);
 
+/*
+ * WHAT IS THERE (9005): every key in the partition, for finding out what
+ * a setting became -- a key that seems to have gone, a partition filling
+ * up. Read-only.
+ *
+ * An entry says its namespace, key, type ("u8", "i8", "u16", "i16",
+ * "u32", "i32", "u64", "i64", "str", "blob"), its size in bytes (an
+ * integer's width; a string's length with its NUL; a blob's length),
+ * for an integer its value, and for a string or blob a 32-bit FNV-1a of
+ * the bytes (which tells "the same as before" from "changed") and the
+ * bytes themselves, with whether they are text: valid UTF-8 with no
+ * control characters but tab and newline.
+ *
+ * THE BYTES ARE THE PARTITION'S, SECRETS INCLUDED: Wi-Fi passwords, mail
+ * passwords, API secrets, the device's private key. They are given to
+ * the callback only, valid only during the call, and wiped after it.
+ * Plain chars, integers and a pointer, so an app's ELF can take entries
+ * through the nvs section.
+ */
+typedef struct {
+    char     ns[16];
+    char     key[16];
+    char     type[5];
+    uint32_t size;
+    int64_t  value;     /* an integer's (a u64's as its bits); else 0 */
+    uint32_t hash;      /* a string's or blob's FNV-1a; else 0 */
+    const uint8_t *data; /* a string's (without its NUL) or blob's bytes,
+                          * during the callback only; else NULL */
+    uint32_t len;       /* how many there are at data */
+    bool     text;      /* data is UTF-8 text, as above */
+} nvsh_entry_t;
+
+/* Return false to stop. */
+typedef bool (*nvsh_entry_cb_t)(const nvsh_entry_t *e, void *arg);
+
+/* Each entry of namespace `ns`, or of every namespace when NULL, in NVS's
+ * own order, to `cb` (which may be NULL, to count). The number given, or
+ * -1 before nvsh_init() or when NVS could not be walked. */
+int nvsh_list(const char *ns, nvsh_entry_cb_t cb, void *arg);
+
+/* How full the partition is, in NVS's 32-byte entries: used, free (which
+ * counts the page NVS keeps in reserve), available for data, and in all,
+ * and how many namespaces it holds. A partition with no free page left
+ * is the one nvsh_init() erases at the next boot. */
+typedef struct {
+    uint32_t used, free, available, total, namespaces;
+} nvsh_stats_t;
+esp_err_t nvsh_stats(nvsh_stats_t *out);
+
+/* The stats, then every entry of `ns` (NULL: all), to the console at info
+ * level, a line each: integers with their values, strings and blobs with
+ * their sizes and hashes, and -- with `contents` -- those that are text
+ * as text too, quoted and escaped, the first 160 bytes. With `contents`
+ * the console shows every secret that is text; the log says so first. */
+void nvsh_log(const char *ns, bool contents);
+
 #ifdef __cplusplus
 }
 #endif

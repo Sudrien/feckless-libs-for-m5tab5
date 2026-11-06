@@ -21,6 +21,8 @@ nvsh_get_i32
 nvsh_get_str
 nvsh_get_u32
 nvsh_get_u8
+nvsh_list
+nvsh_log
 nvsh_migrate
 nvsh_ready
 nvsh_set_blob
@@ -28,3 +30,12 @@ nvsh_set_i32
 nvsh_set_str
 nvsh_set_u32
 nvsh_set_u8
+nvsh_stats
+
+# 9005: nvsh_list(), nvsh_stats() and nvsh_log() -- what is in the
+# partition. nvsh_entry_t and nvsh_stats_t are laid out by the app and
+# filled by the launcher, so they are this section's as much as the names
+# are: a field added to either is nvs_v2. nvsh_list() hands an app's
+# callback every namespace's entries, other apps' and the launcher's
+# included, contents and all -- the partition is shared, and this is the
+# whole of it.

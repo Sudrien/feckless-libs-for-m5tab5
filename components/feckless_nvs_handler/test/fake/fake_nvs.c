@@ -1,4 +1,6 @@
 /* In-memory NVS for nvstest.c. SPDX-License-Identifier: MIT */
+#include <stdarg.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "nvs.h"
@@ -19,6 +21,7 @@ static int s_fail_after = -1, s_writes;
 
 void fake_nvs_reset(void)
 {
+    fake_log_text[0] = '\0';
     for (int i = 0; i < MAXI; i++) { free(s_items[i].data); memset(&s_items[i], 0, sizeof s_items[i]); }
     memset(s_h_open, 0, sizeof s_h_open);
     s_fail_after = -1; s_writes = 0; fake_log_warn = fake_log_err = 0;
@@ -107,3 +110,104 @@ esp_err_t nvs_get_u32(nvs_handle_t h, const char *k, uint32_t *o) { return get(h
 esp_err_t nvs_set_u32(nvs_handle_t h, const char *k, uint32_t v) { return put(h, k, T_U32, &v, 4); }
 esp_err_t nvs_get_i32(nvs_handle_t h, const char *k, int32_t *o) { return get(h, k, T_I32, o, NULL); }
 esp_err_t nvs_set_i32(nvs_handle_t h, const char *k, int32_t v) { return put(h, k, T_I32, &v, 4); }
+
+/* ---- 9005: listing ------------------------------------------------------ */
+
+char fake_log_text[1 << 16];
+void fake_log_info(const char *fmt, ...)
+{
+    const size_t o = strlen(fake_log_text);
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(fake_log_text + o, sizeof(fake_log_text) - o, fmt, ap);
+    va_end(ap);
+    const size_t p = strlen(fake_log_text);
+    if (p + 1 < sizeof(fake_log_text)) { fake_log_text[p] = '\n'; fake_log_text[p + 1] = '\0'; }
+}
+
+struct fake_it { int at; char ns[16]; int any; };
+static int s_live_its;
+int fake_nvs_live_iterators(void) { return s_live_its; }
+
+static nvs_type_t code(ftype_t t)
+{
+    switch (t) {
+    case T_BLOB: return NVS_TYPE_BLOB;
+    case T_STR:  return NVS_TYPE_STR;
+    case T_U8:   return NVS_TYPE_U8;
+    case T_U32:  return NVS_TYPE_U32;
+    default:     return NVS_TYPE_I32;
+    }
+}
+
+static int next_from(struct fake_it *it, int from)
+{
+    for (int i = from; i < MAXI; i++)
+        if (s_items[i].used && (it->any || !strcmp(s_items[i].ns, it->ns))) return i;
+    return -1;
+}
+
+esp_err_t nvs_entry_find(const char *part, const char *ns, nvs_type_t type, nvs_iterator_t *out)
+{
+    (void)type;
+    if (!part || !out) return ESP_ERR_INVALID_ARG;
+    *out = NULL;
+    struct fake_it *it = calloc(1, sizeof(*it));
+    it->any = ns == NULL;
+    if (ns) { strncpy(it->ns, ns, 15); }
+    it->at = next_from(it, 0);
+    if (it->at < 0) { free(it); return ESP_ERR_NVS_NOT_FOUND; }
+    s_live_its++;
+    *out = it;
+    return ESP_OK;
+}
+
+esp_err_t nvs_entry_next(nvs_iterator_t *pit)
+{
+    struct fake_it *it = *pit;
+    it->at = next_from(it, it->at + 1);
+    if (it->at < 0) { free(it); s_live_its--; *pit = NULL; return ESP_ERR_NVS_NOT_FOUND; }
+    return ESP_OK;
+}
+
+esp_err_t nvs_entry_info(const nvs_iterator_t it, nvs_entry_info_t *out)
+{
+    if (!it || !out) return ESP_ERR_INVALID_ARG;
+    const item_t *x = &s_items[it->at];
+    memset(out, 0, sizeof(*out));
+    strncpy(out->namespace_name, x->ns, 15);
+    strncpy(out->key, x->key, 15);
+    out->type = code(x->t);
+    return ESP_OK;
+}
+
+void nvs_release_iterator(nvs_iterator_t it)
+{
+    if (it) { free(it); s_live_its--; }
+}
+
+esp_err_t nvs_get_stats(const char *part, nvs_stats_t *st)
+{
+    (void)part;
+    int used = 0, ns = 0;
+    char seen[MAXI][16];
+    for (int i = 0; i < MAXI; i++) {
+        if (!s_items[i].used) continue;
+        used += 1 + (int)((s_items[i].len + 31) / 32);
+        int known = 0;
+        for (int j = 0; j < ns && !known; j++) known = !strcmp(seen[j], s_items[i].ns);
+        if (!known) strcpy(seen[ns++], s_items[i].ns);
+    }
+    st->used_entries = (size_t)(used + ns);
+    st->total_entries = 504;
+    st->free_entries = st->total_entries - st->used_entries;
+    st->available_entries = st->free_entries > 126 ? st->free_entries - 126 : 0;
+    st->namespace_count = (size_t)ns;
+    return ESP_OK;
+}
+
+esp_err_t nvs_get_i8(nvs_handle_t h, const char *k, int8_t *o)   { (void)h; (void)k; (void)o; return ESP_ERR_NVS_NOT_FOUND; }
+esp_err_t nvs_get_u16(nvs_handle_t h, const char *k, uint16_t *o) { (void)h; (void)k; (void)o; return ESP_ERR_NVS_NOT_FOUND; }
+esp_err_t nvs_get_i16(nvs_handle_t h, const char *k, int16_t *o)  { (void)h; (void)k; (void)o; return ESP_ERR_NVS_NOT_FOUND; }
+esp_err_t nvs_get_u64(nvs_handle_t h, const char *k, uint64_t *o) { (void)h; (void)k; (void)o; return ESP_ERR_NVS_NOT_FOUND; }
+esp_err_t nvs_get_i64(nvs_handle_t h, const char *k, int64_t *o)  { (void)h; (void)k; (void)o; return ESP_ERR_NVS_NOT_FOUND; }

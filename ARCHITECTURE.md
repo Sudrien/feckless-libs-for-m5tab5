@@ -1258,3 +1258,38 @@ one new thing was 8016. The 9000s start after that tag.
   `fetchtest` clean under ThreadSanitizer and passing with the statics in
   their section; the strict `-Wformat-truncation=2` build clean at -O2
   and -Os. Not built with ESP-IDF; not run on a board.
+- **9005** `nvsh_list()`, `nvsh_stats()`, `nvsh_log()`: what is in the
+  NVS partition. Defeatist's Podcast Index key went missing with no
+  sign of what took it, and the partition -- 20 KB, shared by a
+  launcher and every app the board runs -- is one nothing could list:
+  an app's ELF cannot walk NVS (Defeatist's `nvsns.c` says so), and
+  `nvsh_init()` erases the whole of it when it comes up full. Now
+  `nvsh_list(ns, cb, arg)` walks every entry (or one namespace's) with
+  IDF's iterator and hands each to a callback: namespace, key, type as a
+  short name ("u8" ... "i64", "str", "blob", so IDF's enum stays out of
+  the ABI), size, an integer's value, a string's or blob's FNV-1a and
+  bytes -- valid during the call only, wiped and freed after it, with a
+  flag for whether they are text (valid UTF-8, no overlongs, surrogates
+  or C0/C1 controls but tab and newline). `nvsh_stats()` is NVS's own
+  used, free, available and total entries and namespace count, which is
+  what says a partition is filling. `nvsh_log(ns, contents)` writes the
+  stats and a line per key to the console; with `contents` it adds what
+  is text, quoted, `\n \t \" \\` escaped, cut at 160 bytes on a
+  character boundary with "..." after, under a warning line that
+  secrets follow -- the partition holds Wi-Fi and mail passwords, API
+  secrets and the device's private key. Binary blobs, and strings with
+  control characters, are never printed. The nvs section gains the
+  three names, which is compatible, and says the two structs are its
+  now. *Checked:* `make -C components/feckless_nvs_handler/test`, 112
+  checks under ASan and UBSan, the fake NVS now with IDF's iterator,
+  stats and type codes and an `ESP_LOGI` that keeps what it is given:
+  every entry's type, size, value, hash and bytes as seen by the
+  callback; one namespace, an empty one, stopping early, and no
+  iterator left unreleased after any of them; the log without contents
+  holding no secret, with contents holding them quoted and escaped, no
+  binary or control-character value printed, the output valid UTF-8, a
+  300-byte string of three-byte characters cut within 160 bytes on a
+  boundary and a 300-byte ASCII one at exactly 160. `nvs_handler.c`
+  compiles at -O2 with `-Wall -Wextra -Werror` against ESP-IDF v6.1's
+  own `nvs.h`, and at `-Wformat-truncation=2 -Wformat-overflow=2` at
+  -O2 and -Os. Not built with ESP-IDF; not run on a board.
