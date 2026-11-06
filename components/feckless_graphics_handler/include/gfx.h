@@ -261,6 +261,36 @@ void gfx_draw_char(int x, int y, uint32_t cp, int scale, uint16_t c);
 /* Left-aligned, clipped to max_w with an ellipsis. No reflow. */
 void gfx_draw_text(int x, int y, const char *s, int scale, int max_w, uint16_t c);
 
+/*
+ * 9006: styled text, for a text editor's markdown -- Jinxed Writer's
+ * bold, heavy headings and italic. Drawn from the same glyphs, so the
+ * advance, gfx_text_w() and every column stay what they are unstyled:
+ *
+ *   GFX_STYLE_BOLD    a second pass one screen pixel to the right. Every
+ *                     glyph has an empty column after it, so it stays in
+ *                     its cell at any scale.
+ *   GFX_STYLE_HEAVY   two more passes, one and two pixels right (a third
+ *                     of a stroke each at scale 3). Wins over BOLD.
+ *   GFX_STYLE_ITALIC  sheared: each screen row moved right a pixel for
+ *                     every four it sits above the baseline (the bottom
+ *                     of glyph row 9), so descenders lean back left. The
+ *                     top of a cap leans into the next cell, as italics do;
+ *                     only lit pixels are drawn, so it overlaps there.
+ *
+ * Clipped at max_w by whole glyphs, with no ellipsis: an editor's line is
+ * already broken to fit. No other difference from gfx_draw_text().
+ * Strikethrough and underline are the caller's: a rectangle, at
+ * GFX_STRIKE_Y(scale) for a line through the x-height.
+ */
+#define GFX_STYLE_BOLD      (0x1u)
+#define GFX_STYLE_HEAVY     (0x2u)
+#define GFX_STYLE_ITALIC    (0x4u)
+#define GFX_STRIKE_Y(scale) (6 * (scale) + (scale) / 2)    /* ark12 rows 6-7 */
+#define GFX_STRIKE_H(scale) ((scale) < 2 ? 1 : (scale) / 2 + 1)
+
+void gfx_draw_text_style(int x, int y, const char *s, int scale, int max_w,
+                         uint16_t c, unsigned style);
+
 /* Same, but the tail is kept rather than the head -- for paths, where the
  * end is the part that identifies the directory. */
 void gfx_draw_text_tail(int x, int y, const char *s, int scale, int max_w, uint16_t c);

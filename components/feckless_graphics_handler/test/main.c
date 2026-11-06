@@ -909,6 +909,83 @@ static void test_arabic(void)
     CHECK(gfx_start_x(true, 24, 600, 900) == 24, "RTL too long fills the row");
 }
 
+/* ------------------------------------------------------------------ */
+/* 9006: styled text                                                   */
+/* ------------------------------------------------------------------ */
+
+static int ink_count(void)
+{
+    int n = 0;
+    for (int i = 0; i < W * H; i++) n += fb[i] == INK;
+    return n;
+}
+
+static void test_style(void)
+{
+    printf("gfx_draw_text_style()\n");
+    const char *s = "Hamburgefonstiv jpg";
+    for (int scale = 2; scale <= 5; scale++) {
+        const int adv = gfx_text_w(s, scale);
+        int x0, y0, x1, y1;
+
+        clear();
+        gfx_draw_text(10, 100, s, scale, W, INK);
+        const int plain = ink_count();
+        clear();
+        gfx_draw_text_style(10, 100, s, scale, W, INK, 0);
+        CHECK(ink_count() == plain, "s=%d: no style is gfx_draw_text", scale);
+
+        /* Bold and heavy: more ink, never past the run's advance -- the
+         * glyph's empty column takes the extra pixels. */
+        clear();
+        gfx_draw_text_style(10, 100, s, scale, W, INK, GFX_STYLE_BOLD);
+        const int bold = ink_count();
+        CHECK(bold > plain, "s=%d: bold adds ink", scale);
+        CHECK(ink_bbox(&x0, &y0, &x1, &y1) && x0 >= 10 && x1 < 10 + adv,
+              "s=%d: bold stays in [10, %d), drew %d..%d", scale, 10 + adv, x0, x1);
+        clear();
+        gfx_draw_text_style(10, 100, s, scale, W, INK, GFX_STYLE_HEAVY);
+        CHECK(ink_count() > bold, "s=%d: heavy over bold", scale);
+        CHECK(ink_bbox(&x0, &y0, &x1, &y1) && x1 < 10 + adv,
+              "s=%d: heavy stays inside the advance, drew to %d", scale, x1);
+
+        /* Italic: the same rows, leaning -- the top right of the
+         * baseline, the descenders left of it. */
+        clear();
+        gfx_draw_text(10, 100, "H", scale, W, INK);
+        int px0, py0, px1, py1;
+        ink_bbox(&px0, &py0, &px1, &py1);
+        clear();
+        gfx_draw_text_style(10, 100, "H", scale, W, INK, GFX_STYLE_ITALIC);
+        CHECK(ink_bbox(&x0, &y0, &x1, &y1) && y0 == py0 && y1 == py1,
+              "s=%d: italic keeps the rows", scale);
+        CHECK(x1 > px1 && x0 >= px0, "s=%d: italic H leans right (%d..%d vs %d..%d)",
+              scale, x0, x1, px0, px1);
+        int top_l = W, bot_l = W;
+        for (int x = 0; x < W; x++) {
+            if (fb[py0 * W + x] == INK && x < top_l) top_l = x;
+            if (fb[py1 * W + x] == INK && x < bot_l) bot_l = x;
+        }
+        CHECK(top_l > bot_l, "s=%d: an italic H's top is right of its foot", scale);
+        clear();
+        gfx_draw_text_style(10, 100, "p", scale, W, INK, GFX_STYLE_ITALIC);
+        CHECK(ink_bbox(&x0, &y0, &x1, &y1) && x0 < 10,
+              "s=%d: an italic p's descender leans back left of the cell", scale);
+
+        /* max_w by whole glyphs, no ellipsis. */
+        clear();
+        gfx_draw_text_style(10, 100, s, scale, GFX_GLYPH_W(scale) * 3, INK, GFX_STYLE_BOLD);
+        CHECK(ink_bbox(&x0, &y0, &x1, &y1) && x1 < 10 + GFX_GLYPH_W(scale) * 3,
+              "s=%d: clipped to three cells", scale);
+        CHECK(GFX_STRIKE_Y(scale) > 4 * scale && GFX_STRIKE_Y(scale) + GFX_STRIKE_H(scale) <= 10 * scale,
+              "s=%d: the strike is inside the x-height", scale);
+    }
+    clear();
+    gfx_draw_text_style(10, 100, NULL, 3, W, INK, GFX_STYLE_BOLD);
+    gfx_draw_text_style(10, 100, "x", 3, 0, INK, GFX_STYLE_BOLD);
+    CHECK(ink_count() == 0, "NULL and max_w 0 draw nothing");
+}
+
 int main(void)
 {
     if (gfx_init(NULL, W, H) != ESP_OK) {
@@ -944,6 +1021,7 @@ int main(void)
     test_ipa();                                          /* 8015 */
     test_wrap();                                         /* 6018 */
     test_arabic();                                       /* 6029 */
+    test_style();                                        /* 9006 */
 
     printf("\n%d checks, %d failures\n", checks, failures);
     return failures ? 1 : 0;

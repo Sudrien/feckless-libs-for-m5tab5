@@ -1293,3 +1293,19 @@ one new thing was 8016. The 9000s start after that tag.
   compiles at -O2 with `-Wall -Wextra -Werror` against ESP-IDF v6.1's
   own `nvs.h`, and at `-Wformat-truncation=2 -Wformat-overflow=2` at
   -O2 and -Os. Not built with ESP-IDF; not run on a board.
+- **9006** `gfx_draw_text_style()`: bold, heavy and italic text from the
+  same glyphs, for Jinxed Writer's markdown. `GFX_STYLE_BOLD` draws a
+  second pass a screen pixel right, `GFX_STYLE_HEAVY` two more (one and
+  two pixels), `GFX_STYLE_ITALIC` shears each screen row a pixel right
+  for every four above the baseline (the bottom of ark12's row 9), so
+  descenders lean back. Advances, `gfx_text_w()` and columns are the
+  unstyled ones: the glyph's empty column takes bold's extra pixels.
+  Clipped by whole glyphs, no ellipsis. `GFX_STRIKE_Y()`/`GFX_STRIKE_H()`
+  place a strikethrough over ark12's x-height (rows 6-7). Not added to
+  `feckless_abi`'s exports. *Checked:* `make -C
+  components/feckless_graphics_handler/test`, `test_style()` at scales 2
+  to 5: no style draws what `gfx_draw_text()` does, bold and heavy add
+  ink inside the advance, italic keeps the rows and leans an H right and
+  a p's descender left of its cell, clipping by whole cells, the strike
+  inside the x-height. Drawn to an image on the host and looked at. Not
+  built with ESP-IDF; not run on a board.

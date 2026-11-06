@@ -1267,6 +1267,54 @@ int gfx_draw_para(int x, int y, const char *s, int scale, int max_w,
     return rows ? rows : (max_rows > 0 ? 1 : 0);
 }
 
+/* 9006: the screen row of the baseline, in glyph rows: the bottom of row
+ * 9, where x, H and b stand and p and g hang below. */
+#define ITALIC_BASE_ROW     (10)
+
+static int floor_div4(int v) { return v >= 0 ? v / 4 : -((-v + 3) / 4); }
+
+static void blit_glyph_style(const uint16_t *g, int w, int x, int y, int scale,
+                             uint16_t c, unsigned style)
+{
+    const int passes = (style & GFX_STYLE_HEAVY) ? 3 : (style & GFX_STYLE_BOLD) ? 2 : 1;
+    const bool italic = (style & GFX_STYLE_ITALIC) != 0;
+    if (!italic) {
+        for (int p = 0; p < passes; p++) blit_glyph(g, w, x + p, y, scale, c);
+        return;
+    }
+    const int base = ITALIC_BASE_ROW * scale;
+    for (int row = 0; row < ARK12_H; row++) {
+        const uint16_t bits = g[row];
+        if (!bits) continue;
+        for (int sub = 0; sub < scale; sub++) {
+            const int py = row * scale + sub;
+            const int dx = floor_div4(base - 1 - py);
+            for (int col = 0; col < w; col++) {
+                if (!(bits & (1u << col))) continue;
+                gfx_fill_rect(x + col * scale + dx, y + py, scale + passes - 1, 1, c);
+            }
+        }
+    }
+}
+
+void gfx_draw_text_style(int x, int y, const char *s, int scale, int max_w,
+                         uint16_t c, unsigned style)
+{
+    if (!s || !*s || max_w <= 0) return;
+    if (!style) { gfx_draw_text(x, y, s, scale, max_w, c); return; }
+    int cx = x;
+    text_iter_t it;
+    text_init(&it, s);
+    uint32_t cp;
+    while ((cp = text_next(&it)) != 0) {
+        glyph_t g = glyph_for(cp);
+        if (!g.bits) continue;
+        if (cx + g.adv * scale > x + max_w) break;
+        blit_glyph_style(g.rows, g.w, cx, y, scale, c, style);
+        cx += g.adv * scale;
+    }
+}
+
 void gfx_draw_text(int x, int y, const char *s, int scale, int max_w, uint16_t c)
 {
     if (!s || !*s || max_w <= 0) return;
