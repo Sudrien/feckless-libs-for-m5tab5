@@ -1238,3 +1238,23 @@ one new thing was 8016. The 9000s start after that tag.
   a caller's buffer became `copy_out()` (9002's lesson). Not built with
   ESP-IDF; not run on a board. Defeatist and Jinxed Writer change over
   to it in their own repositories.
+- **9004** `feckless_fetch`'s statics in PSRAM, where the app allows it.
+  They are 16,144 bytes of `.bss` -- the addresses, paths and header
+  buffers, the writer's state, the helpers' -- and a component's
+  zero-initialised statics are internal RAM unless something moves
+  them, which on a Tab5 is the radio's DMA pool. In Defeatist they are
+  the launcher's (the `.bin` runs the code and exports it; its player
+  ELF is in PSRAM already), and Defeatist once lost its radio to 12 KB
+  of `.bss` (its 5178). So every static over a few bytes carries
+  `EXT_RAM_BSS_ATTR`: IDF's `.ext_ram.bss` with
+  `CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY`, nothing without it, so an
+  app that has not set the option is as before. None is a FreeRTOS object
+  (the queues, the mutex and the helpers' TCBs are on the heap), and none
+  is touched with the cache off. The network handler's README asks for
+  the option. *Checked:* with the option off, `.bss` is 16,144 bytes as
+  before; on, 160 stay and 15,872 go to `.ext_ram.bss` (15,736 against
+  ESP-IDF v6.1's own `esp_attr.h`, whose `__COUNTER__` names a section
+  for each). `make -C components/feckless_network_handler/test` passes,
+  `fetchtest` clean under ThreadSanitizer and passing with the statics in
+  their section; the strict `-Wformat-truncation=2` build clean at -O2
+  and -Os. Not built with ESP-IDF; not run on a board.

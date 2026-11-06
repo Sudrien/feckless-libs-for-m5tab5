@@ -20,6 +20,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "esp_attr.h"
 #include "esp_crt_bundle.h"
 #include "esp_heap_caps.h"
 #include "esp_http_client.h"
@@ -34,6 +35,20 @@
 #include "storage_io.h"
 
 static const char *TAG = "feckless_fetch";
+
+/*
+ * 9004: THE STATICS IN PSRAM, where the app allows it. They are about
+ * 16 KB -- addresses, paths, header buffers, the helpers' state -- and a
+ * component's zero-initialised statics are internal RAM unless something
+ * moves them, which on a Tab5 is the radio's DMA pool: Defeatist lost its
+ * radio to 12 KB of .bss once (its 5178). EXT_RAM_BSS_ATTR is IDF's
+ * .ext_ram.bss with CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY and
+ * nothing without it, so an app that has not set the option keeps them
+ * internal, as before. None is a FreeRTOS object (those are on the heap:
+ * the queues, the mutex, the helpers' TCBs), and none is touched with the
+ * cache off.
+ */
+#define PSRAM_BSS EXT_RAM_BSS_ATTR
 
 #define DL_STACK      8192          /* TLS and FatFs; internal: it writes the card */
 #define DL_CHUNK      STORAGE_IO_CHUNK
@@ -67,15 +82,15 @@ static uint32_t          s_gen;
 static int64_t           s_step = -1;           /* last tenth of a MB the generation moved for */
 enum { RUN = 0, STOP_PAUSE, STOP_CANCEL };
 static int               s_stop;
-static char              s_url[DL_URL_MAX];
-static char              s_path[FECKLESS_FETCH_PATH_MAX];   /* the finished file */
-static char              s_partp[DL_PART_MAX];  /* its part file */
+static PSRAM_BSS char     s_url[DL_URL_MAX];
+static PSRAM_BSS char     s_path[FECKLESS_FETCH_PATH_MAX];   /* the finished file */
+static PSRAM_BSS char     s_partp[DL_PART_MAX];  /* its part file */
 static int64_t           s_ready;               /* see feckless_fetch_live() */
-static char              s_why[DL_WHY_MAX];
+static PSRAM_BSS char     s_why[DL_WHY_MAX];
 /* The options, copied. */
 static int               s_conns;
 static int64_t           s_split_min;
-static char              s_ua[96];
+static PSRAM_BSS char     s_ua[96];
 static bool              s_https_only;
 static feckless_fetch_cb_t s_cb;
 static void             *s_arg;
@@ -207,7 +222,7 @@ static bool id_tmp_path(const char *part, char *out, size_t cap)
 static int id_read(const char *part, char *val, size_t vcap, int64_t *total,
                    seg_t *seg, int nmax, int64_t *front, int64_t *stripe)
 {
-    static char p[DL_PART_MAX + 8];
+    static PSRAM_BSS char p[DL_PART_MAX + 8];
     val[0] = '\0';
     *total = -1;
     *front = -1;
@@ -237,7 +252,7 @@ static int id_read(const char *part, char *val, size_t vcap, int64_t *total,
 static void id_write(const char *part, const char *val, int64_t total, const seg_t *seg, int nseg,
                      int64_t front, int64_t stripe)
 {
-    static char p[DL_PART_MAX + 8], t[DL_PART_MAX + 8];
+    static PSRAM_BSS char p[DL_PART_MAX + 8], t[DL_PART_MAX + 8];
     if (!id_path(part, p, sizeof(p)) || !id_tmp_path(part, t, sizeof(t))) return;
     FILE *f = fopen(t, "w");
     if (!f) { ESP_LOGW(TAG, "could not write %s", t); return; }
@@ -256,7 +271,7 @@ static void id_write(const char *part, const char *val, int64_t total, const seg
 
 static void remove_id(const char *part)
 {
-    static char p[DL_PART_MAX + 8];
+    static PSRAM_BSS char p[DL_PART_MAX + 8];
     if (id_path(part, p, sizeof(p))) remove(p);
     if (id_tmp_path(part, p, sizeof(p))) remove(p);
 }
@@ -408,7 +423,7 @@ static struct {
     uint8_t          *stage;
     int               st_len[DL_SEGS_MAX];
     int64_t           st_off[DL_SEGS_MAX];
-} s_wr;
+} s_wr PSRAM_BSS;
 
 /*
  * Chunk writes (Defeatist 8045): a segment's chunks gathered in its
@@ -519,9 +534,9 @@ static void wr_task(void *arg)
  */
 enum { SRV_DONE = 0, SRV_RERR, SRV_WERR, SRV_STOP, SRV_NOOPEN };
 
-static seg_t           s_plan[DL_SEGS_MAX];
+static PSRAM_BSS seg_t  s_plan[DL_SEGS_MAX];
 static int             s_nplan;
-static int64_t         s_rcv[DL_SEGS_MAX];
+static PSRAM_BSS int64_t s_rcv[DL_SEGS_MAX];
 static volatile bool   s_abort;
 /* The first byte no reader has taken, and the stripe size; under lock().
  * s_front is the total for a map in thirds (nothing to take). */
@@ -777,7 +792,7 @@ static struct {
     volatile int  res;
     char          url[DL_URL_MAX];
     hdrs_t        h;
-} s_help[DL_HELPERS > 0 ? DL_HELPERS : 1];
+} s_help[DL_HELPERS > 0 ? DL_HELPERS : 1] PSRAM_BSS;
 static SemaphoreHandle_t s_help_done;
 
 static void help_task(void *arg)
@@ -822,8 +837,8 @@ static bool helpers_ready(int n)
 static void dl_task(void *arg)
 {
     (void)arg;
-    static char url[DL_URL_MAX], part[DL_PART_MAX], path[FECKLESS_FETCH_PATH_MAX];
-    static hdrs_t h;
+    static PSRAM_BSS char url[DL_URL_MAX], part[DL_PART_MAX], path[FECKLESS_FETCH_PATH_MAX];
+    static PSRAM_BSS hdrs_t h;
     lock();
     snprintf(url, sizeof(url), "%s", s_url);
     snprintf(part, sizeof(part), "%s", s_partp);
@@ -853,7 +868,7 @@ static void dl_task(void *arg)
      * map. The size is stat()'s off_t: a part past 2 GB here starts over
      * rather than resuming at a wrong place.
      */
-    static seg_t seg[DL_SEGS_MAX];
+    static PSRAM_BSS seg_t seg[DL_SEGS_MAX];
     int nseg = 0;
     int64_t id_total = -1;
     int64_t front = -1, stripe = 0;
@@ -1091,7 +1106,7 @@ static void dl_task(void *arg)
      * has more segments than there are helpers -- is dl_task's, one after
      * another, each on a connection of its own; then the stripes still to
      * claim after them. */
-    static hdrs_t h2;
+    static PSRAM_BSS hdrs_t h2;
     for (int i = 0; i < nseg && res == SRV_DONE && nseg > 1; i++) {
         if (s_rcv[i] >= s_plan[i].end) continue;
         memset(&h2, 0, sizeof(h2));
@@ -1276,7 +1291,7 @@ void feckless_fetch_pause(void)
 
 void feckless_fetch_cancel(void)
 {
-    static char part[DL_PART_MAX], path[FECKLESS_FETCH_PATH_MAX];
+    static PSRAM_BSS char part[DL_PART_MAX], path[FECKLESS_FETCH_PATH_MAX];
     lock();
     const feckless_fetch_state_t st = s_state;
     if (st == FECKLESS_FETCH_RUNNING) s_stop = STOP_CANCEL;

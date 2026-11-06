@@ -79,7 +79,7 @@ run-cert: $(if $(MBED36),run-cert36 run-certnowriter36) $(if $(MBED40),run-cert4
 # in-memory server (fake/fetchfake.c). Also under ThreadSanitizer with
 # `make run-fetch-tsan`, which is not part of `all`.
 FETCHSRC := fetchtest.c ../src/feckless_fetch.c fake/fetchfake.c
-FETCHDEP := $(FETCHSRC) ../include/feckless_fetch.h fake/fetchfake.h fake/esp_http_client.h
+FETCHDEP := $(FETCHSRC) ../include/feckless_fetch.h fake/fetchfake.h fake/esp_http_client.h fake/esp_attr.h
 
 fetchtest: $(FETCHDEP)
 	$(CC) $(WARNCFLAGS) -c ../src/feckless_fetch.c -o /dev/null

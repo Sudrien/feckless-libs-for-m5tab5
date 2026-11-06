@@ -98,6 +98,11 @@ feckless component it uses.
 (`CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM=y`). Without it
 `feckless_fetch` works, on one connection.
 
+**Let `feckless_fetch`'s statics go to PSRAM**
+(`CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY=y`, 9004). They are about
+16 KB, and without the option they are internal RAM -- the radio's DMA
+pool. With it, 160 bytes stay internal.
+
 **Count a download's sockets** if the application budgets
 `CONFIG_LWIP_MAX_SOCKETS`: a download holds up to its `conns` at once.
 
