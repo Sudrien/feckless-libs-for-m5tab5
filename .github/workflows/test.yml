@@ -25,6 +25,9 @@ jobs:
       # 8010: against Spurious's code it was lifted from.
       - name: feckless_keyboard
         run: make -C components/feckless_keyboard/test
+      # 9012: over the real storage_list.c.
+      - name: feckless_chooser
+        run: make -C components/feckless_chooser/test
       - name: feckless_mail
         run: make -C components/feckless_mail/test
       # 8012, 8013: the generator on a fixture.

@@ -12,6 +12,7 @@ under one tag:
 | `feckless_nvs_handler` | The NVS partition, a value at a time: brought up once (erased and brought up afresh if unusable), and read and written by namespace and key, with no handle to keep |
 | `feckless_image_handler` | Pictures from their bytes: the kind (JPEG, PNG, JPEG XL, GIF) by magic number, a JPEG's baseline-or-not and size, the whole-number fit for small art, and a favicon.ico as a PNG, and the software decoders (stb_image for JPEG and GIF, pngle for PNG, J40 for JPEG XL) to RGB565; the hardware JPEG engine and drawing to follow |
 | `feckless_keyboard` | An on-screen keyboard drawn with gfx and driven by the app's own taps: four rows staggered as a real keyboard's, a number row, shift and caps lock, and a symbol page |
+| `feckless_chooser` | A file chooser drawn with gfx and driven by the app's keys and taps: a folder's entries from `storage_list.h`, a row each with size and date, into folders and back out; the app's filter decides what is listed and the app what a chosen file means |
 | `feckless_mail` | The outgoing mail account -- SMTP server, TLS or STARTTLS, login, app password, From and To -- in NVS for a launcher and its apps to share, a form to set it, drawn with gfx and typed on `feckless_keyboard` or a USB keyboard, and `mailsend()` to send with it over TLS or STARTTLS |
 | `feckless_libversions` | The libraries an app was built from, with versions and licences, as a table: `libversions.h` and `libversions.tsv`, generated at configure time from the lock, vendored components, the fonts, the image decoders' pins and the app's own rows; drawing it is the app's |
 | `feckless_camera` | The SC202CS camera on MIPI CSI, as luma frames, through esp_video; it takes the I2C bus from `feckless_drivers`' tab5io as an argument |
@@ -86,6 +87,9 @@ component needs:
 - `feckless_image_handler`: nothing by name; IDF's `heap` for the allocator.
 - `feckless_keyboard`: `feckless_graphics_handler`, for gfx. It links into an
   app's ELF (`ELF_COMPONENTS`); its gfx calls are the ABI's.
+- `feckless_chooser`: `feckless_graphics_handler` and
+  `feckless_storage_handler`. It links into an app's ELF; its gfx calls
+  are the core list's, its storage calls the ABI's storage section.
 - `feckless_mail`: `feckless_nvs_handler`, `feckless_graphics_handler` and
   `feckless_keyboard`. It links into an app's ELF; its NVS calls are the
   ABI's nvs section, its gfx calls the core list's. `mailsend()` also

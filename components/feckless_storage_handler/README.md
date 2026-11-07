@@ -64,7 +64,8 @@ if (storage_list_read(&list, "/sd/notes", STORAGE_SORT_NEWEST, notes, NULL) == S
 
 `storage_list_volumes()` lists the volumes present, and
 `storage_list_add()` puts in rows of the app's own -- pinned first, or
-sorted with the rest.
+sorted with the rest. `feckless_chooser` (9012) draws a list and moves
+through it.
 
 ## What the application must do
 

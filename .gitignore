@@ -1,3 +1,6 @@
 components/feckless_image_handler/vendor/
 components/feckless_keyboard/test/kbdtest
 components/feckless_storage_handler/test/listtest
+components/feckless_chooser/test/choosertest
+components/feckless_chooser/test/render
+components/feckless_chooser/test/chooser_*.ppm

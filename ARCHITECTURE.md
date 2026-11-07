@@ -1386,3 +1386,28 @@ one new thing was 8016. The 9000s start after that tag.
   -Wextra -Werror=extra` against IDF release/v6.1's FatFs as
   `patch_fatfs.py` leaves it, with stub IDF headers. Not built with
   ESP-IDF; not run on a board.
+- **9012** `feckless_chooser`: a file chooser over gfx and 9011's
+  `storage_list.h`, built as `mailform` is -- the app's rectangle,
+  colours and text size, `chooser_draw()`, and `chooser_key()` /
+  `chooser_tap()` / `chooser_poll()` saying NONE, REDRAW, OPEN, CANCEL,
+  or KEY for a key it has no use for (Jinxed's rename and delete). Rows
+  of folders first, then files with size and date, the right column
+  dropping the date, then the size, so a name keeps half the row; the
+  path line, tail first; a scroll bar only when there is more than fits.
+  Keys move, page, jump by first letter, open, and go back up onto the
+  folder left; taps open a row, go up from the path line, and page from
+  the bar. `root` keeps it in one folder, or lists the volumes; a folder
+  that goes with its card is climbed out of. `decorate` adds the app's
+  rows after each read and `colour` colours a row by the filter's kind:
+  enough for Avoidant's menu, Spurious's dictionary list and Jinxed
+  Writer's file mode; Defeatist keeps its browser and takes only 9011.
+  Linked into an ELF; its gfx calls are the core list's, its libc calls
+  already exported. *Checked:* `make -C components/feckless_chooser/test`
+  (new; in CI): choosertest over the real `storage_list.c` on a folder
+  in /tmp, gfx recorded, under ASan and UBSan -- each key and tap, back
+  out onto the folder left, root never left, a card gone, a file deleted
+  under the selection, pinned rows, and what is drawn at three widths;
+  `warn` at -O2 -Werror. Two of its checks were seen to fail against
+  deliberately broken code. `make preview` draws Jinxed's and Avoidant's
+  pages by the real gfx.c, in the component's README. Not built with
+  ESP-IDF; not run on a board.
