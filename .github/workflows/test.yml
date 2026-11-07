@@ -17,6 +17,9 @@ jobs:
         run: make -C components/feckless_drivers/test
       - name: feckless_graphics_handler
         run: make -C components/feckless_graphics_handler/test
+      # 9011: the lister, on a real folder.
+      - name: feckless_storage_handler
+        run: make -C components/feckless_storage_handler/test
       - name: feckless_network_handler
         run: make -C components/feckless_network_handler/test
       # 8010: against Spurious's code it was lifted from.

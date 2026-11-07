@@ -40,6 +40,32 @@ storage_io_init();
 storage_init(&usb);           /* before your USB host starts */
 ```
 
+## Listing a folder (9011)
+
+`storage_list.h` reads one folder for a chooser: in one pass with
+FatFs's `f_readdir()`, so each file's size and date come without a
+`stat()`, the volume held and the I/O lease taken per call. Dotfiles,
+`System Volume Information`, `$RECYCLE.BIN` and FAT-hidden entries are
+left out; the app's filter decides the rest and can tag what it keeps.
+Folders first, then by name or newest first.
+
+```c
+static int notes(const char *dir, const storage_ent_t *e, void *ctx)
+{
+    if (e->is_dir) return 0;
+    size_t n = strlen(e->name);
+    return n > 3 && !strcasecmp(e->name + n - 3, ".md") ? 1 : STORAGE_LIST_SKIP;
+}
+
+static storage_list_t list;             /* zeroed; .max to cap it */
+if (storage_list_read(&list, "/sd/notes", STORAGE_SORT_NEWEST, notes, NULL) == STORAGE_LIST_OK)
+    for (int i = 0; i < list.n; i++) draw_row(&list.ents[i]);
+```
+
+`storage_list_volumes()` lists the volumes present, and
+`storage_list_add()` puts in rows of the app's own -- pinned first, or
+sorted with the rest.
+
 ## What the application must do
 
 **Own the USB host.** Mass storage is one class driver among several on

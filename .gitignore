@@ -1,2 +1,3 @@
 components/feckless_image_handler/vendor/
 components/feckless_keyboard/test/kbdtest
+components/feckless_storage_handler/test/listtest

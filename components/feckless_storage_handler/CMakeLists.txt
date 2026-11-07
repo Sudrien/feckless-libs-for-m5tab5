@@ -10,7 +10,7 @@
 # SPDX-License-Identifier: MIT
 
 idf_component_register(
-    SRCS "src/storage.c" "src/storage_io.c"
+    SRCS "src/storage.c" "src/storage_io.c" "src/storage_list.c"
     INCLUDE_DIRS "include"
     PRIV_INCLUDE_DIRS "private_include"
     REQUIRES esp_driver_i2c

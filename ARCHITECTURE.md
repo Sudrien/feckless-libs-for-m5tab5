@@ -1359,3 +1359,30 @@ one new thing was 8016. The 9000s start after that tag.
   them) back through its base64, three parts and one closing boundary;
   a bad name after a good one, and a count with no files, refused with
   nothing sent; 9009's cases again. Not built with ESP-IDF.
+- **9011** `storage_list.h`: one folder's entries for a chooser, in
+  `feckless_storage_handler`. Read in one pass with `f_readdir()`, so a
+  file's size and date come with its name (Defeatist's `mediadir`
+  reasoning: `stat()` per file reads a FAT folder from the top each
+  time); the volume held with `storage_hold_brief()`, each FatFs call
+  under the `STORAGE_IO_BACKGROUND` lease. `storage_is_hidden()`'s and
+  FAT hidden or system entries left out, the app's filter deciding the
+  rest and tagging what it keeps with a kind; folders first, then by
+  name (case folded) or newest first, or the folder's own order. Rows of
+  the app's own with `storage_list_add()`, pinned first in the order
+  added (Avoidant's "Boot app2", Defeatist's cue tracks and podcast
+  link); `storage_list_volumes()` for the volumes present. Entries and
+  names on the heap, PSRAM first, in blocks that never move; up to `max`
+  (4096 by default), with `truncated` set past it. A read error part way
+  is `STORAGE_LIST_IO`, never the end of the folder. Its seven calls are
+  added to the ABI's storage section, as the rest of the handler is --
+  compatible, so storage_v2 still. *Checked:* `make -C
+  components/feckless_storage_handler/test` (new; in CI): listtest on a
+  real folder in /tmp under ASan and UBSan -- dotfiles, `._` sidecars and
+  System Volume Information never offered, the filter's kinds, the three
+  orders, pinned rows through each, max, a missing folder, the volumes,
+  600 names of 200 bytes across several blocks; the test's copies of
+  `storage_join_path()` and `storage_is_hidden()` compared with
+  storage.c's. The FatFs half compiled at -O2 with `-Wall -Werror=all
+  -Wextra -Werror=extra` against IDF release/v6.1's FatFs as
+  `patch_fatfs.py` leaves it, with stub IDF headers. Not built with
+  ESP-IDF; not run on a board.

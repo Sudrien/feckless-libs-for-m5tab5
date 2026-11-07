@@ -38,6 +38,14 @@ storage_io_stats
 storage_is_hidden
 storage_join_path
 storage_label
+# 9011: the lister, storage_list.h
+storage_list_add
+storage_list_clear
+storage_list_find
+storage_list_free
+storage_list_read
+storage_list_sort
+storage_list_volumes
 storage_mark_hidden
 storage_mount_path
 storage_of_path
