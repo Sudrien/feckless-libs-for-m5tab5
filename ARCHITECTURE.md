@@ -1411,3 +1411,18 @@ one new thing was 8016. The 9000s start after that tag.
   deliberately broken code. `make preview` draws Jinxed's and Avoidant's
   pages by the real gfx.c, in the component's README. Not built with
   ESP-IDF; not run on a board.
+- **9013** Radio down without a false SDMMC error. IDF 6's legacy
+  `sdmmc_host_deinit_slot()`, which esp_hosted's SDIO port calls for the
+  radio's slot 1, always tries to delete the shared SDMMC controller as
+  well. With the card on slot 0 the delete is refused, which is right,
+  but `sd_host_sdmmc.c` first logs `E SD_HOST:
+  sd_host_del_sdmmc_controller(417): host controller with slot
+  registered`, and the function then returns ESP_OK "for backward
+  compatibility". Every `wifi_stop()` printed it; Jinxed Writer's boot
+  NTP made that every power-on. `wifi_stop()` now sets the `SD_HOST`
+  tag to silent around `esp_hosted_deinit()` alone and restores its
+  level after. Read from IDF release/v6.1's `legacy/src/sdmmc_host.c`
+  and esp-hosted-mcu v3.0.10's `eh_host_port_sdio.c`. *Checked:* not
+  compiled -- wifi.c needs esp_hosted's and esp_wifi's headers; `make -C
+  components/feckless_network_handler/test` passes, though it does not
+  build wifi.c. Not built with ESP-IDF; not run on a board.

@@ -1104,7 +1104,25 @@ esp_err_t wifi_stop(void)
      *
      * Returns a negative errno, like connect_to_slave().
      */
+    /*
+     * 9013: IDF 6's legacy sdmmc_host_deinit_slot(), which esp_hosted's
+     * SDIO port calls for its slot (1), always goes on to delete the
+     * whole SDMMC controller. With the microSD card on slot 0 of the same
+     * controller the delete is refused -- the outcome wanted -- but
+     * sd_host_sdmmc.c logs the refusal as an error first:
+     *
+     *     E SD_HOST: sd_host_del_sdmmc_controller(417): host controller
+     *       with slot registered
+     *
+     * and sdmmc_host_deinit_slot() then returns ESP_OK "for backward
+     * compatibility". Every radio-down printed it, and it read as a
+     * fault. SD_HOST's errors are quieted for this one call only and its
+     * level put back after, so a real one at any other time still shows.
+     */
+    const esp_log_level_t sd_level = esp_log_level_get("SD_HOST");
+    esp_log_level_set("SD_HOST", ESP_LOG_NONE);
     const int hosted = esp_hosted_deinit();
+    esp_log_level_set("SD_HOST", sd_level);
     if (hosted != 0) {
         ESP_LOGW(TAG, "esp_hosted_deinit: %d", hosted);
         if (first == ESP_OK) first = ESP_FAIL;
