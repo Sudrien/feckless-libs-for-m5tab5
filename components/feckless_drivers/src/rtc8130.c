@@ -17,12 +17,23 @@ static const char *TAG = "tab5_rtc";
 #define RTC_TIMEOUT_MS  (100)
 
 #define REG_SEC         (0x10)      /* ..0x16: sec min hour wday mday month year */
+#define REG_ALARM       (0x17)      /* ..0x19: minute, hour, weekday/day (9014) */
+#define REG_EXT         (0x1C)
 #define REG_FLAG        (0x1D)
 #define REG_CTRL0       (0x1E)
 #define REG_CTRL1       (0x1F)
 
 #define FLAG_VLF        (1u << 1)   /* oscillator stop / backup voltage low */
+#define FLAG_AF         (1u << 3)   /* 9014: the alarm came due */
+#define FLAG_TF         (1u << 4)
+#define FLAG_UF         (1u << 5)
+#define EXT_WADA        (1u << 3)   /* 0: the day register is a weekday */
+#define EXT_TE          (1u << 4)
+#define ALARM_AE        (0x80)      /* in an alarm register: ignore it */
 #define CTRL0_STOP      (1u << 6)   /* hold the counters while they are written */
+#define CTRL0_UIE       (1u << 5)
+#define CTRL0_TIE       (1u << 4)
+#define CTRL0_AIE       (1u << 3)
 #define CTRL1_BACKUP    ((1u << 4) | (1u << 5))     /* as M5Stack's initBat() */
 
 static i2c_master_dev_handle_t s_dev;
@@ -174,5 +185,72 @@ bool rtc8130_write_forward(int64_t epoch)
         ESP_LOGI(TAG, "RX8130 moved forward to %" PRId64 " (held %s)", epoch,
                  valid ? "an earlier time" : "nothing valid");
     }
+    return ok;
+}
+
+/* ---- the alarm (9014) ------------------------------------------------ */
+
+/* AF and AIE as asked, TIE/UIE/TE off whatever they were. Locked. */
+static bool alarm_state_locked(bool aie)
+{
+    uint8_t c0 = 0, ext = 0, flag = 0;
+    if (!rd(REG_CTRL0, &c0, 1) || !rd(REG_EXT, &ext, 1) || !rd(REG_FLAG, &flag, 1)) return false;
+    c0 = (uint8_t)(c0 & ~(CTRL0_AIE | CTRL0_TIE | CTRL0_UIE));
+    if (aie) c0 |= CTRL0_AIE;
+    ext = (uint8_t)(ext & ~(EXT_TE | EXT_WADA));
+    flag = (uint8_t)(flag & ~(FLAG_AF | FLAG_TF | FLAG_UF));
+    /* Off and the flag cleared first, so a match during the write
+     * cannot leave AF set behind it. */
+    const uint8_t off = (uint8_t)(c0 & ~CTRL0_AIE);
+    return wr(REG_CTRL0, &off, 1) && wr(REG_EXT, &ext, 1) && wr(REG_FLAG, &flag, 1) &&
+           (!aie || wr(REG_CTRL0, &c0, 1));
+}
+
+bool rtc8130_alarm_take(void)
+{
+    if (!s_dev) return false;
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    uint8_t flag = 0;
+    const bool read = rd(REG_FLAG, &flag, 1);
+    const bool ok = alarm_state_locked(false);
+    xSemaphoreGive(s_lock);
+    const bool woke = read && (flag & FLAG_AF);
+    ESP_LOGI(TAG, "alarm %s (FLAG 0x%02X)%s", woke ? "was due: a scheduled wake" : "not due",
+             flag, ok ? "" : "; could not clear it");
+    return woke;
+}
+
+bool rtc8130_alarm_arm(uint32_t secs)
+{
+    if (!s_dev) return false;
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    uint8_t t[3];
+    bool ok = rd(REG_SEC, t, sizeof(t));
+    int at = 0;
+    if (ok) {
+        const int sec = bcd2bin(t[0] & 0x7F), min = bcd2bin(t[1] & 0x7F), hour = bcd2bin(t[2] & 0x3F);
+        ok = sec <= 59 && min <= 59 && hour <= 23;
+        uint32_t mins = (secs + (uint32_t)sec + 59u) / 60u;    /* up to the minute */
+        if (mins < 1) mins = 1;
+        if (mins > 1439) mins = 1439;                           /* the day is ignored */
+        at = (int)((hour * 60 + min + (int)mins) % 1440);
+    }
+    if (ok) {
+        ok = alarm_state_locked(false);     /* AF cleared, AIE off while it is written */
+        const uint8_t a[3] = { bin2bcd(at % 60), bin2bcd(at / 60), ALARM_AE };
+        ok = ok && wr(REG_ALARM, a, sizeof(a)) && alarm_state_locked(true);
+    }
+    xSemaphoreGive(s_lock);
+    if (ok) ESP_LOGI(TAG, "alarm armed for %02d:%02d on the RTC, %" PRIu32 " s on", at / 60, at % 60, secs);
+    else    ESP_LOGW(TAG, "alarm not armed");
+    return ok;
+}
+
+bool rtc8130_alarm_off(void)
+{
+    if (!s_dev) return false;
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    const bool ok = alarm_state_locked(false);
+    xSemaphoreGive(s_lock);
     return ok;
 }

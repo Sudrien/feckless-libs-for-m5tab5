@@ -36,6 +36,7 @@ static const char *TAG = "tab5io";
 /* PI4IOE_ADDR_2: tab5io.h */
 #define PI4IOE2_IO_DIR          (0xB9)
 #define CHG_EN_BIT              (1u << 7)   /* 6052: P7, the charger's enable */
+#define CHG_QC_N_BIT            (1u << 5)   /* 9014: P5, nCHG_QC_EN, low = on */
 
 static i2c_master_bus_handle_t s_i2c_bus;
 static i2c_master_dev_handle_t s_exp1, s_exp2;
@@ -133,22 +134,36 @@ static esp_err_t io_expanders_init(void)
      * Direction, out of high-Z, drive -- the order wifi.c and usbhost.c
      * use. Not fatal: a board that cannot charge can still play.
      */
+    /*
+     * 9014: and before it, P5, nCHG_QC_EN. IO_DIR (0xB9) already makes it
+     * an output, but the reset leaves it in high-Z too, so the charger's
+     * fast-charge (QC) enable was left floating. M5Stack's own init
+     * (M5Tab5-UserDemo, bsp_io_expander_pi4ioe_init() then
+     * setChargeQcEnable(true), 50 ms, setChargeEnable(true)) takes P5 out
+     * of high-Z and drives it low, then enables the charger: the same
+     * order here.
+     */
     {
-        static const struct { uint8_t reg; bool set; } chg[] = {
-            { PI4IOE_REG_IO_DIR,     true  },   /* output        */
-            { PI4IOE_REG_OUT_HIGH_Z, false },   /* out of high-Z */
-            { PI4IOE_REG_OUT_SET,    true  },   /* drive high    */
+        static const struct { uint8_t reg, bit; bool set; } chg[] = {
+            { PI4IOE_REG_IO_DIR,     CHG_QC_N_BIT, true  },   /* output        */
+            { PI4IOE_REG_OUT_SET,    CHG_QC_N_BIT, false },   /* latch low     */
+            { PI4IOE_REG_OUT_HIGH_Z, CHG_QC_N_BIT, false },   /* out of high-Z */
+            { 0,                     0,            false },   /* 50 ms         */
+            { PI4IOE_REG_IO_DIR,     CHG_EN_BIT,   true  },   /* output        */
+            { PI4IOE_REG_OUT_HIGH_Z, CHG_EN_BIT,   false },   /* out of high-Z */
+            { PI4IOE_REG_OUT_SET,    CHG_EN_BIT,   true  },   /* drive high    */
         };
         esp_err_t err = ESP_OK;
         for (size_t i = 0; i < sizeof(chg) / sizeof(chg[0]) && err == ESP_OK; i++) {
+            if (!chg[i].bit) { vTaskDelay(pdMS_TO_TICKS(50)); continue; }
             uint8_t reg = chg[i].reg, val = 0;
             err = i2c_master_transmit_receive(s_exp2, &reg, 1, &val, 1, I2C_TIMEOUT_MS);
             if (err != ESP_OK) break;
-            val = chg[i].set ? (uint8_t)(val | CHG_EN_BIT) : (uint8_t)(val & (uint8_t)~CHG_EN_BIT);
+            val = chg[i].set ? (uint8_t)(val | chg[i].bit) : (uint8_t)(val & (uint8_t)~chg[i].bit);
             err = reg_write(s_exp2, reg, val);
         }
-        if (err == ESP_OK) ESP_LOGI(TAG, "CHG_EN driven high (expander 0x%02X P7)", PI4IOE_ADDR_2);
-        else ESP_LOGW(TAG, "CHG_EN not set: %s -- the pack will not charge", esp_err_to_name(err));
+        if (err == ESP_OK) ESP_LOGI(TAG, "nCHG_QC_EN low, CHG_EN high (expander 0x%02X P5, P7)", PI4IOE_ADDR_2);
+        else ESP_LOGW(TAG, "charger not enabled: %s -- the pack will not charge", esp_err_to_name(err));
     }
 
     vTaskDelay(pdMS_TO_TICKS(100));     /* panel out of reset before first command */

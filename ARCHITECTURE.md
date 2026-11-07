@@ -1426,3 +1426,17 @@ one new thing was 8016. The 9000s start after that tag.
   compiled -- wifi.c needs esp_hosted's and esp_wifi's headers; `make -C
   components/feckless_network_handler/test` passes, though it does not
   build wifi.c. Not built with ESP-IDF; not run on a board.
+- **9014** The RX8130's alarm, and the charger's QC line. `rtc8130.h`
+  gains `rtc8130_alarm_take()` (was AF set; AF cleared, AIE off),
+  `rtc8130_alarm_arm(secs)` (minute and hour from the chip's own
+  counters plus `secs`, rounded up to the minute, the day ignored; AF
+  cleared, the time written, AIE set) and `rtc8130_alarm_off()`, all
+  under the driver's lock, TIE, UIE and TE kept off -- the registers and
+  the order Jinxed Writer's spec section 2 measured. `tab5io_init()`
+  now also takes P5 of 0x44, nCHG_QC_EN, out of high-Z and drives it
+  low, 50 ms before CHG_EN, as M5Tab5-UserDemo's
+  `bsp_io_expander_pi4ioe_init()` / `setChargeQcEnable(true)` /
+  `setChargeEnable(true)` does; it was left floating. *Checked:*
+  rtc8130.c and tab5io.c compiled with `-O2 -Wall -Werror=all -Wextra
+  -Werror=extra` against stub IDF headers. Not built with ESP-IDF; not
+  run on a board.

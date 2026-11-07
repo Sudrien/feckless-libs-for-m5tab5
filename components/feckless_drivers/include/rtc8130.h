@@ -58,6 +58,31 @@ bool rtc8130_write(int64_t epoch);
  */
 bool rtc8130_write_forward(int64_t epoch);
 
+/*
+ * 9014: the alarm, the one thing on this chip that powers the Tab5 back
+ * on after a soft power-off (the timer sets TF and does not; Jinxed
+ * Writer's spec, section 2). Minute and hour only, the day ignored, so
+ * it is due at most a day ahead. TIE, UIE and TE are kept off by both
+ * calls, so no other flag piles up.
+ *
+ * rtc8130_alarm_take(): whether AF was set -- this boot is the alarm's --
+ * then AF cleared and AIE off. Every boot calls it before anything else
+ * can be mistaken for a wake. False also when there is no chip.
+ *
+ * rtc8130_alarm_arm(): due `secs` from the chip's own reading, rounded
+ * up to the minute and at least one minute on. The reading is used
+ * whether or not the chip can vouch for it (VLF): the alarm compares
+ * against the same counters, so a wrong time still gives the right
+ * interval. In the order that was measured to work: AF cleared, the
+ * time written, AIE set.
+ *
+ * rtc8130_alarm_off(): AIE off and AF cleared, for a power-off that
+ * should stay off.
+ */
+bool rtc8130_alarm_take(void);
+bool rtc8130_alarm_arm(uint32_t secs);
+bool rtc8130_alarm_off(void);
+
 #ifdef __cplusplus
 }
 #endif
