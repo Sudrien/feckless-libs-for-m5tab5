@@ -1,4 +1,4 @@
-version: "0.9.7"
+version: "0.9.8"
 description: >-
   The feckless ABI's storage section: the storage handler, FatFs (with
   exFAT) and libc's file I/O for an app's ELF, from a launcher that links
