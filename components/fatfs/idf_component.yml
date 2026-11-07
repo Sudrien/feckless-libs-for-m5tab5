@@ -1,4 +1,4 @@
-version: "0.9.8"
+version: "0.9.9"
 description: >-
   ESP-IDF's fatfs component, with exFAT: it stands in for IDF's fatfs and
   builds the installed IDF's FatFs from a copy patched at configure time
