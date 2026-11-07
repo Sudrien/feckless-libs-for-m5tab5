@@ -1,4 +1,4 @@
-version: "0.9.9"
+version: "0.9.10"
 description: >-
   The libraries an M5Stack Tab5 app was built from, with their versions
   and licences, as a table: a header and a TSV generated at configure
