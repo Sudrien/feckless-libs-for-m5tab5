@@ -20,6 +20,11 @@ extern "C" {
  * locked, or the PMP is coarser than 4 bytes), or a core was not reached. */
 esp_err_t feckless_umode_pmp_apply(const feckless_umode_grant_t *grants, int n);
 
+/* How many times ESP-IDF's startup called esp_cpu_configure_region_protection()
+ * and this component's wrap skipped it (u-feckless-0013): one per core when
+ * the wrap is in the link, 0 if not. */
+uint32_t feckless_umode_idf_region_protection_skipped(void);
+
 #ifdef __cplusplus
 }
 #endif

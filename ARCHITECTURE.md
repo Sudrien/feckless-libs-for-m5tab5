@@ -2111,3 +2111,59 @@ one). With nothing locked, a mismatch is the granularity, as before.
 *Checked:* `umode_pmp.c` parses with riscv32-esp-elf-gcc 15.2.0 at `-Wall
 -Wextra -Werror`. Not on a Tab5. The granularity is still unmeasured: the
 next run with a rebuilt bootloader logs it.
+
+### u-feckless-0013 -- ESP-IDF's app region protection, not run
+
+0012 blamed the bootloader. It was not: the Tab5's bootloader was built with
+the option off (`build/bootloader/config/sdkconfig.h` has no
+`CONFIG_BOOTLOADER_REGION_PROTECTION_ENABLE`, and the one in the flash is that
+build, `Nov 8 2026 16:57:03`). The lock bits say who wrote the entries:
+`cpu_region_protect.c` writes entries 3, 4, 6 and 11 with `CONDITIONAL_*`
+permissions, which in a bootloader build have no L bit and in an app build
+do. 0011 read them locked (0x80, 0x8f, 0x9d, 0x9f). The app wrote them.
+
+**Why:** ESP-IDF 939043ea83 (release/v6.1, 2026-08-06), "do not gate
+application region protection on bootloader config". `bootloader_mem.c` is
+now `#if !BOOTLOADER_BUILD || CONFIG_BOOTLOADER_REGION_PROTECTION_ENABLE`: the
+app always runs `esp_cpu_configure_region_protection()`. The Tab5's IDF,
+v6.1-829-g9a97f6c54ec, has it; the v6.1 tag, which 0001-0011 were read
+against, and IDF 5.5.4, which the sample was, do not. No configuration turns
+it off in the app any more.
+
+Living with its layout is no box: it gives user mode read and write over
+internal SRAM (entry 4, 0x4ff00000-0x4ffc0000: the host's stacks, task
+control blocks, a window's saved registers) and over the CPU's and the LP
+peripherals (entries 0, 1, 15), all locked.
+
+**So:** `src/umode_wrap.c`, and `-Wl,--wrap=esp_cpu_configure_region_protection`
+on the component's link, as 0004 wraps `esp_elf_malloc`. The app's call is a
+no-op that counts itself (in IRAM; the count in .data from a non-zero start,
+so a later .bss clear does not hide it); the PMP stays in its reset state, as
+the v6.1 tag left it. `feckless_umode_idf_region_protection_skipped()` gives
+the count, and every apply logs it (`ESP-IDF's region protection skipped N
+times at start-up`, one per core). Entries locked with a count of 0 is the
+wrap missing from the link, and the error says so; locked with the count
+right is the bootloader, as 0012 says. Lost, for an app that links this
+component: what IDF's call adds -- M-mode faults on unmapped gaps and on 0x0,
+and W^X for IRAM -- which the v6.1 tag did not add either with the option
+off. The bootloader is a build of its own and still needs the option off:
+it locks entries 0, 1, 2 and 15 whatever `CONDITIONAL_*` says.
+
+Also, from the Tab5's sdkconfig: `CONFIG_SOC_CPU_PMP_REGION_GRANULARITY 128`.
+`feckless_umode_pmp_apply()` now refuses a grant whose ends are not on
+`SOC_CPU_PMP_REGION_GRANULARITY`; the box, 4 KB-aligned since 0011, is.
+`feckless_umode_pmp_plan()`, which has no ESP-IDF, still checks 4 bytes.
+
+*Checked:* in IDF at 9a97f6c54ec, P4 has one definition of
+`esp_cpu_configure_region_protection()` (`port/esp32p4/cpu_region_protect.c`)
+and one caller (`bootloader_mem.c`), in another component's archive. The wrap
+on that shape, with riscv32-esp-elf 15.2.0: a caller in one archive, the
+definition in another, `umode_wrap.o` in a third -- without the wrap
+`bootloader_init_mem` jumps to `esp_cpu_configure_region_protection`, with it
+to `__wrap_esp_cpu_configure_region_protection`, and IDF's is not linked.
+`umode_pmp.c`, `umode_wrap.c`, `umode_load.c`, `umode_idf.c` parse at `-Wall
+-Wextra -Werror`. *Not on a Tab5.*
+
+*What to look for:* `feckless_umode: ESP-IDF's region protection skipped 2
+times at start-up`, `core 0: PMP granularity 128 bytes`, no `locked before`
+lines, and the reader in its box.

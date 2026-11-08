@@ -151,6 +151,16 @@ static void log_core(const job_t *j, int c)
 esp_err_t feckless_umode_pmp_apply(const feckless_umode_grant_t *grants, int n)
 {
     static job_t job;
+#ifdef SOC_CPU_PMP_REGION_GRANULARITY
+    /* u-feckless-0013: the SoC's granule (128 bytes on the P4, which 0011's
+     * probe is to confirm): a grant not on it would read back rounded. */
+    for (int i = 0; i < n; i++) {
+        ESP_RETURN_ON_FALSE(grants[i].lo % SOC_CPU_PMP_REGION_GRANULARITY == 0 &&
+                            grants[i].hi % SOC_CPU_PMP_REGION_GRANULARITY == 0,
+                            ESP_ERR_INVALID_ARG, TAG, "grant %d, 0x%08x..0x%08x, is not on the PMP's %d-byte granule",
+                            i, (unsigned)grants[i].lo, (unsigned)grants[i].hi, SOC_CPU_PMP_REGION_GRANULARITY);
+    }
+#endif
     ESP_RETURN_ON_FALSE(feckless_umode_pmp_plan(grants, n, job.addr, job.cfg) == FECKLESS_UMODE_OK,
                         ESP_ERR_INVALID_ARG, TAG, "the grants are not a valid PMP plan");
     job.done = 0;
@@ -170,6 +180,8 @@ esp_err_t feckless_umode_pmp_apply(const feckless_umode_grant_t *grants, int n)
     for (int c = 0; c < NCORE; c++) {
         ESP_LOGI(TAG, "core %d: PMP granularity %u bytes", c, (unsigned)granule(job.gran_raw[c]));
     }
+    ESP_LOGI(TAG, "ESP-IDF's region protection skipped %u times at start-up",
+             (unsigned)feckless_umode_idf_region_protection_skipped());
     if (job.bad) {
 #if CONFIG_BOOTLOADER_REGION_PROTECTION_ENABLE
         ESP_LOGE(TAG, "built with CONFIG_BOOTLOADER_REGION_PROTECTION_ENABLE=y");
@@ -190,7 +202,12 @@ esp_err_t feckless_umode_pmp_apply(const feckless_umode_grant_t *grants, int n)
         for (int i = 0; i < 16; i++) {
             locked += (cfg_byte(job.before_cfg[0], i) & 0x80) != 0;
         }
-        if (locked) {
+        if (locked && feckless_umode_idf_region_protection_skipped() == 0) {
+            ESP_LOGE(TAG, "%d PMP entries were locked before this firmware set any, and ESP-IDF's "
+                          "region protection was not skipped: the link does not wrap "
+                          "esp_cpu_configure_region_protection (u-feckless-0013), so the app ran it",
+                     locked);
+        } else if (locked) {
             ESP_LOGE(TAG, "%d PMP entries were locked before this firmware set any: the second-stage "
                           "bootloader on the flash was built with CONFIG_BOOTLOADER_REGION_PROTECTION_ENABLE=y. "
                           "Rebuild it with the option off (check build/bootloader/config/sdkconfig.h) and "
