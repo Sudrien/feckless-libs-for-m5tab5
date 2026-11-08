@@ -2077,3 +2077,37 @@ can, with logging compiled out); the granule arithmetic for 0xffffffff,
 *What to send back from the next run:* the `feckless_umode: core N: PMP
 granularity` lines, and if it still fails, every `feckless_umode: core N:
 entry ...` line.
+
+### u-feckless-0012 -- locked entries are the bootloader's
+
+*0011 on a Tab5* (Spurious's standalone .bin, ESP32-P4 v1.3, IDF
+v6.1-829-g9a97f6c54ec): `core 0: PMP granularity 0 bytes ... -- not probed,
+entry 15 locked`, and on both cores eight entries locked before this firmware
+wrote any:
+
+    entry  0 was locked before: cfg 0x9b addr 0x09ffffff   NAPOT RW  0x20000000-0x30000000
+    entry  1 was locked before: cfg 0x9b addr 0x0ffc3fff   NAPOT RW  0x3ff00000-0x3ff20000
+    entry  2 was locked before: cfg 0x9d addr 0x13f03fff   NAPOT RX  0x4fc00000-0x4fc20000 (ROM)
+    entry  3 was locked before: cfg 0x80 addr 0x13fc0000   OFF, the TOR base 0x4ff00000
+    entry  4 was locked before: cfg 0x8f addr 0x13ff0000   TOR RWX   to 0x4ffc0000 (HP SRAM)
+    entry  6 was locked before: cfg 0x9d addr 0x107fffff   NAPOT RX  0x40000000-0x44000000 (flash)
+    entry 11 was locked before: cfg 0x9f addr 0x14042fff   NAPOT RWX 0x50100000-0x50108000 (LP RAM)
+    entry 15 was locked before: cfg 0x9b addr 0x1401ffff   NAPOT RW  0x50000000-0x50100000
+
+That is IDF 6.1's `esp_cpu_configure_region_protection_rev_less_than_v3()`
+(`esp_hw_support/port/esp32p4/cpu_region_protect.c`, non-MEMPROT branch),
+entry for entry -- so not granularity, and not the ROM. Its one caller is
+`bootloader_init_mem()`, under `CONFIG_BOOTLOADER_REGION_PROTECTION_ENABLE`,
+in the second-stage bootloader and in the app's `cpu_start.c`. The app's
+`sdkconfig` had the option off; the bootloader's compile time,
+`Nov 8 2026 16:57:03`, was the same in both runs while the app changed. So the
+bootloader in the flash was built with it on, and its locks hold into the app.
+
+The error now says so when any entry was locked before this firmware set one,
+and points at `build/bootloader/config/sdkconfig.h` and at flashing the
+bootloader (`idf.py flash` or `bootloader-flash`; `app-flash` keeps the old
+one). With nothing locked, a mismatch is the granularity, as before.
+
+*Checked:* `umode_pmp.c` parses with riscv32-esp-elf-gcc 15.2.0 at `-Wall
+-Wextra -Werror`. Not on a Tab5. The granularity is still unmeasured: the
+next run with a rebuilt bootloader logs it.

@@ -181,9 +181,25 @@ esp_err_t feckless_umode_pmp_apply(const feckless_umode_grant_t *grants, int n)
                 log_core(&job, c);
             }
         }
-        ESP_LOGE(TAG, "PMP read back differently on cores 0x%x: an entry is locked "
-                      "(CONFIG_BOOTLOADER_REGION_PROTECTION_ENABLE must be off) or the "
-                      "granularity is coarser than a grant's alignment", (unsigned)job.bad);
+        /* u-feckless-0012: entries locked before this firmware programmed any
+         * are the bootloader's. esp_cpu_configure_region_protection() is called
+         * from bootloader_init_mem(), in the second-stage bootloader and in the
+         * app alike, and a lock holds until reset: the app's own sdkconfig being
+         * right is not enough if the bootloader on the flash was built otherwise. */
+        int locked = 0;
+        for (int i = 0; i < 16; i++) {
+            locked += (cfg_byte(job.before_cfg[0], i) & 0x80) != 0;
+        }
+        if (locked) {
+            ESP_LOGE(TAG, "%d PMP entries were locked before this firmware set any: the second-stage "
+                          "bootloader on the flash was built with CONFIG_BOOTLOADER_REGION_PROTECTION_ENABLE=y. "
+                          "Rebuild it with the option off (check build/bootloader/config/sdkconfig.h) and "
+                          "flash it too -- idf.py flash, or bootloader-flash; app-flash keeps the old one",
+                     locked);
+        } else {
+            ESP_LOGE(TAG, "PMP read back differently on cores 0x%x with no entry locked: the "
+                          "granularity is coarser than a grant's alignment", (unsigned)job.bad);
+        }
         return ESP_ERR_INVALID_STATE;
     }
     return ESP_OK;
