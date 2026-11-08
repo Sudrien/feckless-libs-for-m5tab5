@@ -52,6 +52,19 @@ static void unregister_all(void)
     }
 }
 
+/* newlib's newer float functions call this, so an ELF built with
+ * IDF 6.1's toolchain imports it, and the table names it. The toolchain's
+ * libm does not define it (the host link fails on the table's reference),
+ * so it is here. Weak, so a libm that does have it wins. A signalling NaN:
+ * exponent all ones, the quiet bit clear, the rest of the mantissa not
+ * zero. */
+__attribute__((weak)) int __issignalingf(float x)
+{
+    uint32_t u;
+    memcpy(&u, &x, sizeof u);
+    return (u & 0x7fc00000u) == 0x7f800000u && (u & 0x003fffffu) != 0;
+}
+
 /* Static: the app's sections are referenced from here while it runs. */
 static esp_elf_t s_elf;
 

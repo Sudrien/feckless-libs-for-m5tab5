@@ -1464,3 +1464,15 @@ do), so the 5.x paths are gone:
 
 *Checked:* `filter_test.cmake` passes. *Not checked:* any of the C,
 which is not built here; a launcher build on 6.1 with the renamed export.
+
+### 9xxx -- `__issignalingf` back in `feckless_abi.c`
+
+The patch above removed the weak `__issignalingf` on the belief that
+IDF 6.1 supplies it. It does not: the exports table still names it (an
+ELF built with the 6.1 toolchain imports it), and a host link on IDF 6.1
+(riscv32-esp-elf esp-15.2.0, newlib) stops with
+`feckless_abi_syms.c.obj: undefined reference to '__issignalingf'`. The
+shim is restored, weak, as it was. `_uart_set_pin6` stays removed: the
+link did not ask for it, and 6.x has it.
+
+*Not checked:* a link on IDF 6.1; the C was not built here.
