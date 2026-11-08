@@ -1,4 +1,4 @@
-version: "0.10.2"
+version: "0.10.3"
 description: >-
   The outgoing mail account for the M5Stack Tab5's apps: SMTP server, TLS,
   login, app password, From and To, kept in NVS for a launcher and its apps

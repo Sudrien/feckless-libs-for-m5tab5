@@ -1,5 +1,5 @@
 ## IDF Component Manager Manifest File
-version: "0.10.2"
+version: "0.10.3"
 license: "Apache-2.0"
 # Modified from Espressif's usb_host_msc 1.3.0 (esp-usb,
 # host/class/msc/usb_host_msc): Defeatist's 5035 and 6031, marked

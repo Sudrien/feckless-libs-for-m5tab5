@@ -1,4 +1,4 @@
-version: "0.10.2"
+version: "0.10.3"
 description: >-
   The ABI between a Tab5 launcher and the apps it loads with esp_elf:
   the list of symbols an app's ELF may take from the launcher, and the
