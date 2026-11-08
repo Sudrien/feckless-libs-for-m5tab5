@@ -186,6 +186,69 @@ H(c_feckless_box_log)
     return true;
 }
 
+/* ---- the app gives up -------------------------------------------------
+ * ESP_ERROR_CHECK(), abort() and assert() end the app, not the launcher: the
+ * reason is logged (strings checked and copied) and the handler returns
+ * false, so the window ends with FECKLESS_UMODE_END_KILLED. */
+
+static void copy_str(const win_t *w, uint32_t p, char *out, size_t cap)
+{
+    const int n = feckless_umode_strlen(w, (uintptr_t)p, (uint32_t)cap);
+    if (n < 0) {
+        snprintf(out, cap, "?");
+        return;
+    }
+    memcpy(out, (const void *)(uintptr_t)p, (size_t)n + 1);
+}
+
+/* _esp_error_check_failed(rc, file, line, function, expression) */
+H(c__esp_error_check_failed)
+{
+    char file[96], fn[64], expr[128];
+    copy_str(w, a[1], file, sizeof file);
+    copy_str(w, a[3], fn, sizeof fn);
+    copy_str(w, a[4], expr, sizeof expr);
+    ESP_LOGE("box", "ESP_ERROR_CHECK failed: 0x%x at %s:%d in %s(): %s", (unsigned)a[0], file,
+             (int)a[2], fn, expr);
+    *ret = 0;
+    return false;
+}
+H(c_abort)
+{
+    (void)a;
+    ESP_LOGE("box", "the app called abort() at pc 0x%08x", (unsigned)w->ctx.pc);
+    *ret = 0;
+    return false;
+}
+/* __assert_func(file, line, function, expression) */
+H(c___assert_func)
+{
+    char file[96], fn[64], expr[128];
+    copy_str(w, a[0], file, sizeof file);
+    copy_str(w, a[2], fn, sizeof fn);
+    copy_str(w, a[3], expr, sizeof expr);
+    ESP_LOGE("box", "assert failed: %s:%d in %s(): %s", file, (int)a[1], fn, expr);
+    *ret = 0;
+    return false;
+}
+H(c_esp_log_level_get)
+{
+    const char *tag = str(w, a[0], TAG_MAX + 1);
+    *ret = tag ? (uint32_t)esp_log_level_get(tag) : (uint32_t)ESP_LOG_NONE;
+    return true;
+}
+/* The app's own tags; it can quieten the launcher's too, which is noise and
+ * not a hazard. "*" is refused: that is the launcher's default for every tag. */
+H(c_esp_log_level_set)
+{
+    const char *tag = str(w, a[0], TAG_MAX + 1);
+    if (tag && strcmp(tag, "*") != 0) {
+        esp_log_level_set(tag, (esp_log_level_t)(a[1] & ESP_LOG_CONFIG_LEVEL_MASK));
+    }
+    *ret = 0;
+    return true;
+}
+
 /* ---- the board, the panel, gfx, touch ------------------------------------
  * The launcher brought them up; an app's init calls them again, which the
  * libraries allow (feckless_abi's README), and gets numbers for the handles. */
@@ -297,6 +360,8 @@ static const feckless_umode_call_t s_own[] = {
     FNG(clzsi2), FNG(ctzsi2), FNG(clzdi2),
     FN(putchar), FN(puts), FN(vTaskDelay), FN(esp_timer_get_time), FN(esp_log_timestamp),
     FN(esp_rom_delay_us), FN(time), FN(gettimeofday), FN(feckless_box_log),
+    FN(_esp_error_check_failed), FN(abort), FN(__assert_func), FN(esp_log_level_get),
+    FN(esp_log_level_set),
     FN(tab5io_init), FN(tab5io_bus), FN(lcd_init), FN(gfx_init), FN(touch_init),
     FN(lcd_backlight_set), FN(touch_get),
     FN(gfx_fill_rect), FN(gfx_fill_circle), FN(gfx_blit), FN(gfx_draw_text), FN(gfx_text_w),

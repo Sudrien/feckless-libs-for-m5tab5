@@ -19,6 +19,8 @@
 extern int calls, last_i[8], log_kind;
 extern char last_fn[32], last_str[700], log_tag[80];
 extern uint32_t log_cfg;
+extern char level_tag[80];
+extern int level_set;
 
 static int failed;
 #define CHECK(c) do { if (!(c)) { printf("FAIL %s:%d  %s\n", __FILE__, __LINE__, #c); failed++; } } while (0)
@@ -151,6 +153,34 @@ static void test_log(void)
     CHECK(strlen(last_str) == 512);                                 /* a long message: cut */
 }
 
+/* A call that ends the app: the hook returns false. */
+static bool ends(const char *name, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4)
+{
+    w.ctx.x[10] = a0; w.ctx.x[11] = a1; w.ctx.x[12] = a2; w.ctx.x[13] = a3; w.ctx.x[14] = a4;
+    uint32_t ret;
+    return !feckless_umode_calls_ext(&w, nr_of(name), &w.ctx.x[10], &ret);
+}
+
+static void test_give_up(void)
+{
+    char *file = put_str("main.c"), *fn = put_str("app_main"), *ex = put_str("lcd_init(&panel)");
+    CHECK(ends("_esp_error_check_failed", 0x103, P(file), 833, P(fn), P(ex)));
+    CHECK(log_kind == 1 && strstr(last_str, "0x103") && strstr(last_str, "main.c:833")
+          && strstr(last_str, "lcd_init(&panel)"));
+    CHECK(ends("_esp_error_check_failed", 1, P(&box), 1, P(&box), P(&box)));   /* host pointers: "?" */
+    CHECK(strstr(last_str, "? ") || strstr(last_str, "?:"));
+    CHECK(ends("abort", 0, 0, 0, 0, 0) && strstr(last_str, "abort()"));
+    CHECK(ends("__assert_func", P(file), 12, P(fn), P(ex), 0) && strstr(last_str, "main.c:12"));
+    char *tag = put_str("sd_io"), *star = put_str("*");
+    CHECK(C1("esp_log_level_get", P(tag)) == 3 && !strcmp(level_tag, "sd_io"));
+    CHECK(C1("esp_log_level_get", P(&box)) == 0);
+    C2("esp_log_level_set", P(tag), 1);
+    CHECK(level_set == 1);
+    level_set = -1;
+    C2("esp_log_level_set", P(star), 0);
+    CHECK(level_set == -1);                                        /* not every tag */
+}
+
 static void test_board(void)
 {
     uint32_t *panel = (uint32_t *)(uintptr_t)feckless_box_alloc(&box, 4);
@@ -210,6 +240,7 @@ int main(void)
     test_libgcc();
     test_console_time();
     test_log();
+    test_give_up();
     test_board();
     test_gfx();
     printf(failed ? "%d FAILED\n" : "box_calls: all passed (%u calls)\n", failed ? failed : (int)ncalls);

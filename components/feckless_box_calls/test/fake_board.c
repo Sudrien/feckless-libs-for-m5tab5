@@ -71,3 +71,7 @@ int gfx_draw_para(int x, int y, const char *s, int sc, int mw, int st, int mr, u
     rec("gfx_draw_para", s, 7, x, y, sc, mw, st, mr, (int)c);
     return 3;
 }
+char level_tag[80];
+int level_set = -1;
+esp_log_level_t esp_log_level_get(const char *tag) { snprintf(level_tag, sizeof level_tag, "%s", tag); return ESP_LOG_INFO; }
+void esp_log_level_set(const char *tag, esp_log_level_t l) { snprintf(level_tag, sizeof level_tag, "%s", tag); level_set = (int)l; }

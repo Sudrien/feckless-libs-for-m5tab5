@@ -1957,3 +1957,23 @@ passed it. 0006's test now counts three data entries.
 board. Not served yet: writes, `f_stat`, `f_opendir`/`f_readdir`, POSIX
 `open`/`read`/`access`, `fseeko`/`ftello`, the storage list and the rest of
 the storage section.
+
+### u-feckless-0008 -- an app that gives up ends; the log level
+
+A comparison of Spurious's sources (main/, tinfl, feckless_keyboard) against
+`inapp.txt` and the table found one real gap: `ESP_ERROR_CHECK()`, three
+times in its app_main, imports `_esp_error_check_failed`, which no box
+served, so its load would have failed on that name. (`access`, `open`,
+`read`, `write`, `log` and `fseeko` matched only words in comments;
+`esp_app_get_description` is linked into the app by `feckless_abi_elf()`.)
+
+- `_esp_error_check_failed`, `abort` and `__assert_func` log what failed --
+  the code, file, line, function and expression, each string checked and
+  copied, "?" for one that is not the app's -- and end the app
+  (`FECKLESS_UMODE_END_KILLED`). The launcher goes on.
+- `esp_log_level_get` and `esp_log_level_set` for the app's tags; `"*"` is
+  refused, being every tag's default.
+
+*Checked:* in `test/box_calls_test.c`, each ends the window, with what it
+logged, and the level calls with their refusals. 73 calls. Not built with
+ESP-IDF.
