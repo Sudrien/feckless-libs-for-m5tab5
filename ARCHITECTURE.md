@@ -2029,3 +2029,51 @@ toolchain's GNU as (riscv32-esp-elf 15.2.0); the new one assembles with it,
 guard on and off, and with clang (`make asm`); `make compare`: the same
 instructions as the sample, guard on and off; the host tests pass.
 *Not checked:* the rest of the IDF build past `umode.S`.
+
+### u-feckless-0011 -- what the PMP read back, and its granularity
+
+*On a Tab5* (ESP32-P4 v1.3, IDF v6.1-829-g9a97f6c54ec), Spurious's
+standalone .bin of u-spurious-0001: the card mounted, esp_elf relocated the
+reader into the box (`ELF: elf->entry=0x48005fe0`), and then
+
+    E feckless_umode: PMP read back differently on cores 0x3: an entry is locked
+      (CONFIG_BOOTLOADER_REGION_PROTECTION_ENABLE must be off) or the granularity
+      is coarser than 4 bytes
+    E standalone: the reader would not load in a box: ESP_ERR_INVALID_STATE
+
+on both cores. `grep REGION_PROTECTION sdkconfig` there:
+`# CONFIG_BOOTLOADER_REGION_PROTECTION_ENABLE is not set`. So the more likely
+cause is the granularity -- the box's end, `base + size`, rounded by the
+hardware -- which the sample never showed: its ranges were IRAM's and a
+static pool's, aligned by the linker. This patch makes the next run say
+which, instead of guessing again:
+
+- **Before** programming, each core's sixteen entries are read; any already
+  locked is logged with its cfg and address.
+- **The granularity** is measured as the privileged spec gives it: with entry
+  15 off (and not locked), all ones into `pmpaddr15`, read back; the bits
+  below G read as zero and the granule is `2^(G+2)` bytes. Logged at INFO on
+  every apply (`core N: PMP granularity B bytes`), and with the raw value on a
+  mismatch.
+- **On a mismatch**, each entry that differs is logged as written and as read
+  (cfg and address), per core, with whether the build had
+  `CONFIG_BOOTLOADER_REGION_PROTECTION_ENABLE` on.
+- **The box** (`feckless_umode_load()`) is now 4 KB-aligned at both ends --
+  `heap_caps_aligned_alloc(4096, ...)` and the size rounded down to 4 KB --
+  where it was 64 bytes. A precaution for any granularity up to 4 KB; the
+  log above will say whether it was the cause.
+- Building with the IDF toolchain's gcc found one more thing, from 0002 (and
+  the sample): the static assert on the CLIC mask shifted `0xFF << 24` as an
+  `int`, an overflow compared with an unsigned constant (`-Wsign-compare`
+  under `-Werror`). It shifts a `uint32_t` now.
+
+*Checked:* every `feckless_umode` source parses with riscv32-esp-elf-gcc
+15.2.0 at `-Wall -Wextra -Werror` against stand-in headers (IDF's log macros
+there discard their arguments, which is why `granule()` is marked unused: IDF's
+can, with logging compiled out); the granule arithmetic for 0xffffffff,
+0xfffffffe, 0xffffffc0, 0xfffffc00 (4, 8, 256, 4096 bytes); the host tests and
+`make asm`. *Not on a Tab5 yet.*
+
+*What to send back from the next run:* the `feckless_umode: core N: PMP
+granularity` lines, and if it still fails, every `feckless_umode: core N:
+entry ...` line.

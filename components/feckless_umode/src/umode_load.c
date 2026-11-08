@@ -32,6 +32,7 @@
 static const char *TAG = "feckless_umode";
 
 #define MAX_CTORS 64
+#define BOX_ALIGN 4096u
 
 struct feckless_umode_app {
     feckless_box_t box;
@@ -113,7 +114,10 @@ esp_err_t feckless_umode_load(const uint8_t *image, size_t size,
         return ESP_ERR_NO_MEM;
     }
     esp_err_t err = ESP_ERR_NO_MEM;
-    a->block = heap_caps_aligned_alloc(64, box_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    /* u-feckless-0011: 4 KB at both ends, whatever the PMP's granularity
+     * turns out to be up to that (umode_pmp.c logs it). */
+    box_size &= ~(uint32_t)(BOX_ALIGN - 1);
+    a->block = heap_caps_aligned_alloc(BOX_ALIGN, box_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!a->block || !feckless_box_init(&a->box, (uintptr_t)a->block, box_size, stack)) {
         ESP_LOGE(TAG, "no box of %u KB with %u KB of stack", (unsigned)(box_size >> 10), (unsigned)(stack >> 10));
         goto fail;
