@@ -1,4 +1,4 @@
-version: "0.10.0"
+version: "0.10.1"
 description: >-
   The feckless ABI's crypto section: Mbed TLS's keys, X.509 writer and
   hashing (PSA on Mbed TLS 4) for an app's ELF, from a launcher that

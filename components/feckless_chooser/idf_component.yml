@@ -1,4 +1,4 @@
-version: "0.10.0"
+version: "0.10.1"
 description: >-
   A file chooser for the M5Stack Tab5's apps, drawn with gfx and driven
   by the app's own keys and taps: a folder's entries a row each, with
