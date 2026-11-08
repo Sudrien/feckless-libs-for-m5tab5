@@ -52,8 +52,24 @@ if(NOT CMAKE_BUILD_EARLY_EXPANSION)
     # release/v6.1 on, not at the v6.1 tag, so it is added here, for every
     # component, ELF_COMPONENTS and the app's main included: `errno` then
     # calls __errno(), which the ABI exports. The same definition twice is
-    # not a redefinition. IDF's libc keeps one variable behind both.
+    # not a redefinition.
     idf_build_set_property(COMPILE_DEFINITIONS "__PICOLIBC_ERRNO_FUNCTION=__errno" APPEND)
+    # Except for esp_libc, which owns the variable. Its errno.c at the v6.1
+    # tag has no `#undef errno` (release/v6.1 does), so with the definition
+    # `__thread int errno` reads as `__thread int (*__errno())` and fails:
+    # "function '__errno' is initialized like a variable". Without it the
+    # file is what the tag builds by itself: the thread-local errno, and
+    # __errno() returning its address, which is what the table exports.
+    # esp_libc's target does not exist yet, so this waits for the end of the
+    # project's CMakeLists; -U follows the -D on the compile line. A no-op
+    # in effect on release/v6.1.
+    function(_feckless_errno_owner)
+        idf_component_get_property(_libc_lib esp_libc COMPONENT_LIB)
+        if(TARGET ${_libc_lib})
+            target_compile_options(${_libc_lib} PRIVATE -U__PICOLIBC_ERRNO_FUNCTION)
+        endif()
+    endfunction()
+    cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL _feckless_errno_owner)
     # Not fatal: an app runs without them, worse.
     if(NOT CONFIG_CACHE_L2_CACHE_256KB)
         message(WARNING "feckless_abi: CONFIG_CACHE_L2_CACHE_256KB=y is recommended: an app runs from PSRAM")

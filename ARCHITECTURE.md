@@ -1488,11 +1488,20 @@ ABI picolibc's, so no launcher or app needs the override.
 - **errno:** `feckless_abi` adds `-D__PICOLIBC_ERRNO_FUNCTION=__errno` to
   every component's compile (`idf_build_set_property(COMPILE_DEFINITIONS
   ... APPEND)`, as IDF's pthread component does for its own). `errno` is
-  then `(*__errno())`, and `__errno` was already in `exports.txt`; IDF's
-  `errno.c` keeps one variable behind both. IDF adds the same definition
-  itself on `release/v6.1`, but the v6.1 tag does not have it (checked: the
-  tag's `esp_libc/project_include.cmake` has no `__PICOLIBC_ERRNO_FUNCTION`
-  line); an identical second `-D` is not a redefinition.
+  then `(*__errno())`, and `__errno` was already in `exports.txt`. IDF adds
+  the same definition itself on `release/v6.1`, but the v6.1 tag does not
+  have it (checked: the tag's `esp_libc/project_include.cmake` has no
+  `__PICOLIBC_ERRNO_FUNCTION` line); an identical second `-D` is not a
+  redefinition. **Not for `esp_libc`:** the tag's `esp_libc/src/picolibc/
+  errno.c` has no `#undef errno` before `__thread int errno` (release/v6.1
+  does), so with the definition it does not compile ("function '__errno'
+  is initialized like a variable"; Avoidant's v0.2.0-pre10). `feckless_abi`
+  adds `-U__PICOLIBC_ERRNO_FUNCTION` to esp_libc's target, deferred to the
+  end of the project's CMakeLists because the target does not exist until
+  esp_libc's own is read; `esp_libc` is then what the tag builds alone, and
+  `__errno()` there returns the address of the one variable. Not built with
+  ESP-IDF here: the generated compile line was checked on a stand-in
+  project (`-D` before `-U`, `-U` wins).
 - **Configuration check:** `feckless_abi` stops the configure on
   `CONFIG_LIBC_PICOLIBC` not set, for the launcher and the app alike: a
   `FILE`, the ctype table and `errno` are the library's, and the two sides

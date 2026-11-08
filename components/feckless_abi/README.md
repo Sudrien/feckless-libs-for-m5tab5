@@ -175,7 +175,9 @@ checks both builds, and fails on:
   `-D__PICOLIBC_ERRNO_FUNCTION=__errno` to every component's compile, so
   `errno` is a call to `__errno()`, which the ABI exports, and not a
   thread-local, which cannot be in an ELF. IDF adds the same definition
-  itself from `release/v6.1`, after the v6.1 tag.
+  itself from `release/v6.1`, after the v6.1 tag. `esp_libc` is left out
+  (`-U` on its target): the v6.1 tag's `errno.c` defines the variable and
+  does not compile with the definition.
 
 It warns without:
 
