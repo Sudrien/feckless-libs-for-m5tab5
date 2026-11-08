@@ -255,38 +255,33 @@ feckless_umode_enter:
   sw    t0, FUMODE_CTX_K_MINTSTATUS(a0)
   sw    sp, FUMODE_CTX_K_SP(a0)
 
-  /* Keep interrupts out of the U-mode window entirely, by raising the CLIC
-   * threshold.  Two reasons this is done rather than letting them land:
+  /* u-feckless-0016: interrupts are NOT kept out of the window any more.
    *
-   *  - mstatus.MIE does NOT mask interrupts while the core is in U-mode, so
-   *    the threshold is the only lever available;
+   * The sample raised the CLIC threshold to its maximum here, so that no
+   * interrupt landed in U-mode, because an edge-triggered source is claimed
+   * on hardware-vectored entry and would be lost.  The price was that a user
+   * computing between syscalls held every interrupt on its core off -- and on
+   * a Tab5 that is the panel: IDF's DPI driver restarts the framebuffer DMA
+   * from an interrupt at the end of every frame (esp_lcd_panel_dpi.c,
+   * mipi_dsi_dma_trans_done_cb), so Spurious sorting 54189 words in its box
+   * starved the DSI bridge and the panel went blue.
    *
-   *  - an interrupt taken in U-mode enters the private vector below, which
-   *    hands control back to the kernel without servicing it.  A level-held
-   *    source would simply re-assert once ESP-IDF's vector is back, but an
-   *    edge-triggered one is claimed on entry and would be LOST.  Masking
-   *    removes the question.
+   * Now an interrupt arriving in U-mode enters the private vector like any
+   * trap, and the host loop sees an interrupt cause.  The trap path puts
+   * IDF's vectors back before its mret, so the source -- level-triggered,
+   * still asserted -- is taken by IDF's handler the moment MIE returns; and
+   * the trap re-pends an edge-triggered one, so that is not lost either (see
+   * umode_trap_entry).  Every CLIC line is hardware-vectored on this target
+   * (IDF's cpu_start.c sets them all), which is why the edge case matters.
+   * As a result a window is preemptible: the tick lands, FreeRTOS may switch
+   * the host task out, and the window is re-entered when it runs again.
    *
-   * The cost is that a user which computes for a long time between syscalls
-   * delays the tick, so the user model here is a cooperative one.  In this
-   * application the gap between syscalls is a few microseconds.
-   *
-   * Safe as a read-modify-write because MIE was cleared above, and the
-   * register is core-local -- nothing else can be running on this hart.
-   *
-   * The read-back is not redundant.  IDF's own rv_utils_restore_intlevel_regval()
-   * documents that a write to this register is not taken into account by the
-   * CPU straight away: a subsequent load (or ~8 nops) is what forces it to
-   * become active.  Without it the mret could reach U-mode before the mask
-   * does.
+   * The threshold is still saved, and restored on the way out unchanged.
    */
 
   li    t0, FUMODE_CLIC_THRESH_REG
   lw    t1, 0(t0)
   sw    t1, FUMODE_CTX_K_THRESH(a0)
-  li    t1, FUMODE_CLIC_THRESH_MASK
-  sw    t1, 0(t0)
-  lw    t1, 0(t0)                /* read back: see note below */
 
 #if CONFIG_ESP_SYSTEM_HW_STACK_GUARD
 
@@ -541,6 +536,31 @@ feckless_umode_trap_entry:
   sw    t1, FUMODE_CTX_MTVAL(t0)
 
   mv    a0, t0                   /* a0 = ctx, and a0 is already saved */
+
+  /* u-feckless-0016: an edge-triggered interrupt taken here has had its
+   * pending bit cleared by the hardware-vectored entry, and is not serviced
+   * by this vector.  Set it pending again, so IDF's handler takes it once its
+   * vectors and MIE are back.  A level-triggered one is still asserted and
+   * needs nothing.  The CLIC's per-line control word is core-local, at
+   * FUMODE_CLIC_INT_CTRL + 4 * id; bit 17 is the trigger's edge bit, and the
+   * low byte is the pending bit.  Every user register is saved: t1-t3 are
+   * scratch here.
+   */
+
+  lw    t1, FUMODE_CTX_MCAUSE(a0)
+  bgez  t1, .Lnot_irq            /* bit 31 clear: an exception, not an interrupt */
+  slli  t2, t1, 20
+  srli  t2, t2, 20               /* the interrupt id, mcause[11:0] */
+  slli  t2, t2, 2
+  li    t3, FUMODE_CLIC_INT_CTRL
+  add   t2, t2, t3
+  lw    t3, 0(t2)
+  srli  t3, t3, 17
+  andi  t3, t3, 1
+  beqz  t3, .Lnot_irq            /* level-triggered: still asserted */
+  li    t3, 1
+  sb    t3, 0(t2)                /* edge: pending again */
+.Lnot_irq:
 
 #if CONFIG_ESP_SYSTEM_HW_STACK_GUARD
 

@@ -87,6 +87,12 @@
 #define FUMODE_CLIC_THRESH_REG   0x20800008
 #define FUMODE_CLIC_THRESH_MASK  0xff000000
 
+/* u-feckless-0016: the CLIC's per-line control words, core-local: line id's
+ * word at FUMODE_CLIC_INT_CTRL + 4 * id (IDF's CLIC_INT_CTRL_REG(id)). Bit 0
+ * is pending, bits 18:17 the trigger (bit 17 set: edge). umode.S re-pends an
+ * edge-triggered interrupt that a window took. */
+#define FUMODE_CLIC_INT_CTRL    0x20801000
+
 /* mstatus fields */
 
 #define FUMODE_MSTATUS_MIE          0x00000008

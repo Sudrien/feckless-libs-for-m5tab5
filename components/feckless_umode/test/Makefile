@@ -3,8 +3,9 @@
 #   make -C components/feckless_umode/test           the plan, run-loop and box tests
 #   make -C components/feckless_umode/test asm       umode.S assembles, with the stack guard on and off
 #   make -C components/feckless_umode/test compare SAMPLE=<dir of the sample's umode.S>
-#                                                    umode_enter, the trap entry and the rest are the
-#                                                    same instructions as the sample's
+#                                                    the CSR reads and pmp_program are the same
+#                                                    instructions as the sample's (enter and the trap
+#                                                    entry differ on purpose since u-feckless-0016)
 #
 # asm and compare need clang with the riscv32 target and llvm-objdump. The
 # stack guard's macros in fake/ are IDF 6.1's own (u-feckless-0010), so a
@@ -54,7 +55,7 @@ asm:
 # Per function, addresses stripped and the feckless_ prefix dropped, so a
 # difference is a difference in an instruction.
 define BODY
-$(OBJDUMP) -dr --no-show-raw-insn $(1) | sed -E 's/feckless_//g; s/^ *[0-9a-f]+:[[:space:]]+//; s/0x[0-9a-f]+ //; s/[0-9a-f]{8} <(.*)>:$$/<\1>:/' | awk -v f="<$(2)>:" '$$0==f{p=1;next} /^<[^.].*>:$$/{p=0} p'
+$(OBJDUMP) -dr --no-show-raw-insn $(1) | sed -E 's/feckless_//g; s/^[[:space:]]*[0-9a-f]+:[[:space:]]+//; s/0x[0-9a-f]+ //; s/[0-9a-f]{8} <(.*)>:$$/<\1>:/' | awk -v f="<$(2)>:" '$$0==f{p=1;next} /^<[^.].*>:$$/{p=0} p'
 endef
 
 compare: asm
@@ -66,7 +67,7 @@ compare: asm
 	$(CLANG) $(RV) -Ifake -I$(SAMPLE) -x assembler-with-cpp -DCONFIG_ESP_SYSTEM_HW_STACK_GUARD=1 -c sample_umode.S -o sample_guard.o
 	$(CLANG) $(RV) -Ifake -I$(SAMPLE) -x assembler-with-cpp -DCONFIG_ESP_SYSTEM_HW_STACK_GUARD=0 -c sample_umode.S -o sample_noguard.o
 	@set -e; for g in guard noguard; do \
-	  for f in umode_enter umode_trap_entry umode_read_mstatus umode_read_mtvec umode_read_mintstatus \
+	  for f in umode_read_mstatus umode_read_mtvec umode_read_mintstatus \
 	           umode_read_pmpcfg umode_read_pmpaddr umode_pmp_program; do \
 	    $(call BODY,umode_$$g.o,$$f) > ours.txt; \
 	    $(call BODY,sample_$$g.o,$$f) > theirs.txt; \

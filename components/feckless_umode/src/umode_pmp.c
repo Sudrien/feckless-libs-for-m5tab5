@@ -35,6 +35,12 @@ _Static_assert(FUMODE_CLIC_THRESH_REG == CLIC_INT_THRESH_REG,
                "FUMODE_CLIC_THRESH_REG no longer matches IDF's CLIC_INT_THRESH_REG");
 _Static_assert(FUMODE_CLIC_THRESH_MASK == ((uint32_t)CLIC_CPU_INT_THRESH_V << CLIC_CPU_INT_THRESH_S),
                "FUMODE_CLIC_THRESH_MASK is not a full CLIC threshold mask");
+/* u-feckless-0016: the per-line control words, and the bits umode.S reads and
+ * writes there. */
+_Static_assert(FUMODE_CLIC_INT_CTRL == CLIC_INT_CTRL_REG(0), "FUMODE_CLIC_INT_CTRL no longer matches IDF's");
+_Static_assert(CLIC_INT_CTRL_REG(1) - CLIC_INT_CTRL_REG(0) == 4, "CLIC control words are not 4 bytes apart");
+_Static_assert(CLIC_INT_ATTR_TRIG_S == 17, "umode.S reads the trigger's edge bit as bit 17");
+_Static_assert(CLIC_INT_IP == 1, "umode.S writes the pending bit as the low byte's bit 0");
 
 /* umode.S reaches the current core's assist_debug block by adding
  * mhartid << 7 to the CORE_0 address, so the blocks must be 0x80 apart for

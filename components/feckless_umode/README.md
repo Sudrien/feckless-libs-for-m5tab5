@@ -70,8 +70,11 @@ otherwise they pass through.
 
 ## Limits, as of this patch
 
-- **One interrupt-masked window.** Interrupts are masked for the whole of a
-  window, so a long computation between traps delays the tick on its core.
+- **Windows are interruptible** (u-feckless-0016). An interrupt in user mode
+  ends the window like any trap; IDF's handler takes it as the host resumes,
+  and the window is re-entered, so a long computation between calls no longer
+  holds its core's interrupts -- the tick, the panel's frame DMA -- off. An
+  edge-triggered line is set pending again on the way out, so none is lost.
 - **The grants are the caller's.** Nothing here decides what an app is given.
 - **Verified** only on ESP-IDF 5.5.4 and a chip revision v1.0, by the sample;
   this component has not been built with ESP-IDF or run on a board.

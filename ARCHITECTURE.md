@@ -2263,3 +2263,57 @@ each caught (FatFs handed the box again; `fread` counting bytes).
 `box_storage.c` parses with riscv32-esp-elf-gcc 15.2.0 and picolibc's headers
 at `-Wall -Wextra -Werror`. *Not on a Tab5.* What to look for: the same
 dictionary opening with no cyan, and the "opened in" time about the same.
+
+### u-feckless-0016 -- windows are interruptible
+
+*0015 on a Tab5*: Spurious in its box, the same dictionary -- still a blue
+flash, between its "opening" screen and the word list. So not the reads.
+
+**The cause** is the window, as 0001 warned ("a long computation between
+syscalls delays the tick on its core"). The sample's `umode_enter` raised the
+CLIC threshold to its maximum, so no interrupt reached a window; and IDF's
+DPI driver restarts the framebuffer DMA from an interrupt at the end of every
+frame (IDF at 9a97f6c54ec, `esp_lcd/dsi/esp_lcd_panel_dpi.c`,
+`mipi_dsi_dma_trans_done_cb` -> `dw_gdma_channel_enable_ctrl()`), on the core
+that called `lcd_init()` -- the host task's, the window's. Spurious opening a
+dictionary runs `qsort` over 54189 words (`out of order: sorted`) in its own
+code, with no call to the host: one long window, the frame interrupt held off,
+the DSI bridge starved, the panel blue until the sort is done.
+
+**Why the sample masked:** an interrupt taken in U-mode enters the private
+vector, which does not service it, and an edge-triggered source has its
+pending bit cleared on hardware-vectored entry -- lost. On this target every
+CLIC line is hardware-vectored (IDF's `cpu_start.c`: `esprv_int_set_vectored(i,
+true)` for all 32). A level-triggered source is not lost: it stays asserted,
+and the trap path puts IDF's vectors back before the `mret` that restores
+MIE, so IDF takes it at once. Outside IDF's tests and other chips' ports
+nothing in IDF passes `ESP_INTR_FLAG_EDGE`.
+
+**So:**
+
+- `feckless_umode_enter` no longer raises the threshold (it still saves it, and
+  the trap restores the same value). An interrupt in U-mode is a trap like
+  any other; the host loop counts it and re-enters (0003). When the trap's
+  `mret` brings MIE back, IDF's handler runs -- and FreeRTOS may switch the
+  host task out there, so a window is now preemptible, not cooperative.
+- The trap entry re-pends an edge-triggered interrupt: for an interrupt cause,
+  it reads the line's CLIC control word (`0x20801000 + 4 * id`, core-local),
+  and if bit 17 (the trigger's edge bit) is set, writes 1 to its pending byte.
+  `umode_pmp.c` asserts those against IDF's `clic_reg.h` (`CLIC_INT_CTRL_REG`,
+  `CLIC_INT_ATTR_TRIG_S == 17`, `CLIC_INT_IP == 1`).
+- `make compare` checks the CSR reads and `pmp_program` against the sample;
+  `umode_enter` and the trap entry now differ from it on purpose. Its
+  normalisation stripped space-indented offsets only and objdump indents
+  relocation lines with tabs, so code moving was reported as different; it
+  strips both now (and a changed `csrr` in `read_pmpcfg` is still caught).
+
+*Checked:* `umode.S` assembles with the IDF toolchain's GNU as and with clang,
+guard on and off, against IDF 6.1's own stack-guard macros; the static asserts
+compile against the CLIC layout taken from IDF's `clic_reg.h`; the host tests
+pass. *Not on a Tab5.*
+
+*What to look for:* the dictionary opening with no blue flash; the reader's
+`ended` line showing a large interrupt count (every tick on its core now lands
+in a window); nothing else changed. If the board hangs or panics in an
+interrupt handler while a box runs, that is an interrupt this reasoning did not
+cover: send the panic's `MCAUSE` and backtrace.
