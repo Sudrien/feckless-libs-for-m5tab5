@@ -459,6 +459,10 @@ static void sd_release_d3(void)
 
 static esp_err_t sd_mount_at(bool verbose, int freq_khz)
 {
+    /* IDF 6.1's SD host driver logs "src_freq_hz" at INFO on every host
+     * init, and the poll inits once a second while the slot is empty or
+     * the card is not answering. Its warnings and errors still show. */
+    if (esp_log_level_get("SD_HOST") > ESP_LOG_WARN) esp_log_level_set("SD_HOST", ESP_LOG_WARN);
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
     host.slot = SDMMC_HOST_SLOT_0;          /* the default is slot 1 */
     host.max_freq_khz = freq_khz;

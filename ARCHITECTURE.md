@@ -2349,3 +2349,14 @@ left alone and the edge re-pend, now sits behind
 `CONFIG_FECKLESS_UMODE_PREEMPTIBLE`, a new Kconfig option that defaults
 to off. The blue flash while a dictionary loads comes back with this:
 the panel is starved for as long as the box computes without a syscall.
+
+### u-feckless-0018 -- SD_HOST's per-init INFO line is quiet
+
+On IDF 6.1 the SD host driver logs `I SD_HOST: src_freq_hz: 160000000`
+every time the host is initialised. The storage poll initialises it once
+a second until a card mounts. One Spurious boot printed 58 of those lines
+before the card answered. `sd_mount_at()` now lowers the `SD_HOST` tag to
+WARN, unless something has already set it lower. The driver's warnings
+and errors still show. Network's temporary `ESP_LOG_NONE` during
+`esp_hosted_deinit()` saves and restores the level, so the two don't
+conflict.
