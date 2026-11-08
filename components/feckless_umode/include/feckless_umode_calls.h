@@ -48,6 +48,35 @@ typedef struct {
  * numbered past the table, or at a data entry, is FECKLESS_SYS_ERR_BADNR. */
 bool feckless_umode_calls_ext(feckless_umode_window_t *w, uint32_t nr, const uint32_t args[7], uint32_t *ret);
 
+/* Argument i (from 0) of the call being serviced, as the C calling convention
+ * put it: a0..a6 are args[0..6]; the eighth, a7, is in t0 (the stub moved it
+ * there); from the ninth on they are on the program's stack, at sp, sp+4, ...
+ * -- read only if inside the window, else *ok is set false and 0 returned.
+ * For int, pointer and uint32 arguments; a 64-bit one is two in a row. */
+static inline uint32_t feckless_umode_arg(const feckless_umode_window_t *w, unsigned i, bool *ok)
+{
+    if (i < 7) {
+        return w->ctx.x[10 + i];
+    }
+    if (i == 7) {
+        return w->ctx.x[5];
+    }
+    const uintptr_t at = (uintptr_t)w->ctx.x[2] + 4u * (i - 8);
+    if (!feckless_umode_range_ok(w, at, 4)) {
+        *ok = false;
+        return 0;
+    }
+    return *(const uint32_t *)at;
+}
+
+/* A 64-bit result: the low word is *ret, the high one goes to a1 here, which
+ * the host loop leaves as the handler wrote it. */
+static inline void feckless_umode_ret64(feckless_umode_window_t *w, uint64_t v, uint32_t *ret)
+{
+    *ret = (uint32_t)v;
+    w->ctx.x[11] = (uint32_t)(v >> 32);
+}
+
 /* The calls' table as the box's ext hook will see it: w->ext_arg. */
 static inline const feckless_umode_calls_t *feckless_umode_calls_of(const feckless_umode_window_t *w)
 {

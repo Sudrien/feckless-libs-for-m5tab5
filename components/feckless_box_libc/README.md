@@ -49,6 +49,10 @@ it (`cmake/boxcheck.cmake`):
   eyalroz/printf v6.4.0 (`vendor/printf`, MIT; picolibc's has absolute
   references to its tables). `printf` writes a character at a time through
   the host's `putchar`.
+- **The log calls** `esp_log`, `esp_log_va`, `esp_log_write`,
+  `esp_log_writev` (u-feckless-0006): the line is formatted here, so the
+  host never walks a format whose `%s` would be the app's pointer, and is
+  handed to the host's `feckless_box_log` as a tag and a message.
 
 Not here, so not usable in a box yet: `sscanf`, `strtod`, `strtof`, `atof`,
 `strftime`, `rand` (picolibc's are not position-independent).

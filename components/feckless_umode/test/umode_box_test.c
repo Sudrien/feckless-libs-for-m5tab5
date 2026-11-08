@@ -127,7 +127,7 @@ static void test_stubs(void)
     CHECK(feckless_box_write_stubs(s + 2, 3) == 0);                    /* misaligned */
     CHECK(feckless_box_write_stubs(s, FECKLESS_BOX_MAX_STUBS + 1) == 0);
     const uintptr_t e = feckless_box_write_stubs(s, 3);
-    CHECK(e == s + 36);
+    CHECK(e == s + 3 * FECKLESS_BOX_STUB_SIZE);
     FILE *f = fopen("stubs.bin", "wb");                                /* for make asm */
     CHECK(f && fwrite((void *)s, 1, FECKLESS_BOX_STUBS_BYTES(3), f) == FECKLESS_BOX_STUBS_BYTES(3));
     if (f) fclose(f);
@@ -135,7 +135,7 @@ static void test_stubs(void)
     feckless_box_init(&box, B, MEM_SIZE, 1024);
     CHECK(feckless_box_write_stubs(B, FECKLESS_BOX_MAX_STUBS) != 0);
     uint32_t last;
-    memcpy(&last, (void *)(B + (FECKLESS_BOX_MAX_STUBS - 1) * FECKLESS_BOX_STUB_SIZE), 4);
+    memcpy(&last, (void *)(B + (FECKLESS_BOX_MAX_STUBS - 1) * FECKLESS_BOX_STUB_SIZE + 4), 4);
     CHECK((last >> 20) == 2046u);                                      /* EXT_BASE + MAX - 1 */
 }
 

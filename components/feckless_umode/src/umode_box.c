@@ -153,6 +153,7 @@ uintptr_t feckless_box_realloc(feckless_box_t *b, uintptr_t p, uint32_t len)
 #define RV_ECALL    0x00000073u
 #define RV_RET      0x00008067u                 /* jalr x0, 0(ra) */
 #define RV_J_SELF   0x0000006fu                 /* jal x0, 0 */
+#define RV_MV_T0_A7 0x00088293u                 /* addi t0, a7, 0 */
 #define RV_ADDI(rd, imm) ((((uint32_t)(imm) & 0xfffu) << 20) | ((uint32_t)(rd) << 7) | 0x13u)
 #define REG_A0  10
 #define REG_A7  17
@@ -169,9 +170,10 @@ uintptr_t feckless_box_write_stubs(uintptr_t dst, uint32_t n)
     }
     for (uint32_t i = 0; i < n; i++) {
         const uintptr_t s = dst + i * FECKLESS_BOX_STUB_SIZE;
-        put(s, RV_ADDI(REG_A7, FECKLESS_SYS_EXT_BASE + i));
-        put(s + 4, RV_ECALL);
-        put(s + 8, RV_RET);
+        put(s, RV_MV_T0_A7);
+        put(s + 4, RV_ADDI(REG_A7, FECKLESS_SYS_EXT_BASE + i));
+        put(s + 8, RV_ECALL);
+        put(s + 12, RV_RET);
     }
     const uintptr_t e = dst + n * FECKLESS_BOX_STUB_SIZE;
     put(e, RV_ADDI(REG_A7, FECKLESS_SYS_EXIT));

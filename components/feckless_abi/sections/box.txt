@@ -1,9 +1,13 @@
 # The feckless ABI's box marker, version 1 (u-feckless-0005).
 #
-# Not a list of names: a boxed app's imports are the core list's and the
-# other sections', less what it must link in itself (feckless_box_libc's
-# inapp.txt). The symbol alone says the ELF is built for a box -- an app that
+# A boxed app's imports are the core list's and the other sections', less
+# what it must link in itself (feckless_box_libc's inapp.txt), and the names
+# below, which only a box answers. The symbol says the ELF is built for a box -- an app that
 # refers to it (feckless_abi_require_box()) is refused by name by a launcher
 # with no box, and recognised by one that has. No component of this repository
 # defines it for a trusted run, on purpose.
 @symbol feckless_abi_box_v1
+
+# u-feckless-0006: the log line feckless_box_libc's esp_log() formats in
+# the app and hands over as two strings.
+feckless_box_log

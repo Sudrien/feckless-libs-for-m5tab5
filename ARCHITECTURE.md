@@ -1851,3 +1851,56 @@ against glibc's for 16 format lines.
 a board, and an app's ELF loaded into a box. No launcher serves a boxed app's
 imports yet; the libgcc value helpers, stdio and the rest are the host's table
 (0006).
+
+### u-feckless-0006 -- the host's call table, and an eighth argument
+
+`feckless_box_calls`, a new component a launcher links: the table
+`feckless_umode_load()` takes, for what Spurious's ELF calls outside storage.
+Its imports were read from its main/ (its ELF build: main.c, stardict.c,
+sd_io_fatfs.c, dmeta.c, with tinfl and feckless_keyboard linked in) --
+`usbhost_*` and `esp_log_level_set` are its standalone build's only, and
+feckless_keyboard takes only `gfx_draw_text`, `gfx_fill_rect`, `gfx_text_w`.
+
+- **The stub changes** (feckless_umode, 0004): `gfx_draw_para` has eight
+  integer arguments, the eighth in a7, which the stub overwrote with the call
+  number. Each stub now starts `mv t0, a7` (t0 is caller-saved, so a function
+  may clobber it), 16 bytes a stub; `feckless_umode_arg(w, 7)` reads t0, and
+  from the ninth on the program's stack, range-checked.
+  `feckless_umode_ret64()` sets a1 for a 64-bit result; the host loop writes
+  only a0, so a handler's a1 stands.
+- **libgcc**: the 15 helpers 0005 found cannot link into an app and pass only
+  integer registers. A double and an int64 are a pair of registers, low word
+  first, on ilp32f. Division by zero and `INT64_MIN / -1` give RISC-V's
+  answers instead of C's undefined ones. The five that pass a float in fa0 are
+  left out: the trap saves no FP register, and whatever the host runs before
+  the handler may change fa0.
+- **The log**: IDF 6.1's `esp_log(esp_log_config_t, tag, fmt, ...)` is what
+  `ESP_LOGx` calls; the config is a one-word struct, passed in a0 as a
+  `uint32_t` is (checked: `ESP_LOG_CONFIG_INIT(INFO)` with formatting is
+  `li a0,19` with riscv32-esp-elf 15.2.0). `feckless_box_libc` now has
+  `esp_log`, `esp_log_va`, `esp_log_write` and `esp_log_writev`: they format
+  the line with its vsnprintf and call `feckless_box_log(kind, cfg, tag, msg)`,
+  a name in the box section (`sections/box.txt`), so abicheck takes it. The
+  host copies both strings (tag to 64 bytes, message cut at 512) and calls
+  its own `esp_log`/`esp_log_write` with `"%s"`.
+- **The board**: the app's init calls go to the real ones, which the libraries
+  allow again (feckless_abi's README); the panel and the I2C bus are numbers
+  in the app (`lcd_init` writes one, `gfx_init`/`touch_init` take only that
+  number). `touch_get`, `gfx_wrap_line`, `time` and `gettimeofday` check
+  their out-pointers before writing; the gfx calls check their strings
+  (to 64 KB).
+
+*Checked:* `test/box_calls_test.c` on the host under ASan and UBSan, through
+feckless_umode's ext hook with a box mapped below 4 GB, against recording
+stand-ins for gfx, lcd, touch, tab5io, the timer and the log: every call's
+result and what reached the board, every refusal (host pointers, unterminated
+strings, wrong tokens, a long tag), the eighth argument through t0, 64-bit
+results through a1. Four changes are caught (a missing out-pointer check --
+the first version of that mutation did not compile and so tested nothing --
+the colour read from a6, C's division by zero, the host's panel pointer handed
+out). feckless_umode's tests pass with the new stub, and the stubs are still
+the assembler's bytes.
+
+*Not checked:* `box_calls.c` against the real headers in an IDF build (its
+`#include`s are the libraries' own names: `gfx.h`, `lcd.h`, `touch.h`,
+`tab5io.h`); a board.

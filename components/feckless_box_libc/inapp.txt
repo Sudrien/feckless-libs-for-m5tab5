@@ -42,6 +42,10 @@ toupper
 __errno
 atoi
 atol
+esp_log
+esp_log_va
+esp_log_write
+esp_log_writev
 printf
 snprintf
 sprintf

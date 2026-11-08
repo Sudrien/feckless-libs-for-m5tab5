@@ -42,6 +42,9 @@ jobs:
       # u-feckless-0005: strto* and the vendored printf against libc.
       - name: feckless_box_libc
         run: make -C components/feckless_box_libc/test
+      # u-feckless-0006: the box's call table, against stand-ins for the board.
+      - name: feckless_box_calls
+        run: make -C components/feckless_box_calls/test
       # 8003: the ABI's section filter and the crypto list.
       - name: feckless_abi section filter
         run: cmake -P components/feckless_abi/test/filter_test.cmake

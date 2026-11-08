@@ -55,7 +55,8 @@ with, and is all the PMP grants. The component's link wraps `esp_elf_malloc`
 and `esp_elf_free`, so while a box is being loaded esp_elf allocates in it;
 otherwise they pass through.
 
-- **Imports** resolve to the box's stubs: `addi a7, x0, 16+i; ecall; ret`.
+- **Imports** resolve to the box's stubs: `mv t0, a7; addi a7, x0, 16+i;
+  ecall; ret` (a7 is an eighth argument; `feckless_umode_arg()` finds it in t0).
   The embedder gives the table (`feckless_umode_call_t`: a name and a
   handler, or a name and data to copy in, for version symbols). An import
   not in it fails the load by name, as ABI v1 does.

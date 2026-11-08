@@ -26,7 +26,7 @@ extern "C" {
 
 #define FECKLESS_BOX_MAX_ALLOCS  256
 #define FECKLESS_BOX_ALIGN       16     /* every allocation starts on this */
-#define FECKLESS_BOX_STUB_SIZE   12     /* addi a7,x0,N ; ecall ; ret */
+#define FECKLESS_BOX_STUB_SIZE   16     /* mv t0,a7 ; addi a7,x0,N ; ecall ; ret */
 #define FECKLESS_BOX_EXIT_SIZE   16     /* addi a7,x0,EXIT ; addi a0,x0,0 ; ecall ; j . */
 #define FECKLESS_BOX_MAX_STUBS   (2047 - 16)    /* N must fit addi's 12-bit immediate */
 
@@ -71,7 +71,9 @@ uintptr_t feckless_box_realloc(feckless_box_t *b, uintptr_t p, uint32_t len);
 /* ---- the stubs --------------------------------------------------------- */
 
 /* Write n stubs at dst, stub i doing ecall FECKLESS_SYS_EXT_BASE + i and
- * returning, then the exit stub (ra for a program's entry and its
+ * returning. a7 is a function's eighth argument, so each stub first copies it
+ * to t0 (caller-saved: a stub may clobber it), where the host reads it
+ * (feckless_umode_arg()), then the exit stub (ra for a program's entry and its
  * constructors: returning means SYS_EXIT 0). dst is in the box and 4-aligned;
  * n <= FECKLESS_BOX_MAX_STUBS. Returns the exit stub's address, 0 on a bad n.
  * The caller makes them visible to instruction fetch (a cache sync). */

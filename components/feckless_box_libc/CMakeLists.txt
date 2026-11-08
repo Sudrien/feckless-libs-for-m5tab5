@@ -3,7 +3,7 @@
 # (u-feckless-0005). Built into the app, never into a launcher. See
 # project_include.cmake for feckless_abi_box_elf().
 idf_component_register(
-    SRCS "src/box_errno.c" "src/box_strto.c" "src/box_printf.c"
+    SRCS "src/box_errno.c" "src/box_strto.c" "src/box_printf.c" "src/box_log.c"
     INCLUDE_DIRS "include"
     # printf.c includes <printf/printf.h>
     PRIV_INCLUDE_DIRS "vendor"
