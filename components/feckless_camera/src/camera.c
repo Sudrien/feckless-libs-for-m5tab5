@@ -19,8 +19,7 @@
  *     ISP runs with no auto exposure and the picture is near black.
  *
  * UYVY, not GREY: GREY on this device is the ISP's RAW8 passed through,
- * i.e. undebayered Bayer, not luma. UYVY is supported on IDF 5.x and 6.x
- * alike; the Y is every second byte, starting at the second.
+ * i.e. undebayered Bayer, not luma. UYVY is supported; the Y is every second byte, starting at the second.
  *
  * dont_init_ldo: the CSI and DSI PHYs share one supply, LDO channel 3 at
  * 2.5 V, which feckless_graphics_handler's lcd_init() has already

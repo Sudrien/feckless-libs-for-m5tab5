@@ -38,10 +38,10 @@ jobs:
         run: cmake -P components/feckless_abi/test/filter_test.cmake
       # 3002: fatfs's patch against each IDF the Tab5 projects build
       # with -- just components/fatfs, from a sparse clone.
-      - name: fatfs patches ESP-IDF v5.5.5 and release/v6.1
+      - name: fatfs patches ESP-IDF release/v6.1
         run: |
           set -euo pipefail
-          for ref in v5.5.5 release/v6.1; do
+          for ref in release/v6.1; do
             d="$RUNNER_TEMP/idf-${ref//\//-}"
             git clone -q --depth 1 --filter=blob:none --sparse -b "$ref" \
               https://github.com/espressif/esp-idf.git "$d"

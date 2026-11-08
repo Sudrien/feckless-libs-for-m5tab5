@@ -4,12 +4,10 @@
  * a SHA-256 for an app's ELF, from a launcher that links this component.
  * sections/crypto.txt in feckless_abi is the list.
  *
- * The name differs between Mbed TLS 3.6 (IDF 5.x) and 4.0 (IDF 6.x), so
- * an app is built for the launcher's major: the section has a marker
- * symbol for each, defined only by a launcher of that major, and
- * feckless_abi_require_crypto() refers to the one the app was compiled
- * against (MBEDTLS_VERSION_MAJOR). An app built for the other fails in
- * esp_elf_relocate(), naming it.
+ * It is Mbed TLS 4.0 (IDF 6): hashes through PSA. The section has a
+ * marker symbol for that major, defined only by a launcher of it, and
+ * feckless_abi_require_crypto() refers to it, so an app built for another
+ * fails in esp_elf_relocate(), naming it.
  */
 #pragma once
 
@@ -27,13 +25,8 @@
 #define FECKLESS_ABI_CRYPTO_SYMBOL feckless_abi_crypto_v2
 extern const uint32_t FECKLESS_ABI_CRYPTO_SYMBOL;
 
-#if MBEDTLS_VERSION_MAJOR >= 4
 extern const uint32_t feckless_abi_crypto_mbedtls4;
 #define FECKLESS_ABI_CRYPTO_MBEDTLS_SYMBOL feckless_abi_crypto_mbedtls4
-#else
-extern const uint32_t feckless_abi_crypto_mbedtls3;
-#define FECKLESS_ABI_CRYPTO_MBEDTLS_SYMBOL feckless_abi_crypto_mbedtls3
-#endif
 
 /* An app that uses the section calls this first thing in app_main(),
  * beside feckless_abi_require(). It does nothing at run time; it makes

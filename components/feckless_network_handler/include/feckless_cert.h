@@ -17,8 +17,7 @@
  * password typed into a page cannot be read by someone listening), and
  * that the certificate can be recognised by its SHA-256 fingerprint.
  *
- * Mbed TLS 3.6 (IDF 5.x) and 4.0 (IDF 6.x) are both supported; on 4.0 the
- * key and the hash come from PSA. It needs the X.509 writer: on IDF 6
+ * Mbed TLS 4.0 (IDF 6): the key and the hash come from PSA. It needs the X.509 writer: on IDF 6
  * CONFIG_MBEDTLS_X509_CREATE_C. Without it feckless_cert_make() returns
  * FECKLESS_CERT_ERR_NO_WRITER and builds nothing, so a project that only
  * includes this header is not asked to enable it.

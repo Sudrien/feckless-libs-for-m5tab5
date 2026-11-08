@@ -22,16 +22,8 @@
 #include "freertos/task.h"
 
 #include "esp_hosted.h"
-#include "esp_idf_version.h"
-#include "mbedtls/build_info.h"   /* 6003: wifi_psk() */
-#if MBEDTLS_VERSION_MAJOR >= 4
-#include "psa/crypto.h"
-#else
-#include "mbedtls/pkcs5.h"
-#endif
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(6, 0, 0)
+#include "psa/crypto.h"                     /* 6003: wifi_psk() */
 #include "esp_private/esp_gpio_reserve.h"   /* 6034 */
-#endif
 #include "esp_hosted_transport_config.h"
 
 #include "ethernet.h"
@@ -1127,13 +1119,11 @@ esp_err_t wifi_stop(void)
         ESP_LOGW(TAG, "esp_hosted_deinit: %d", hosted);
         if (first == ESP_OK) first = ESP_FAIL;
     }
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(6, 0, 0)
     /* 6034: esp_hosted pulses the C6's reset with gpio_config() at every
      * start, which on IDF 6 reserves the pin, and its deinit does not
      * release it -- so Wi-Fi off and on logged "conflict found for
      * GPIO[15]". The reservation only; the pin stays as it was parked. */
     esp_gpio_revoke(BIT64(CONFIG_ESP_HOSTED_HOST_RESET_GPIO));
-#endif
 
     /* Only now, with nothing left holding the bus. */
     err = wlan_power(s_exp2, false);
@@ -1393,7 +1383,6 @@ esp_err_t wifi_apply_settings(void)
 esp_err_t wifi_psk(const char *ssid, const char *passphrase, uint8_t key[32])
 {
     if (!ssid || !passphrase || !key) return ESP_ERR_INVALID_ARG;
-#if MBEDTLS_VERSION_MAJOR >= 4
     psa_key_derivation_operation_t op = PSA_KEY_DERIVATION_OPERATION_INIT;
     psa_status_t st = psa_key_derivation_setup(&op, PSA_ALG_PBKDF2_HMAC(PSA_ALG_SHA_1));
     if (st == PSA_SUCCESS)
@@ -1408,11 +1397,6 @@ esp_err_t wifi_psk(const char *ssid, const char *passphrase, uint8_t key[32])
         st = psa_key_derivation_output_bytes(&op, key, 32);
     psa_key_derivation_abort(&op);
     const bool ok = st == PSA_SUCCESS;
-#else
-    const bool ok = mbedtls_pkcs5_pbkdf2_hmac_ext(
-        MBEDTLS_MD_SHA1, (const unsigned char *)passphrase, strlen(passphrase),
-        (const unsigned char *)ssid, strlen(ssid), 4096, 32, key) == 0;
-#endif
     if (!ok) memset(key, 0, 32);
     return ok ? ESP_OK : ESP_FAIL;
 }

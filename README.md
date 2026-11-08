@@ -24,7 +24,7 @@ under one tag:
 | `feckless_abi_nvs` | The ABI's nvs section: `feckless_nvs_handler` for apps, from a launcher that links it and brings NVS up |
 | `feckless_abi_camera` | The ABI's camera section: `feckless_camera` for apps, from a launcher that links it and is configured for the camera |
 | `feckless_abi_image` | The ABI's image section: the hardware JPEG decoder for apps, from a launcher that links it |
-| `feckless_abi_crypto` | The ABI's crypto section: a SHA-256 for apps (Mbed TLS 3.6 on IDF 5.x, PSA on 4.0 on IDF 6.x), from a launcher that links it |
+| `feckless_abi_crypto` | The ABI's crypto section: a SHA-256 for apps (PSA, on Mbed TLS 4.0 of IDF 6), from a launcher that links it |
 | `feckless_abi_audio` | The ABI's audio section: Espressif's esp_audio_codec decoders for apps, from a launcher that links it |
 | `feckless_abi_network` | The ABI's network section: the network handler, sockets, esp_netif and HTTP for apps, from a launcher that links it, and the configuration both sides share |
 

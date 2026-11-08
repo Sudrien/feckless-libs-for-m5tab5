@@ -8,10 +8,8 @@
  * call for. The handshake runs over the socket through set_bio, so the
  * same fd serves the plain greeting and the encrypted rest.
  *
- * Both Mbed TLS lines: 3.6 (IDF 5.x) wants a DRBG given to the config;
- * 4.0 (IDF 6.x) has no such call and takes randomness from PSA, which
- * psa_crypto_init() starts (idempotent). feckless_cert.c makes the same
- * split.
+ * Mbed TLS 4 (IDF 6) takes randomness from PSA, which psa_crypto_init()
+ * starts (idempotent). feckless_cert.c does the same.
  *
  * Every socket wait is bounded by what is left of timeout_ms: connect by
  * select(), sends and receives by SO_SNDTIMEO/SO_RCVTIMEO set to the
@@ -35,12 +33,7 @@
 #include "esp_timer.h"
 #include "mbedtls/build_info.h"
 #include "mbedtls/ssl.h"
-#if MBEDTLS_VERSION_MAJOR >= 4
 #include "psa/crypto.h"
-#else
-#include "mbedtls/ctr_drbg.h"
-#include "mbedtls/entropy.h"
-#endif
 
 #include "mailsmtp.h"
 
@@ -54,10 +47,6 @@ typedef struct {
     const char *host;
     mbedtls_ssl_context ssl;
     mbedtls_ssl_config  conf;
-#if MBEDTLS_VERSION_MAJOR < 4
-    mbedtls_entropy_context  entropy;
-    mbedtls_ctr_drbg_context drbg;
-#endif
     smtp_t   smtp;
 } conn_t;
 
@@ -157,25 +146,12 @@ static int tls_start(void *io)
      * mailsend() is always of initialised contexts. */
     mbedtls_ssl_init(&c->ssl);
     mbedtls_ssl_config_init(&c->conf);
-#if MBEDTLS_VERSION_MAJOR < 4
-    mbedtls_entropy_init(&c->entropy);
-    mbedtls_ctr_drbg_init(&c->drbg);
-#endif
     c->ssl_ready = true;
-#if MBEDTLS_VERSION_MAJOR >= 4
     if (psa_crypto_init() != PSA_SUCCESS) return -1;
-#else
-    r = mbedtls_ctr_drbg_seed(&c->drbg, mbedtls_entropy_func, &c->entropy,
-                              (const unsigned char *)"feckless_mail", 13);
-    if (r != 0) { ESP_LOGW(TAG, "drbg seed: -0x%04x", -r); return -1; }
-#endif
 
     r = mbedtls_ssl_config_defaults(&c->conf, MBEDTLS_SSL_IS_CLIENT,
                                     MBEDTLS_SSL_TRANSPORT_STREAM, MBEDTLS_SSL_PRESET_DEFAULT);
     if (r != 0) { ESP_LOGW(TAG, "ssl config: -0x%04x", -r); return -1; }
-#if MBEDTLS_VERSION_MAJOR < 4
-    mbedtls_ssl_conf_rng(&c->conf, mbedtls_ctr_drbg_random, &c->drbg);
-#endif
     mbedtls_ssl_conf_authmode(&c->conf, MBEDTLS_SSL_VERIFY_REQUIRED);
     if (esp_crt_bundle_attach(&c->conf) != ESP_OK) { ESP_LOGW(TAG, "no CA bundle"); return -1; }
     r = mbedtls_ssl_setup(&c->ssl, &c->conf);
@@ -307,10 +283,6 @@ mailsend_err_t mailsend_with(const mailcfg_t *cfg, const char *subject, const ch
     if (c->ssl_ready) {
         mbedtls_ssl_free(&c->ssl);
         mbedtls_ssl_config_free(&c->conf);
-#if MBEDTLS_VERSION_MAJOR < 4
-        mbedtls_ctr_drbg_free(&c->drbg);
-        mbedtls_entropy_free(&c->entropy);
-#endif
     }
     if (c->fd >= 0) close(c->fd);
     memset(&c->smtp, 0, sizeof c->smtp);    /* the AUTH line passed through it */

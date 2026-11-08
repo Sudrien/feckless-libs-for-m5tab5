@@ -241,8 +241,7 @@ esp_partition_read
 # ---- ESP-IDF's drivers: GPIO, UART, I2C devices (6002) -----------------
 # Every launcher links them. Errant's GNSS is on a UART, with a GPIO for
 # its reset and PPS, and its IMU on tab5io's I2C bus as a device of its
-# own. _uart_set_pin6 is what IDF 6's uart_set_pin() macro calls;
-# src/feckless_abi.c has it for 5.5, whose uart_set_pin() is a function.
+# own. _uart_set_pin6 is what IDF 6's uart_set_pin() macro calls.
 gpio_config
 gpio_get_level
 gpio_install_isr_service
@@ -273,10 +272,10 @@ __assert_func
 # 8009: an app built with CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_SILENT
 # calls abort() from every ESP_ERROR_CHECK() (esp_err.h; the silent
 # assert() still calls __assert_func, with NULLs). esp_libc's abort.c on
-# IDF 6, newlib's on 5: a real function on both.
+# IDF 6.
 abort
 atof
-_ctype_b
+_ctype_
 __errno
 abs
 atoi
@@ -337,7 +336,7 @@ vsnprintf
 
 # ---- libm --------------------------------------------------------------
 # __issignalingf: newlib's newer float functions call it (IDF 6.1's
-# toolchain); src/feckless_abi.c has it for 5.5's, which lacks it.
+# toolchain).
 acos
 asin
 asinh

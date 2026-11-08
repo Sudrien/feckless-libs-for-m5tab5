@@ -146,10 +146,11 @@ uses no section, and runs on any launcher on ABI v1.
 | camera | `feckless_abi_camera` | `feckless_abi_camera_v1` | `feckless_camera`'s luma frames; the camera runs under the launcher's configuration (4005) |
 | network | `feckless_abi_network` | `feckless_abi_network_v1` | `feckless_network_handler`, lwIP's sockets, esp_netif, the HTTP server with WebSockets and the HTTP client with the certificate bundle; and the configuration both sides share (6004) |
 | image | `feckless_abi_image` | `feckless_abi_image_v1` | the P4's hardware JPEG decoder (`jpeg_new_decoder_engine` and the rest of the decoder half of `driver/jpeg_decode.h`); the decoders in `feckless_image_handler` link into the app (7010) |
-| crypto | `feckless_abi_crypto` | `feckless_abi_crypto_v2` | a SHA-256: `mbedtls_sha256` on Mbed TLS 3.6 (IDF 5.x), `psa_hash_compute` on 4.0 (IDF 6.x); the app's Mbed TLS major must be the launcher's, a marker symbol per major says so (8003, shrunk in 8007; v1 also had keys and X.509, which are the launcher's now) |
+| crypto | `feckless_abi_crypto` | `feckless_abi_crypto_v2` | a SHA-256: `psa_hash_compute` on Mbed TLS 4.0 (IDF 6); the app's Mbed TLS major must be the launcher's, a marker symbol says so (8003, shrunk in 8007; v1 also had keys and X.509, which are the launcher's now) |
 | audio | `feckless_abi_audio` | `feckless_abi_audio_v1` | Espressif's `esp_audio_codec` decoders, pinned at 2.5.0: the simple decoder (`esp_audio_simple_dec_*`), the one-type decoder (`esp_audio_dec_*`) and both `register_default()`s. Its archives are not position-independent, so they cannot link into an app; leave `esp_audio_codec` out of `ELF_COMPONENTS` (8008) |
 
-A section's file may hold names for one Mbed TLS major only (crypto, 8003):
+A section's file may hold names for one Mbed TLS major only (crypto, 8003;
+only 4's are left):
 a `@when <key> <value>` line starts a group of names that a launcher
 whose `<key>` is `<value>` lists, and the next `@when` or an `@end` ends
 it. The app's build check reads the file whole, so an app built for either

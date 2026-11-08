@@ -10,10 +10,7 @@
 #include "driver/sdmmc_host.h"
 #include "esp_check.h"
 #include "esp_heap_caps.h"          /* 5181: the SD bounce buffer */
-#include "esp_idf_version.h"
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(6, 0, 0)
 #include "esp_private/esp_gpio_reserve.h"   /* 6034 */
-#endif
 #include "esp_log.h"
 #include "esp_vfs_fat.h"
 #include "ff.h"
@@ -454,12 +451,10 @@ static esp_err_t sd_mount(bool verbose)
  * so the next init, a second later while the card is out, found its own
  * reservation and logged "conflict found for GPIO[42]". Release it once
  * the slot is gone. The reservation only, not the pin: gpio_reset_pin()
- * would also reconfigure it. IDF 5.x keeps no reservations for this. */
+ * would also reconfigure it. */
 static void sd_release_d3(void)
 {
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(6, 0, 0)
     esp_gpio_revoke(BIT64(SD_D3_GPIO));
-#endif
 }
 
 static esp_err_t sd_mount_at(bool verbose, int freq_khz)

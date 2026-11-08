@@ -12,35 +12,22 @@
 
 #include "mbedtls/build_info.h"
 
-/* The X.509 writer: Mbed TLS 4 names it MBEDTLS_X509_CREATE_C, 3.6
- * MBEDTLS_X509_CRT_WRITE_C. Without it the file is two stubs. */
-#if MBEDTLS_VERSION_MAJOR >= 4
-#  if defined(MBEDTLS_X509_CREATE_C)
-#    define HAVE_WRITER 1
-#  endif
-#elif defined(MBEDTLS_X509_CRT_WRITE_C)
+/* The X.509 writer is MBEDTLS_X509_CREATE_C. Without it the file is two
+ * stubs. */
+#if defined(MBEDTLS_X509_CREATE_C)
 #  define HAVE_WRITER 1
 #endif
 
 #ifdef HAVE_WRITER
 
-/* 6031: Mbed TLS 4 (IDF 6.x) has no public ecp.h or sha256.h -- keys
- * are made and hashes taken through PSA, and the X.509 writer draws its
- * randomness from PSA rather than from a callback. IDF 5.x ships 3.6
- * and keeps the calls this file always made. */
-#if MBEDTLS_VERSION_MAJOR >= 4
-#define CERT_PSA 1
+/* Mbed TLS 4 (IDF 6) has no public ecp.h or sha256.h -- keys are made
+ * and hashes taken through PSA, and the X.509 writer draws its
+ * randomness from PSA rather than from a callback. */
 #include "psa/crypto.h"
-#else
-#define CERT_PSA 0
-#include "mbedtls/ecp.h"
-#include "mbedtls/sha256.h"
-#endif
 #include "mbedtls/md.h"
 #include "mbedtls/pk.h"
 #include "mbedtls/x509_crt.h"
 
-#if CERT_PSA
 /* A P-256 key pair made by PSA, copied into `key`. The PSA key itself is
  * gone again on return: the copy is independent of it. psa_crypto_init()
  * may be called again, and without it every PSA call below is
@@ -65,7 +52,6 @@ static int make_key(mbedtls_pk_context *key)
     psa_destroy_key(id);
     return ret;
 }
-#endif
 
 int feckless_cert_make(const char *name, feckless_cert_rng_t rng, void *rng_ctx,
                        char *key_pem, size_t key_cap,
@@ -78,13 +64,7 @@ int feckless_cert_make(const char *name, feckless_cert_rng_t rng, void *rng_ctx,
     mbedtls_pk_init(&key);
     mbedtls_x509write_crt_init(&crt);
 
-#if CERT_PSA
     int ret = make_key(&key);
-#else
-    int ret = mbedtls_pk_setup(&key, mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY));
-    if (ret == 0) ret = mbedtls_ecp_gen_key(MBEDTLS_ECP_DP_SECP256R1,
-                                            mbedtls_pk_ec(key), rng, rng_ctx);
-#endif
     if (ret == 0) ret = mbedtls_pk_write_key_pem(&key, (unsigned char *)key_pem, key_cap);
     if (ret != 0) goto out;
 
@@ -125,11 +105,7 @@ int feckless_cert_make(const char *name, feckless_cert_rng_t rng, void *rng_ctx,
     san.node.san.unstructured_name.len = strlen(host);
     if ((ret = mbedtls_x509write_crt_set_subject_alternative_name(&crt, &san)) != 0) goto out;
 
-#if CERT_PSA
     ret = mbedtls_x509write_crt_pem(&crt, (unsigned char *)crt_pem, crt_cap);
-#else
-    ret = mbedtls_x509write_crt_pem(&crt, (unsigned char *)crt_pem, crt_cap, rng, rng_ctx);
-#endif
 
 out:
     mbedtls_x509write_crt_free(&crt);
@@ -147,14 +123,10 @@ int feckless_cert_fingerprint(const char *crt_pem, unsigned char out[32])
     mbedtls_x509_crt crt;
     mbedtls_x509_crt_init(&crt);
     int ret = mbedtls_x509_crt_parse(&crt, (const unsigned char *)crt_pem, strlen(crt_pem) + 1);
-#if CERT_PSA
     if (ret == 0) {
         size_t olen = 0;
         ret = (int)psa_hash_compute(PSA_ALG_SHA_256, crt.raw.p, crt.raw.len, out, 32, &olen);
     }
-#else
-    if (ret == 0) ret = mbedtls_sha256(crt.raw.p, crt.raw.len, out, 0);
-#endif
     mbedtls_x509_crt_free(&crt);
     return ret;
 }

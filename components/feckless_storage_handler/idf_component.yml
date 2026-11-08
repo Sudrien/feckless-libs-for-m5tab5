@@ -1,4 +1,4 @@
-version: "0.9.10"
+version: "0.9.11"
 description: >-
   The M5Stack Tab5's microSD slot and USB-A mass storage, mounted and
   watched, with one arbiter that leases the volume per read so a

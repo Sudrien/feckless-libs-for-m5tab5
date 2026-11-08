@@ -3,7 +3,7 @@
 #    with EXTRA_COMPONENT_DIRS because mocking of managed components is not supported yet.
 #    This is acceptable workaround for testing.
 set(requires "")
-if((${IDF_VERSION_MAJOR} LESS 6) OR ("${IDF_TARGET}" STREQUAL "linux"))
+if("${IDF_TARGET}" STREQUAL "linux")
     list(APPEND requires usb)
 endif()
 

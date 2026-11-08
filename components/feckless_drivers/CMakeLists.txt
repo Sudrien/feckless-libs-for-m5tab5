@@ -4,8 +4,7 @@
 # the player vendors it with a descriptor-parser fix the registry does not
 # have (its 5026), and a project's own components/ wins over anything a
 # manifest would pull. An application without its own copy adds
-# espressif/usb_host_uac to its manifest. `usb` is IDF's on 5.x and
-# espressif/usb on 6.x, brought in by usb_host_uac's manifest.
+# espressif/usb_host_uac to its manifest. `usb` is espressif/usb, brought in by usb_host_uac's manifest.
 #
 # esp_lcd_touch is PUBLIC because touch.h hands out its types.
 #

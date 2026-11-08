@@ -115,15 +115,14 @@ static const char *TAG = "tab5_lcd";
 /*
  * What the clock really is. The DPI clock is PLL_F240M divided by an
  * integer, rounded (mipi_dsi_hal_host_dpi_calculate_divider, the same
- * in IDF 5.5 and 6.1): 240 / 70 = 3.43 -> 3 -> 80 MHz. So the "70" this
- * used to ask for has always run at 80. IDF 5.5 says nothing and runs
- * the panel at 80e6 / (802 x 1524) = 65.4 Hz; IDF 6.1 warns
+ * in IDF 6.1): 240 / 70 = 3.43 -> 3 -> 80 MHz. So the "70" this used to
+ * ask for has always run at 80. IDF 6.1 warns
  *
  *   DPI clock adjusted from 70.00 MHz to 80.00 MHz, compensated hfp=155
  *
  * and stretches the front porch to keep 57.3 Hz. Asked for as a clock
- * the divider can make, with the porch set here, both IDFs run the
- * same timing and neither has anything to adjust.
+ * the divider can make, with the porch set here, there is nothing to
+ * adjust.
  *
  * 80 MHz, hfp 155, lane 770 Mbps:
  *   refresh = 80 MHz / ((720 + 2 + 40 + 155) x 1524)
@@ -142,11 +141,7 @@ static const char *TAG = "tab5_lcd";
 /* LCD_LEDC_DUTY_MAX: lcd.h */
 #define LCD_LEDC_FREQ_HZ        (5000)
 
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(6, 0, 0)
 #define DPI_COLOR_FORMAT        (LCD_COLOR_FMT_RGB565)
-#else
-#define DPI_COLOR_FORMAT        (LCD_COLOR_PIXEL_FORMAT_RGB565)
-#endif
 
 static esp_lcd_panel_handle_t s_panel;
 
@@ -257,20 +252,13 @@ static esp_err_t panel_init(void)
         .virtual_channel = 0,
         .dpi_clk_src = MIPI_DSI_DPI_CLK_SRC_DEFAULT,
         .dpi_clock_freq_mhz = DPI_CLOCK_MHZ,
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(6, 0, 0)
         .in_color_format = DPI_COLOR_FORMAT,
-#else
-        .pixel_format = DPI_COLOR_FORMAT,
-#endif
         .num_fbs = 1,
         .video_timing = {
             .h_size = LCD_H_RES, .v_size = LCD_V_RES,
             .hsync_pulse_width = 2,  .hsync_back_porch = 40, .hsync_front_porch = DPI_HFP,
             .vsync_pulse_width = 20, .vsync_back_porch = 24, .vsync_front_porch = 200,
         },
-#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(6, 0, 0)
-        .flags.use_dma2d = true,
-#endif
     };
 
     st7121_vendor_config_t vendor = {
@@ -285,9 +273,7 @@ static esp_err_t panel_init(void)
         .vendor_config = &vendor,
     };
     ESP_RETURN_ON_ERROR(esp_lcd_new_panel_st7121(io, &pcfg, &s_panel), TAG, "st7121");
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(6, 0, 0)
     ESP_RETURN_ON_ERROR(esp_lcd_dpi_panel_enable_dma2d(s_panel), TAG, "dma2d");
-#endif
     dpi_axi_priority();
     ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(s_panel), TAG, "reset");
     ESP_RETURN_ON_ERROR(esp_lcd_panel_init(s_panel), TAG, "init");

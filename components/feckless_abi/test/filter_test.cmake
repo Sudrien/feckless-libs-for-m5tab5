@@ -59,28 +59,22 @@ expect("k=3 keeps common, its own, and what follows @end"
 expect("k=4 keeps common, its own, and what follows @end"
        _k4 STREQUAL "common_a,four_a,after_end")
 
-# The real section: each major gets its marker and only its marker, the
-# shared names are in both, and the other major's names are in neither.
+# The real section: Mbed TLS 4's marker and names, and no 3.6 names.
 set(_crypto "${_here}/../sections/crypto.txt")
-feckless_abi_filter_section("${_crypto}" "${_tmp}/c3.txt" mbedtls 3)
 feckless_abi_filter_section("${_crypto}" "${_tmp}/c4.txt" mbedtls 4)
-file(STRINGS "${_tmp}/c3.txt" _c3)
 file(STRINGS "${_tmp}/c4.txt" _c4)
-expect("3 has its marker" feckless_abi_crypto_mbedtls3 IN_LIST _c3)
-expect("3 lacks 4's marker" NOT feckless_abi_crypto_mbedtls4 IN_LIST _c3)
 expect("4 has its marker" feckless_abi_crypto_mbedtls4 IN_LIST _c4)
-expect("4 lacks 3's marker" NOT feckless_abi_crypto_mbedtls3 IN_LIST _c4)
-foreach(_n mbedtls_sha256)
-    expect("${_n} only in 3" ${_n} IN_LIST _c3 AND NOT ${_n} IN_LIST _c4)
-endforeach()
 foreach(_n psa_hash_compute psa_crypto_init)
-    expect("${_n} only in 4" ${_n} IN_LIST _c4 AND NOT ${_n} IN_LIST _c3)
+    expect("${_n} in 4" ${_n} IN_LIST _c4)
+endforeach()
+foreach(_n feckless_abi_crypto_mbedtls3 mbedtls_sha256)
+    expect("${_n} gone" NOT ${_n} IN_LIST _c4)
 endforeach()
 # 8007: what version 1 had and the launcher owns now is gone from both.
 foreach(_n mbedtls_pk_init mbedtls_x509write_crt_pem mbedtls_pk_get_type
            mbedtls_pk_setup mbedtls_ecp_gen_key mbedtls_pkcs5_pbkdf2_hmac_ext
            psa_generate_key mbedtls_pk_copy_from_psa psa_key_derivation_setup)
-    expect("${_n} in neither" NOT ${_n} IN_LIST _c3 AND NOT ${_n} IN_LIST _c4)
+    expect("${_n} gone" NOT ${_n} IN_LIST _c4)
 endforeach()
 # The symbol line and comments never become names.
 expect("no @symbol line in a table" NOT "@symbol feckless_abi_crypto_v2" IN_LIST _c3)

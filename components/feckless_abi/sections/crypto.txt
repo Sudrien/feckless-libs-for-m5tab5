@@ -16,27 +16,20 @@
 # wifi_psk() in the network handler. Nothing required version 1, so no
 # launcher or app needs both.
 #
-# IDF 5.5 ships Mbed TLS 3.6 where IDF 6.1 ships 4.0, which moved the
-# public surface: no sha256.h, hashes through PSA. The name an app takes
-# depends on which it was built against, so a "@when mbedtls N" line
-# starts the names that exist for that major only, until the next "@when"
-# or an "@end"; the launcher's table lists its own major's, and the build
-# check accepts either. Each major has a marker symbol that only a
-# launcher of that major defines, and feckless_abi_require_crypto() refers
-# to the app's, so an app built for the other one fails in
-# esp_elf_relocate() naming it and not a function.
+# IDF 6.1 ships Mbed TLS 4.0, which has no sha256.h and hashes through
+# PSA. A "@when mbedtls N" line starts the names that exist for that
+# major only, until the next "@when" or an "@end". Mbed TLS 3.6's
+# (IDF 5.x's) names -- feckless_abi_crypto_mbedtls3 and mbedtls_sha256 --
+# are gone with that IDF. The marker symbol is only defined by a launcher
+# of this major, and feckless_abi_require_crypto() refers to it, so an app
+# built for another fails in esp_elf_relocate() naming it and not a
+# function.
 #
 # Adding a name is compatible. Removing one, or changing what one means,
 # is a new section version: crypto_v3.
 @symbol feckless_abi_crypto_v2
 
-# ---- Mbed TLS 3.6 (IDF 5.x) -------------------------------------------
-@when mbedtls 3
-feckless_abi_crypto_mbedtls3
-mbedtls_sha256
-@end
-
-# ---- Mbed TLS 4.0 (IDF 6.x) -------------------------------------------
+# ---- Mbed TLS 4.0 (IDF 6) -------------------------------------------
 # psa_crypto_init() may be called again, so an app that cannot know
 # whether the launcher has called it may; the launcher's TLS has.
 @when mbedtls 4

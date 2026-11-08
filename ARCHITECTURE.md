@@ -1440,3 +1440,27 @@ one new thing was 8016. The 9000s start after that tag.
   rtc8130.c and tab5io.c compiled with `-O2 -Wall -Werror=all -Wextra
   -Werror=extra` against stub IDF headers. Not built with ESP-IDF; not
   run on a board.
+
+### 9xxx -- IDF 5.x support removed; the ABI's `_ctype_`
+
+The libraries build on ESP-IDF 6.1 only now (the player and the launcher
+do), so the 5.x paths are gone:
+
+- **ABI:** `exports.txt` lists `_ctype_`, not `_ctype_b`. `_ctype_b` is
+  IDF 5.5's newlib name; IDF 6.1's newlib references `_ctype_`, so an
+  app's ELF that used `<ctype.h>` failed the abicheck naming it. The
+  crypto section drops Mbed TLS 3.6's names (`mbedtls_sha256` and the
+  `feckless_abi_crypto_mbedtls3` marker); the `@when` filter stays, with
+  only `mbedtls 4` in use. The 5.5-only shims in `feckless_abi.c`
+  (`__issignalingf`, `_uart_set_pin6`) are removed: 6.1 supplies both.
+- **Mbed TLS:** `feckless_cert.c`, `feckless_mail`'s `mailsend.c`,
+  `wifi_psk()` and `feckless_abi_crypto` are PSA only.
+- **IDF:** `lcd.c`, `storage.c`, `wifi.c` and `msc_host_vfs.c` take the
+  6.x calls without `ESP_IDF_VERSION` tests; `usb_host_msc` always uses
+  the block-device path (`diskio_usb.c` is deleted); the usb manifests
+  need `idf >=6.1` and `espressif/usb` unconditionally (the linux-target
+  test path stays); CI's fatfs patch check runs on `release/v6.1` only.
+- Version 0.9.11 for every component.
+
+*Checked:* `filter_test.cmake` passes. *Not checked:* any of the C,
+which is not built here; a launcher build on 6.1 with the renamed export.
