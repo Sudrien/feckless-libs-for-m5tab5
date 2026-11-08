@@ -283,6 +283,27 @@ feckless_umode_enter:
   lw    t1, 0(t0)
   sw    t1, FUMODE_CTX_K_THRESH(a0)
 
+#if !CONFIG_FECKLESS_UMODE_PREEMPTIBLE
+
+  /* u-feckless-0017: masked again by default.  The preemptible window above
+   * took the Tab5 down with an interrupt watchdog on CPU0 within a second of
+   * start-up: the tick stopped.  The likely mechanism is an edge-configured
+   * line claimed by the private vector whose re-pend did not take, so its
+   * source -- never serviced, never cleared -- never produced another edge.
+   * Until that is understood on silicon, the window holds the threshold at
+   * its maximum as the sample does, and the preemptible path is opt-in
+   * (CONFIG_FECKLESS_UMODE_PREEMPTIBLE).
+   *
+   * Safe as a read-modify-write: MIE is clear and the register is
+   * core-local.  The read-back forces the write to take effect before the
+   * mret (see IDF's rv_utils_restore_intlevel_regval()).
+   */
+  li    t1, FUMODE_CLIC_THRESH_MASK
+  sw    t1, 0(t0)
+  lw    t1, 0(t0)
+
+#endif
+
 #if CONFIG_ESP_SYSTEM_HW_STACK_GUARD
 
   /* Hand IDF's hardware stack guard over from the host task's stack to the
@@ -537,6 +558,8 @@ feckless_umode_trap_entry:
 
   mv    a0, t0                   /* a0 = ctx, and a0 is already saved */
 
+#if CONFIG_FECKLESS_UMODE_PREEMPTIBLE
+
   /* u-feckless-0016: an edge-triggered interrupt taken here has had its
    * pending bit cleared by the hardware-vectored entry, and is not serviced
    * by this vector.  Set it pending again, so IDF's handler takes it once its
@@ -561,6 +584,7 @@ feckless_umode_trap_entry:
   li    t3, 1
   sb    t3, 0(t2)                /* edge: pending again */
 .Lnot_irq:
+#endif
 
 #if CONFIG_ESP_SYSTEM_HW_STACK_GUARD
 

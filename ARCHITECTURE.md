@@ -2317,3 +2317,35 @@ pass. *Not on a Tab5.*
 in a window); nothing else changed. If the board hangs or panics in an
 interrupt handler while a box runs, that is an interrupt this reasoning did not
 cover: send the panic's `MCAUSE` and backtrace.
+
+### u-feckless-0017 -- windows are masked again; preemption is opt-in
+
+0016 made things worse. Spurious standalone panicked within a second of
+start-up, and again during a dictionary load:
+
+```
+Guru Meditation Error: Core  0 panic'ed (Interrupt wdt timeout on CPU0).
+MEPC    : 0x4ff02b84  RA      : 0x48007f0a
+--- 0x4ff02b84: feckless_umode_trap_entry at umode.S:724   (.Lkresume)
+T0      : 0x00011880  T1      : 0x00010088
+```
+
+The exit path was doing what it should. T1 is the kernel's saved
+mstatus, and it has MIE set. T0 is the mstatus the exit wrote, with
+MPP=M and MPIE=1. The watchdog's own interrupt was taken on the first
+instruction back in M-mode. So interrupts were reaching ESP-IDF at
+`.Lkresume`, yet CPU0's tick had not fed the watchdog for the whole
+timeout.
+
+Our best reading is that the tick was lost, not delayed. Every line is
+hardware-vectored. If an edge-configured source is claimed by the
+private vector and the re-pend write does not take, the ISR never runs.
+The source's status is then never cleared, so it never makes another
+edge. This has not been confirmed on silicon.
+
+Until it is, `umode_enter` again raises the CLIC threshold to its
+maximum, as the sample and 0015 did. The 0016 path, with the threshold
+left alone and the edge re-pend, now sits behind
+`CONFIG_FECKLESS_UMODE_PREEMPTIBLE`, a new Kconfig option that defaults
+to off. The blue flash while a dictionary loads comes back with this:
+the panel is starved for as long as the box computes without a syscall.

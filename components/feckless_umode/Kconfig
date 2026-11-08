@@ -1,0 +1,15 @@
+menu "feckless_umode"
+
+    config FECKLESS_UMODE_PREEMPTIBLE
+        bool "Let interrupts land inside a U-mode window (experimental)"
+        default n
+        help
+            By default a window raises the CLIC threshold to its maximum, so
+            no interrupt is taken while the boxed program runs; they are
+            serviced at the next syscall or exit.  Enabling this leaves the
+            threshold alone and re-pends edge-triggered lines claimed by the
+            private vector.  On an ESP32-P4 rev 1.3 Tab5 (u-feckless-0016)
+            this stopped the tick on CPU0 and tripped the interrupt watchdog;
+            leave it off unless investigating that.
+
+endmenu
