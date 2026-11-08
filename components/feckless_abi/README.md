@@ -148,6 +148,7 @@ uses no section, and runs on any launcher on ABI v1.
 | image | `feckless_abi_image` | `feckless_abi_image_v1` | the P4's hardware JPEG decoder (`jpeg_new_decoder_engine` and the rest of the decoder half of `driver/jpeg_decode.h`); the decoders in `feckless_image_handler` link into the app (7010) |
 | crypto | `feckless_abi_crypto` | `feckless_abi_crypto_v2` | a SHA-256: `psa_hash_compute` on Mbed TLS 4.0 (IDF 6); the app's Mbed TLS major must be the launcher's, a marker symbol says so (8003, shrunk in 8007; v1 also had keys and X.509, which are the launcher's now) |
 | audio | `feckless_abi_audio` | `feckless_abi_audio_v1` | Espressif's `esp_audio_codec` decoders, pinned at 2.5.0: the simple decoder (`esp_audio_simple_dec_*`), the one-type decoder (`esp_audio_dec_*`) and both `register_default()`s. Its archives are not position-independent, so they cannot link into an app; leave `esp_audio_codec` out of `ELF_COMPONENTS` (8008) |
+| box | none | `feckless_abi_box_v1` | not a list: the marker of an app built for a box (`feckless_box_libc`, the `umode` branch). No launcher defines it for a trusted run, so such an app is refused by name there |
 
 A section's file may hold names for one Mbed TLS major only (crypto, 8003;
 only 4's are left):

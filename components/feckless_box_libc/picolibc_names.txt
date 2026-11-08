@@ -1,0 +1,33 @@
+# What cmake/archive_subset.cmake copies out of picolibc's libc.a: the
+# first block of inapp.txt. One name a line.
+_ctype_b
+abs
+bsearch
+gmtime_r
+labs
+memchr
+memcmp
+memcpy
+memmem
+memmove
+memset
+qsort
+strcasecmp
+strcat
+strchr
+strcmp
+strcpy
+strcspn
+strlcpy
+strlen
+strncasecmp
+strncat
+strncmp
+strncpy
+strnlen
+strpbrk
+strrchr
+strspn
+strstr
+tolower
+toupper

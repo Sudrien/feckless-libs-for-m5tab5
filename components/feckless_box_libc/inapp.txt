@@ -1,0 +1,74 @@
+# The names a boxed app must have inside its own ELF: pure functions, with
+# no state of the host's and nothing to check. A boxed ELF that leaves one of
+# these undefined fails the build (cmake/boxcheck.cmake), since the box has
+# no host call for it. Lines that are not a bare name are ignored.
+#
+# ---- from the toolchain's picolibc libc.a, the members that link into a
+# shared object (checked with riscv32-esp-elf 15.2.0, esp-15.2.0_20251204):
+# copied out of libc.a by cmake/archive_subset.cmake (picolibc_names.txt)
+_ctype_b
+abs
+bsearch
+gmtime_r
+labs
+memchr
+memcmp
+memcpy
+memmem
+memmove
+memset
+qsort
+strcasecmp
+strcat
+strchr
+strcmp
+strcpy
+strcspn
+strlcpy
+strlen
+strncasecmp
+strncat
+strncmp
+strncpy
+strnlen
+strpbrk
+strrchr
+strspn
+strstr
+tolower
+toupper
+# ---- this component's own (src/): picolibc's need errno as a thread-local,
+# or have absolute references
+__errno
+atoi
+atol
+printf
+snprintf
+sprintf
+strtol
+strtoll
+strtoul
+strtoull
+vprintf
+vsnprintf
+# ---- from the toolchain's libgcc.a (libgcc_names.txt)
+__ashldi3
+__ashrdi3
+__bswapdi2
+__bswapsi2
+__eqdf2
+__fixdfdi
+__fixdfsi
+__fixunsdfdi
+__fixunsdfsi
+__gedf2
+__gtdf2
+__ledf2
+__lshrdi3
+__ltdf2
+__nedf2
+__negdf2
+__popcountsi2
+__truncdfsf2
+__unorddf2
+__trunctfdf2

@@ -1,0 +1,28 @@
+# What cmake/archive_subset.cmake copies out of the toolchain's libgcc.a for
+# a boxed app: the helpers that link into a shared object with nothing left
+# undefined (checked one by one with riscv32-esp-elf 15.2.0, rv32imafc/ilp32f,
+# u-feckless-0005). The rest of v1's libgcc names -- __adddf3, __muldf3,
+# __divdi3 and the others that reach __clz_tab -- stay imports: they take and
+# return values only, so the host can answer them. __trunctfdf2 is not a v1
+# name; printf's %Lf needs it, and a long double is passed by reference, so it
+# is in the app, not a host call that would read a pointer.
+__ashldi3
+__ashrdi3
+__bswapdi2
+__bswapsi2
+__eqdf2
+__fixdfdi
+__fixdfsi
+__fixunsdfdi
+__fixunsdfsi
+__gedf2
+__gtdf2
+__ledf2
+__lshrdi3
+__ltdf2
+__nedf2
+__negdf2
+__popcountsi2
+__truncdfsf2
+__unorddf2
+__trunctfdf2

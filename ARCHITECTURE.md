@@ -1773,3 +1773,81 @@ comparator in M-mode; the stdio and FatFs calls pass handles (`FILE *`,
 `FIL *`) whose contents the program could rewrite, so the host must hand out
 numbers and keep the objects; and the board's init calls are the launcher's
 and become no-ops. That is 0005 onward, with a sandbox build of the app.
+
+### u-feckless-0005 -- `feckless_box_libc`: building an app for a box
+
+The app's side. A boxed app's imports are `ecall`s, so pure libc goes in the
+app's own ELF -- and `qsort` must: the host would run the comparator in
+M-mode. `feckless_abi_box_elf()` is `feckless_abi_elf()` with that linked in.
+
+**What the toolchain allows**, found by linking each name alone into a shared
+object with `project_elf()`'s flags (riscv32-esp-elf 15.2.0,
+`esp-15.2.0_20251204`, rv32imafc_zicsr_zifencei_zaamo_zalrsc/ilp32f, the
+release fetched from GitHub):
+
+- picolibc's `libc.a` is not built `-fPIC`. The string and memory functions,
+  `qsort`, `bsearch`, ctype, `gmtime_r` and a few more link. `strtol`/`strtoul`/
+  `atoi` do not (`R_RISCV_TPREL_HI20 against errno`: thread-local), nor
+  `snprintf`/`vsnprintf`/`sscanf`/`strtod`/`strftime` (`R_RISCV_HI20` to
+  their tables), nor `rand`, `abort`, `strerror`; `strdup` and
+  `__assert_func` pull in picolibc's own `malloc` and locks.
+- `libgcc.a`: 20 of v1's 39 helpers link with nothing undefined (listed in
+  `libgcc_names.txt`); the other 19 reach `__clz_tab` absolutely
+  (`__adddf3`, `__muldf3`, `__divdi3`, `__floatsidf` ...). They take and
+  return values only -- no pointer, no callback -- so they stay imports and
+  the host can answer them.
+- `project_elf()` links with its own flags, not the project's, so `-lc`
+  would be the default multilib's newlib (ilp32, against an ilp32f app), and
+  `-print-file-name=libc.a` answers newlib's even with `--specs=picolibc.specs`.
+  The macro finds picolibc's as the specs do:
+  `$(-print-sysroot)/../picolibc/riscv32-esp-elf/lib/$(-print-multi-directory)/libc.a`.
+
+**So:**
+
+- `cmake/archive_subset.cmake` copies named members out of an archive --
+  `picolibc_names.txt` from `libc.a`, `libgcc_names.txt` from `libgcc.a` --
+  never the archive whole. `nm -A` prints `lib.a:member.o:00000000 T name`
+  with no space after the member's colon; the first version expected one.
+- `src/box_strto.c`: `strtol`, `strtoul`, `strtoll`, `strtoull`, `atoi`,
+  `atol`, written for this (MIT), setting `errno` through `__errno()`.
+  `src/box_errno.c`: the app's own `__errno()` (feckless_abi already compiles
+  every component with `-D__PICOLIBC_ERRNO_FUNCTION=__errno`, 9017).
+- `src/box_printf.c`: eyalroz/printf v6.4.0 (commit 92c7359, MIT, vendored
+  unchanged in `vendor/printf`) under the standard names; `printf` goes a
+  character at a time to the host's `putchar`. Its `%Lf` converts with
+  `__trunctfdf2`, which is not a v1 name; abicheck refused the first link for
+  it. A long double is passed by reference on this ABI, so a host call would
+  read a pointer; it is linked from libgcc instead, where it is clean.
+- `include/feckless_box.h`: `feckless_abi_require_box()`, a reference to
+  `feckless_abi_box_v1`. `feckless_abi/sections/box.txt` declares that
+  symbol and no names, so abicheck accepts it, and no component defines it:
+  a trusted launcher refuses a boxed app by name, and a boxing one (which
+  puts it in its call table as data) can tell one from the other.
+- `cmake/boxcheck.cmake`, after abicheck: the ELF refers to
+  `feckless_abi_box_v1`, and imports nothing in `inapp.txt`.
+
+*Checked with the toolchain*, outside IDF: the three sources compile; the
+subsets are 31 members of `libc.a` and 17 of `libgcc.a`; a test app using
+`qsort` with a comparator, `strcasecmp`, `strtoul`, `snprintf` with `%f` and
+`%lld`, `tolower`, `isalpha`, `errno`, `malloc` and `gfx_draw_text`, linked
+with `project_elf()`'s link line, imports only `malloc`, `free`,
+`gfx_draw_text`, the two version symbols and ten libgcc value helpers, and
+every relocation naming a symbol names one of those; abicheck passes it
+(`15 symbols, all in feckless_abi_v1 + feckless_abi_box_v1`) and boxcheck
+passes it. Without `feckless_abi_require_box()`, boxcheck fails and deletes
+the ELF; with `box_strto.c` left out, abicheck passes (`strtoul` is a v1 name)
+and boxcheck fails naming `strtoul` and `atoi`. The first boxcheck run failed
+for another reason -- `IN_LIST` needs policy CMP0057 in script mode -- and was
+fixed before these. *On the host:* `strto*` against glibc, 801980
+comparisons of value, end and errno, the same (an invalid base is unspecified
+by C, and glibc leaves `*end` unset there, so `end` is compared for valid
+bases only); four changes to it (overflow off by one, `0x` with no hex digit,
+`LONG_MIN` refused, leading `0` not octal) each caught; the vendored printf
+against glibc's for 16 format lines.
+
+*Not checked:* the macro in an IDF build (`CMAKE_C_FLAGS` carrying
+`-march`/`-mabi` at that point, the generated archives' dependencies,
+`esp-idf/feckless_box_libc/libfeckless_box_libc.a` as the path), any of it on
+a board, and an app's ELF loaded into a box. No launcher serves a boxed app's
+imports yet; the libgcc value helpers, stdio and the rest are the host's table
+(0006).

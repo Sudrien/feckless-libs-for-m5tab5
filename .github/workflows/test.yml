@@ -39,6 +39,9 @@ jobs:
         run: sudo apt-get install -y --no-install-recommends clang llvm
       - name: feckless_umode
         run: make -C components/feckless_umode/test run asm
+      # u-feckless-0005: strto* and the vendored printf against libc.
+      - name: feckless_box_libc
+        run: make -C components/feckless_box_libc/test
       # 8003: the ABI's section filter and the crypto list.
       - name: feckless_abi section filter
         run: cmake -P components/feckless_abi/test/filter_test.cmake
