@@ -2167,3 +2167,58 @@ to `__wrap_esp_cpu_configure_region_protection`, and IDF's is not linked.
 *What to look for:* `feckless_umode: ESP-IDF's region protection skipped 2
 times at start-up`, `core 0: PMP granularity 128 bytes`, no `locked before`
 lines, and the reader in its box.
+
+### u-feckless-0014 -- a box's ELF is resolved against the box alone
+
+*0013 on a Tab5* (Spurious's standalone .bin, ESP32-P4 v1.3, IDF
+v6.1-829-g9a97f6c54ec) -- **the first app in a box**:
+
+    feckless_umode: core 0: PMP granularity 128 bytes
+    feckless_umode: core 1: PMP granularity 128 bytes
+    feckless_umode: ESP-IDF's region protection skipped 2 times at start-up
+    feckless_umode: app in its box at 0x48003000, 24576 KB, 73 calls; 60 KB used by the load
+    standalone: the reader in a box of 24576 KB
+    spurious: === Spurious v0.1.0-pre1-12-gf273f56-dirty, built ... ===
+    tab5_lcd: ST7121 initialised (720x1280)
+    ST7123: Touch panel create success, version: 1.0.2
+
+The wrap worked (two calls skipped, nothing locked); the granularity is 128
+bytes, as `SOC_CPU_PMP_REGION_GRANULARITY` says; the reader's constructors and
+app_main ran in user mode; its banner came through the box's log line, its
+panel and touch through the box's board calls. Thirty seconds on, the card was
+swapped, and on the remount:
+
+    standalone: the reader ended: reason 1, instruction access fault at 0x4ff09c62
+    --- 0x4ff09c62: calloc at esp_libc/src/heap.c:39
+
+The reader had jumped to IDF's own `calloc`, in internal RAM; the PMP stopped
+the fetch and the window ended with FECKLESS_UMODE_END_FAULT -- the box doing
+what it is for. But the import should have been the box's stub.
+
+**Why:** elf_loader 2.1.0's `elf_find_sym()` calls a resolver whose default,
+`elf_find_sym_default()`, searches elf_loader's own tables first -- with
+`CONFIG_ELF_LOADER_LIBC_SYMBOLS` (default y) `malloc`, `calloc`, `realloc`,
+`free`, `puts`, `putchar`, `printf`, `__divdf3`, `__ltdf2`, `__gtdf2`,
+`__floatunsidf`, `__fixunsdfsi` and the rest, with `CONFIG_ELF_LOADER_ESPIDF_SYMBOLS`
+lwIP's socket calls -- as the host's functions, and the tables registered with
+`esp_elf_register_symbol()` only after. 0004's registered table lost to them.
+The first card evidently opened no dictionary, so `calloc` on the remount was
+the first of them to run.
+
+**So:** while a box is relocated, `elf_set_symbol_resolver()` (elf_loader's
+own hook, `private/elf_symbol.h`) installs `box_resolve()`, which answers from
+the box's table and nothing else; `elf_reset_symbol_resolver()` puts the
+default back after. Every import resolves to a stub or a data copy in the box,
+or to nothing, and then esp_elf fails the load naming it (`Can't find common
+<name>`), which is the point: a name the box does not answer must not
+quietly reach the host. The box's table is no longer registered with
+`esp_elf_register_symbol()` at all -- with the resolver it is not needed, and
+registered it was visible to anything else loaded meanwhile. Relocation looks
+names up in exactly two places, both through `elf_find_sym()`.
+
+*Checked:* `umode_load.c` parses with riscv32-esp-elf-gcc 15.2.0 at `-Wall
+-Wextra -Werror` against elf_loader 2.1.0's own headers. *Not on a Tab5.*
+
+*What to look for:* the reader through a card swap, a dictionary opened and a
+word looked up; or, if the load now fails, `ELF: Can't find common <name>`,
+which is a name the box's table lacks (feckless_box_calls).

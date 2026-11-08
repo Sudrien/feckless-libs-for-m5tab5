@@ -23,6 +23,7 @@
 #include "esp_elf.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "private/elf_symbol.h"     /* u-feckless-0014: elf_set_symbol_resolver() */
 #include "private/elf_types.h"
 
 #include "feckless_umode_box.h"
@@ -74,6 +75,32 @@ void __wrap_esp_elf_free(void *ptr)
     __real_esp_elf_free(ptr);
 }
 
+/*
+ * u-feckless-0014: the names a box's ELF is relocated against are the box's
+ * table and nothing else.
+ *
+ * esp_elf resolves an import with elf_find_sym(), whose default searches
+ * elf_loader's own tables first -- with CONFIG_ELF_LOADER_LIBC_SYMBOLS, its
+ * default, malloc, calloc, realloc, free, puts, putchar, printf, __divdf3 and
+ * more, as the host's functions -- and only then the tables registered with
+ * esp_elf_register_symbol(). On a Tab5 the box's table was registered and
+ * Spurious's calloc still resolved to IDF's: `instruction access fault at
+ * 0x4ff09c62` (calloc, heap.c), stopped by the PMP. So the box's table is not
+ * registered at all; while a box is relocated, this is the resolver. A name
+ * not here returns 0, and esp_elf fails the load naming it.
+ */
+static const struct esp_elfsym *s_resolving;
+
+static uintptr_t box_resolve(const char *name)
+{
+    for (const struct esp_elfsym *p = s_resolving; p && p->name; p++) {
+        if (strcmp(p->name, name) == 0) {
+            return (uintptr_t)p->sym;
+        }
+    }
+    return 0;
+}
+
 static bool in_box(const feckless_umode_app_t *a, uintptr_t p)
 {
     return p >= a->box.base && p < a->box.base + a->box.size;
@@ -88,10 +115,7 @@ static void free_app(feckless_umode_app_t *a)
         esp_elf_deinit(&a->elf);
         s_loading = NULL;
     }
-    if (a->syms) {
-        esp_elf_unregister_symbol(a->syms);
-        heap_caps_free(a->syms);
-    }
+    heap_caps_free(a->syms);
     heap_caps_free(a->block);
     heap_caps_free(a);
 }
@@ -147,21 +171,17 @@ esp_err_t feckless_umode_load(const uint8_t *image, size_t size,
         }
     }
     /* syms[n] is the terminator, zeroed by calloc. */
-    int r = esp_elf_register_symbol(a->syms);
-    if (r < 0) {
-        ESP_LOGE(TAG, "esp_elf_register_symbol: %d", r);
-        heap_caps_free(a->syms);                /* not registered: free_app must not unregister it */
-        a->syms = NULL;
-        err = ESP_FAIL;
-        goto fail;
-    }
 
-    /* Relocate, every allocation into the box. The relocation's own cache
-     * flush (a full write-back and I-cache invalidate on the P4) covers the
-     * stubs written above. */
+    /* Relocate, every allocation into the box and every name from the box's
+     * table alone. The relocation's own cache flush (a full write-back and
+     * I-cache invalidate on the P4) covers the stubs written above. */
     esp_elf_init(&a->elf);
     s_loading = &a->box;
-    r = esp_elf_relocate(&a->elf, image, size);
+    s_resolving = a->syms;
+    elf_set_symbol_resolver(box_resolve);
+    int r = esp_elf_relocate(&a->elf, image, size);
+    elf_reset_symbol_resolver();
+    s_resolving = NULL;
     s_loading = NULL;
     if (r < 0) {
         ESP_LOGE(TAG, "esp_elf_relocate: %d (an import not in the box's table is named above)", r);
