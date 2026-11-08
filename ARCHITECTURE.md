@@ -1708,3 +1708,68 @@ granted block, so there is no program to enter -- the app's PSRAM block, its
 loader, and the table of `ecall` stubs for `esp_elf` are 0004. Interrupts
 stay masked for a whole window, so long computation between calls delays the
 tick (0001).
+
+### u-feckless-0004 -- the box: an app's ELF loaded into one granted block
+
+What 0003 lacked: a program to enter. An ELF is relocated into one block of
+PSRAM, its imports resolved to `ecall` stubs in the same block, and that block
+granted to U-mode and nothing else.
+
+- `umode_box.c` (no ESP-IDF): the box. One block, the top `stack` bytes the
+  program's stack, the rest a first-fit heap with 16-byte alignment. **The
+  allocation table is the host's** (`feckless_box_t`, in internal RAM), not
+  headers in the block: the program can write all of the block, and a header
+  there would be a pointer it could aim the host's allocator with. A free or
+  realloc of anything that is not exactly a live allocation's start is
+  refused. 256 allocations at most.
+- The stubs: `addi a7, x0, 16+i; ecall; ret` each, then an exit stub
+  (`SYS_EXIT 0` and `j .`) that every constructor and the entry return to.
+  Written as words by the host; `addi`'s immediate caps a table at 2031 names.
+- `umode_calls.c` (no ESP-IDF): the table an embedder gives -- a name and a
+  handler, or a name and data copied into the box at load (version symbols
+  such as `feckless_abi_v1`: the program reads its own copy) -- and the
+  window's ext hook over it. `feckless_umode_heap_calls`: malloc, calloc
+  (overflow-checked), realloc, free, heap_caps_malloc (caps ignored), over the
+  box.
+- `umode_load.c`: `-Wl,--wrap=esp_elf_malloc,--wrap=esp_elf_free` on the
+  component's link. While a box loads, every esp_elf allocation is the box's,
+  so text, data and esp_elf's own buffers land there; otherwise they pass
+  through to the real ones, so the trusted path is unchanged. Read in
+  elf_loader 2.1.0 (esp-iot-solution 5fbb259): `esp_elf_malloc` is not weak
+  (hence the wrap); `esp_elf_request()` runs preinit/init and the entry in
+  M-mode, so it is not called -- the arrays are read once and each function
+  run in its own window; `esp_elf_deinit()` runs fini in M-mode, so
+  `fini_count` is cleared first; on the P4 `CONFIG_ELF_LOADER_BUS_ADDRESS_MIRROR`
+  is off, so text runs where it was allocated and one grant covers it; and the
+  P4's flush after relocation is a full D-cache write-back and I-cache
+  invalidate, which covers the stubs written before it. The symbol table is
+  registered with esp_elf for the load. An import that resolved to a host
+  address anyway (another table still registered) would fault on use: the
+  host's code is not granted.
+
+*Checked:* `test/umode_box_test.c` on the host under ASan and UBSan, with the
+box mapped below 4 GB (the calls return pointers in a `uint32_t`, as on the
+target): init, alloc, free of interior/host/stack/duplicate pointers,
+first-fit reuse, the table limit, realloc in place and moving, 20000 random
+operations against an overlap and order check, the heap calls through the ext
+hook. `make asm`: the stubs the host writes are byte for byte what the
+assembler makes of `stubs_expected.S`. Four changes (a free that accepts an
+interior pointer, first fit without the padding, the ecall number off by one,
+`ret` through a1) are each caught. `umode_load.c` was parsed against
+elf_loader 2.1.0's own headers with stand-ins for IDF's, which found a missing
+include.
+
+*Not checked:* an ESP-IDF link (that `--wrap` on an INTERFACE link option
+reaches elf_loader's archive; the `elf_loader` component name with the
+registry's `espressif/elf_loader`; `private/elf_types.h` being reachable); a
+board; an ELF loaded.
+
+**What this does not yet give Spurious.** A scan of its main/ for names in
+`exports.txt` and the storage section finds about 75 it calls. None but the
+heap is in a box table yet, and three kinds need more than a handler: libc's
+pure functions (string, `snprintf`, `qsort` with its comparator) belong in
+the app's ELF, not behind an ecall -- a host `qsort` would call the
+comparator in M-mode; the stdio and FatFs calls pass handles (`FILE *`,
+`FIL *`) whose contents the program could rewrite, so the host must hand out
+numbers and keep the objects; and the board's init calls are the launcher's
+and become no-ops. That is 0005 onward, with a sandbox build of the app.

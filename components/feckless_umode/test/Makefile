@@ -1,6 +1,6 @@
 # Host checks for feckless_umode.
 #
-#   make -C components/feckless_umode/test           the plan test and the run-loop test
+#   make -C components/feckless_umode/test           the plan, run-loop and box tests
 #   make -C components/feckless_umode/test asm       umode.S assembles, with the stack guard on and off
 #   make -C components/feckless_umode/test compare SAMPLE=<dir of the sample's umode.S>
 #                                                    umode_enter, the trap entry and the rest are the
@@ -11,7 +11,7 @@
 # SPDX-License-Identifier: MIT
 
 CC ?= cc
-CFLAGS := -std=c11 -g -O1 -Wall -Wextra -Werror -Wno-missing-field-initializers \
+CFLAGS := -std=gnu11 -g -O1 -Wall -Wextra -Werror -Wno-missing-field-initializers \
           -fsanitize=address,undefined -fno-sanitize-recover=all \
           -fno-omit-frame-pointer -I../include
 LDFLAGS := -fsanitize=address,undefined
@@ -29,9 +29,13 @@ umode_plan_test: umode_plan_test.c ../src/umode_plan.c ../include/feckless_umode
 umode_run_test: umode_run_test.c ../src/umode_run.c ../include/feckless_umode_run.h ../include/feckless_umode_sys.h ../include/feckless_umode.h
 	$(CC) $(CFLAGS) -o $@ umode_run_test.c ../src/umode_run.c $(LDFLAGS)
 
-run: umode_plan_test umode_run_test
+umode_box_test: umode_box_test.c ../src/umode_box.c ../src/umode_calls.c ../include/feckless_umode_box.h ../include/feckless_umode_calls.h
+	$(CC) $(CFLAGS) -o $@ umode_box_test.c ../src/umode_box.c ../src/umode_calls.c $(LDFLAGS)
+
+run: umode_plan_test umode_run_test umode_box_test
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=0 ./umode_plan_test
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=0 ./umode_run_test
+	ASAN_OPTIONS=detect_leaks=1:abort_on_error=0 ./umode_box_test
 
 asm:
 	$(CLANG) $(RV) $(ASFLAGS) -DCONFIG_ESP_SYSTEM_HW_STACK_GUARD=0 -c ../src/umode.S -o umode_noguard.o
@@ -40,6 +44,10 @@ asm:
 	$(CLANG) $(RV) -std=c11 -O1 -Wall -Wextra -Werror -ffreestanding -I../include -S user_stub.c -o user_stub.s
 	@grep -q "li.a7, 1$$" user_stub.s && grep -q "li.a7, 4$$" user_stub.s && [ $$(grep -c "^	ecall" user_stub.s) -eq 2 ] \
 	  && echo "the user stubs are an ecall with the number in a7"
+	$(MAKE) --no-print-directory umode_box_test && ./umode_box_test >/dev/null
+	$(CLANG) $(RV) -c stubs_expected.S -o stubs_expected.o
+	llvm-objcopy -O binary -j .text stubs_expected.o stubs_expected.bin
+	@cmp stubs.bin stubs_expected.bin && echo "the box's stubs are the assembler's instructions"
 
 # Per function, addresses stripped and the feckless_ prefix dropped, so a
 # difference is a difference in an instruction.
@@ -62,5 +70,5 @@ compare: asm
 	done; rm -f ours.txt theirs.txt; echo "same instructions as the sample, guard off and on"
 
 clean:
-	rm -f umode_plan_test umode_run_test *.o user_stub.s ours.txt theirs.txt
+	rm -f umode_plan_test umode_run_test umode_box_test *.o *.bin user_stub.s ours.txt theirs.txt
 .PHONY: all run asm compare clean

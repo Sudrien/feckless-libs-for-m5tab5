@@ -15,9 +15,17 @@ if(CONFIG_BOOTLOADER_REGION_PROTECTION_ENABLE)
 endif()
 
 idf_component_register(
-    SRCS "src/umode.S" "src/umode_plan.c" "src/umode_run.c" "src/umode_pmp.c" "src/umode_idf.c"
+    SRCS "src/umode.S" "src/umode_plan.c" "src/umode_run.c" "src/umode_box.c" "src/umode_calls.c"
+         "src/umode_pmp.c" "src/umode_idf.c" "src/umode_load.c"
     INCLUDE_DIRS "include"
     # esp_system: esp_ipc.h, and esp_private/hw_stack_guard.h, which umode.S
     # includes. soc: the assist_debug and CLIC register definitions.
-    PRIV_REQUIRES esp_system esp_hw_support soc freertos log
+    # elf_loader (u-feckless-0004): the loader, named as feckless_abi names it.
+    PRIV_REQUIRES esp_system esp_hw_support soc freertos log heap elf_loader
 )
+
+# u-feckless-0004: esp_elf's allocations go into the box while one is being
+# loaded (umode_load.c). Every other allocation passes straight through, so
+# the trusted path is as it was.
+target_link_libraries(${COMPONENT_LIB} INTERFACE
+    "-Wl,--wrap=esp_elf_malloc" "-Wl,--wrap=esp_elf_free")

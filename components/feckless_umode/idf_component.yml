@@ -10,3 +10,5 @@ license: MIT AND Apache-2.0
 dependencies:
   idf:
     version: ">=5.4.2"
+  # u-feckless-0004: as feckless_abi pins it, so the two agree.
+  espressif/elf_loader: "2.*"

@@ -47,6 +47,26 @@ caller gives instead of a fixed one.
 - **`feckless_umode_run_default()`** is that loop on FreeRTOS (vTaskDelay,
   taskYIELD, the core id, stdout).
 
+## An app in a box (u-feckless-0004)
+
+`feckless_umode_load()` puts an app's ELF in a **box**: one block of PSRAM
+that holds the app's code, data, heap, stack and the stubs it calls the host
+with, and is all the PMP grants. The component's link wraps `esp_elf_malloc`
+and `esp_elf_free`, so while a box is being loaded esp_elf allocates in it;
+otherwise they pass through.
+
+- **Imports** resolve to the box's stubs: `addi a7, x0, 16+i; ecall; ret`.
+  The embedder gives the table (`feckless_umode_call_t`: a name and a
+  handler, or a name and data to copy in, for version symbols). An import
+  not in it fails the load by name, as ABI v1 does.
+- **The heap** (`feckless_umode_heap_calls`) allocates in the box. Its
+  bookkeeping is the host's, never in the box, and a free of anything but the
+  start of an allocation is refused.
+- **Constructors and the entry** run in U-mode, each in a window, returning
+  through an exit stub. `esp_elf_request()` is not used (it would call them
+  in M-mode), and `fini` is cleared before `esp_elf_deinit()` for the same
+  reason.
+
 ## Limits, as of this patch
 
 - **One interrupt-masked window.** Interrupts are masked for the whole of a
