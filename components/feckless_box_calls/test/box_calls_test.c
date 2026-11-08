@@ -74,7 +74,7 @@ static void test_table(void)
             CHECK(strcmp(calls_tab[i].name, calls_tab[j].name) != 0);       /* no name twice */
     int data = 0;
     for (uint32_t i = 0; i < ncalls; i++) if (!calls_tab[i].fn) { data++; CHECK(calls_tab[i].data && calls_tab[i].data_len == 4); }
-    CHECK(data == 2);
+    CHECK(data == 3);                                               /* abi_v1, box_v1, storage_v2 */
     nr_of("malloc"); nr_of("feckless_abi_v1"); nr_of("feckless_abi_box_v1");
 }
 

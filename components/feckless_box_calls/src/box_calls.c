@@ -29,6 +29,8 @@
 #include "tab5io.h"
 #include "touch.h"
 
+#include "box_calls_priv.h"
+
 /* What the app is given in place of the host's handles. */
 #define TOKEN_PANEL  0x50414e31u    /* "PAN1" */
 #define TOKEN_BUS    0x42555331u    /* "BUS1" */
@@ -36,20 +38,6 @@
 #define TAG_MAX      64u
 #define LOG_MAX      512u
 #define DELAY_US_MAX 100000u        /* esp_rom_delay_us busy-waits in M-mode */
-
-typedef feckless_umode_window_t win_t;
-#define H(name) static bool name(win_t *w, const uint32_t a[7], uint32_t *ret)
-
-static bool ok_ptr(const win_t *w, uint32_t p, uint32_t len)
-{
-    return feckless_umode_range_ok(w, (uintptr_t)p, len);
-}
-
-/* A string the app passed, or NULL: terminated within max and the box. */
-static const char *str(const win_t *w, uint32_t p, uint32_t max)
-{
-    return feckless_umode_strlen(w, (uintptr_t)p, max) >= 0 ? (const char *)(uintptr_t)p : NULL;
-}
 
 /* ---- libgcc's value helpers ---------------------------------------------
  * The ones that cannot link into an app (they reach __clz_tab absolutely,
@@ -298,7 +286,6 @@ H(c_gfx_draw_para)
 static const uint32_t s_abi_v1 = FECKLESS_ABI_VERSION;
 static const uint32_t s_box_v1 = 1;
 
-#define FN(n) { #n, c_##n, NULL, 0 }
 #define FNG(n) { "__" #n, c_##n, NULL, 0 }
 
 static const feckless_umode_call_t s_own[] = {
@@ -318,10 +305,11 @@ static const feckless_umode_call_t s_own[] = {
 
 #define OWN_N (sizeof s_own / sizeof s_own[0])
 #define HEAP_MAX 8
+#define STORAGE_MAX 32
 
 const feckless_umode_call_t *feckless_box_calls_v1(uint32_t *n)
 {
-    static feckless_umode_call_t table[HEAP_MAX + OWN_N];
+    static feckless_umode_call_t table[HEAP_MAX + OWN_N + STORAGE_MAX];
     static uint32_t count;
     if (!count) {
         uint32_t k = 0;
@@ -331,8 +319,17 @@ const feckless_umode_call_t *feckless_box_calls_v1(uint32_t *n)
         for (uint32_t i = 0; i < OWN_N; i++) {
             table[k++] = s_own[i];
         }
+        for (uint32_t i = 0; i < box_storage_calls_n && i < STORAGE_MAX; i++) {
+            table[k++] = box_storage_calls[i];
+        }
         count = k;
     }
     *n = count;
     return table;
+}
+
+void feckless_box_calls_end(void)
+{
+    box_storage_end();
+    s_panel = NULL;
 }

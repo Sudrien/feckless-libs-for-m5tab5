@@ -1904,3 +1904,56 @@ the assembler's bytes.
 *Not checked:* `box_calls.c` against the real headers in an IDF build (its
 `#include`s are the libraries' own names: `gfx.h`, `lcd.h`, `touch.h`,
 `tab5io.h`); a board.
+
+### u-feckless-0007 -- storage for a boxed app
+
+`src/box_storage.c` in `feckless_box_calls`: what Spurious's ELF calls to
+read its dictionaries -- sd_io_fatfs.c's FatFs with fast seek, stardict.c's
+`fopen`/`fgets`/`fread`/`fseek`/`ftell`, main.c's `opendir`/`readdir` and
+the storage handler -- added to `feckless_box_calls_v1()`, with
+`feckless_abi_storage_v2` as data.
+
+- **FatFs**: an app's `FIL` holds `obj.fs` (the volume's `FATFS`) and
+  `cltbl`, both pointers FatFs follows; an app that rewrote them could aim
+  FatFs at anything. So the real `FIL` is the host's (8 open at once), keyed
+  by the address of the app's, which the app allocates and passes to every
+  call. After each call `obj.objsize`, `fptr`, `flag` and `err` are copied
+  into the app's -- what `f_size`, `f_tell`, `f_eof` and `f_error` read
+  (IDF 6.1's `ff.h`, fetched to check) -- and nothing else.
+- **Fast seek**: the app sets `cltbl` to its own table and calls
+  `f_lseek(fp, CREATE_LINKMAP)`, reading the first word back (used, or
+  needed with `FR_NOT_ENOUGH_CORE`). The host reads that count (at most 16384
+  items, the table checked to fit the box), builds a table of its own, hands
+  FatFs that one, and writes back only the first word. Later seeks and reads
+  use the host's table while the app's `cltbl` still names the table it was
+  built for; clearing or changing `cltbl` turns it off.
+- `f_lseek`'s 64-bit offset arrives in a1 (low) and a2 (high): riscv32-esp-elf
+  15.2.0 puts a `uint64_t` second argument there with no pair alignment
+  (`mv a2,a1; li a1,5`).
+- **stdio and directories**: a number for each `FILE` (8) and `DIR` (4);
+  `readdir()` copies the `struct dirent` into a buffer in the box that the
+  slot keeps; `storage_mount_path()` copies its string into the box. If the
+  app frees one of those buffers it is allocated again.
+- **The lease and the hold**: `storage_io_release()` releases only what the
+  app acquired; `feckless_box_calls_end()` closes every file and directory,
+  releases the app's remaining leases and its `storage_hold()`. The launcher
+  calls it after `feckless_umode_unload()`.
+
+*Checked:* `test/box_storage_test.c` on the host under ASan and UBSan,
+playing Spurious's own sequences (`sd_file_open` with its 256-item table
+refused and the 300 asked for, `sd_file_read` with a seek past 4 GiB, the
+.ifo by `fgets`, a whole file by `fseek`/`ftell`/`fread`, the dictionary scan
+with `readdir`'s `d_name` and `storage_join_path`) against a stand-in FatFs
+and storage handler over real files and the host's stdio and dirent, and the
+end with everything left open. Seven changes are each caught: the host's
+`FATFS` pointer copied back, FatFs handed the app's table, the high word of
+the offset dropped, `end` forgetting the lease, a release past the app's own
+acquires, `readdir` returning the host's dirent, `fread` without its
+overflow check -- that one only after the test was made to rewind and keep a
+canary after a 16-byte buffer; the first version read at end of file and
+passed it. 0006's test now counts three data entries.
+
+*Not checked:* the real FatFs, storage handler and VFS in an IDF build; a
+board. Not served yet: writes, `f_stat`, `f_opendir`/`f_readdir`, POSIX
+`open`/`read`/`access`, `fseeko`/`ftello`, the storage list and the rest of
+the storage section.

@@ -34,11 +34,31 @@ feckless_umode_load(image, size, calls, n, 4 << 20, 64 << 10, &app);
   `gfx_text_w`, `gfx_wrap_line`, `gfx_draw_para` (eight arguments: the
   eighth comes through `t0`).
 
-Not yet: storage, FatFs, stdio and directories (u-feckless-0007).
+- **Storage** (u-feckless-0007), as Spurious uses it:
+  - FatFs `f_open`, `f_read`, `f_lseek`, `f_close`. The real `FIL` is the
+    host's, found by the address of the app's; after each call only what
+    `f_size`, `f_tell`, `f_eof` and `f_error` read is copied back, never the
+    `FATFS` pointer. Fast seek works: the host builds its own cluster table
+    and tells the app the count FatFs puts in the first word.
+  - stdio `fopen`, `fread`, `fgets`, `fseek`, `ftell`, `fclose`: the app
+    gets a number for each `FILE`.
+  - `opendir`, `readdir`, `closedir`: a number for each `DIR`, and
+    `readdir()`'s `struct dirent` copied into the box.
+  - `storage_present`, `storage_ff_drive`, `storage_generation`,
+    `storage_of_path`, `storage_mount_path` (a copy in the box),
+    `storage_join_path`, `storage_io_acquire`/`_release`, `storage_hold`.
+  - `feckless_box_calls_end()`, after `feckless_umode_unload()`: closes what
+    the app left open and gives back its I/O lease and volume hold, which
+    the launcher's own storage would otherwise wait on.
+
+  Not yet: writing (`f_write`, `fwrite`), `f_stat`, `f_opendir`, `open`/`read`,
+  `access`, `fseeko`, the storage list; the storage section's other names.
 
 ## Tests
 
     make -C components/feckless_box_calls/test
 
 Every call through `feckless_umode`'s ext hook as a box makes it, against
-recording stand-ins for the board.
+recording stand-ins for the board; and storage as Spurious calls it, against
+a stand-in FatFs and storage handler over real files, and the host's own
+stdio and directories.
