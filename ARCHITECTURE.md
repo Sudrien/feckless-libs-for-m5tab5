@@ -1509,7 +1509,7 @@ ABI picolibc's, so no launcher or app needs the override.
   the configuration check above already stops a newlib app being built.
   `__issignalingf` stays in the table (picolibc's libc defines it; an old
   ELF may import it).
-- Comments that described newlib are 9018's.
+- **Comments** that described newlib are 9018's.
 
 *Checked* with riscv32-esp-elf 15.2.0 (`esp-15.2.0_20251204`) and its
 picolibc: `errno` compiles to `tprel` references without the definition and
@@ -1521,3 +1521,14 @@ outside `exports.txt`; the generated table compiles; every name in the
 libc and libm sections is defined by that picolibc, `__errno` and
 `settimeofday` aside, which IDF's libc supplies. *Not checked:* an IDF
 build, a launcher or an app link, a board.
+
+### 9018 -- comments that said newlib
+
+`storage_io.c` and `feckless_image_handler`'s CMakeLists.txt described
+newlib's stdio and `int32_t`. picolibc's `fread()` on a bufio stream does
+the same thing the slicing relies on (a request of at least the buffer's
+size bypasses it; a smaller one goes through it), and `int32_t` is `long`
+on this toolchain's picolibc too (checked: `__builtin_types_compatible_p`).
+Comments only; no behaviour changes. The `stdio would use ... (st_blksize)`
+log line is as it was: under picolibc the figure is the VFS's, not what
+stdio would have chosen.

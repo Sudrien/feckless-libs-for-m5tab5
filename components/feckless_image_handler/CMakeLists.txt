@@ -30,8 +30,8 @@ idf_component_register(
 set_source_files_properties("src/image_stb.c" PROPERTIES COMPILE_OPTIONS
     "-fwrapv;-Wno-unused-function;-Wno-sign-compare;-Wno-unused-but-set-variable;-Wno-type-limits;-Wno-shift-negative-value;-Wno-implicit-fallthrough")
 
-# J40: on RISC-V newlib int32_t is long, not int. J40 prints int32_t with
-# %d and passes an int * where it declares int32_t *: the same 32 bits
+# J40: on RISC-V int32_t is long, not int (newlib's and picolibc's alike).
+# J40 prints int32_t with %d and passes an int * where it declares int32_t *: the same 32 bits
 # either way, and invisible on the host, where int32_t is int. GCC 14
 # makes the pointer mismatch an error by default. And -Os: J40 is one
 # 130 KB translation unit of macros that -O2 inlines into itself; -Os

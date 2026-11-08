@@ -88,10 +88,11 @@ static uint32_t s_worst_ms[STORAGE_IO_CLASSES];
  * The largest fread() a playback read is broken into.
  *
  * Deliberately SMALLER than STDIO_BUF_SIZE, and that is the whole point.
- * newlib bypasses its own buffer for any request at least as large as
- * the buffer: it passes the caller's pointer down to the filesystem, so
- * a 110 KB decoder read becomes an SDMMC DMA writing straight into
- * PSRAM. That makes the card a second bus master on the memory the DPI
+ * stdio bypasses its own buffer for any request at least as large as
+ * the buffer (picolibc's fread(), on a bufio stream: "small reads go
+ * through the buffer"): it passes the caller's pointer down to the
+ * filesystem, so a 110 KB decoder read becomes an SDMMC DMA writing
+ * straight into PSRAM. That makes the card a second bus master on the memory the DPI
  * peripheral is fetching the framebuffer out of, and the evidence says
  * that is what the panel underruns on -- the cyan follows reads, not
  * draws. Opening the file chooser repaints the entire screen and never
@@ -173,7 +174,7 @@ void storage_io_init(void)
     }
     if (got < STDIO_BUFS) {
         ESP_LOGW(TAG, "only %d of %d stdio buffers; the rest of the opens "
-                      "will use whatever newlib picks", got, STDIO_BUFS);
+                      "will use whatever stdio picks", got, STDIO_BUFS);
     }
 
     ESP_LOGI(TAG, "storage arbiter up, %d KB chunks, %d x %d KB stdio buffers",
@@ -305,10 +306,12 @@ static void count_bytes(storage_io_class_t cls, size_t n)
 }
 
 /*
- * Log what newlib would have used if we had not intervened.
+ * Log what stdio would have used if we had not intervened.
  *
- * st_blksize is where newlib sizes its stdio buffer from, and for this
- * VFS it comes from CONFIG_FATFS_VFS_FSTAT_BLKSIZE, which
+ * st_blksize is where newlib sized its stdio buffer from (picolibc takes
+ * its own default, BUFSIZ, so under it the line below is the VFS's
+ * figure, not a prediction), and for this VFS it comes from
+ * CONFIG_FATFS_VFS_FSTAT_BLKSIZE, which
  * sdkconfig.defaults does not set. If this prints 512 then the
  * one-sector-per-request theory is confirmed outright and the arithmetic
  * in storage_io.h stops being arithmetic. If it prints something large,
@@ -397,7 +400,7 @@ size_t storage_io_fread(void *dst, size_t len, FILE *f,
         /*
          * One lease for the whole read -- nothing outranks playback, so
          * letting go between slices would only cost semaphore traffic --
-         * but sliced inside it, to keep the transfer inside newlib's
+         * but sliced inside it, to keep the transfer inside stdio's
          * internal buffer rather than letting the card DMA into PSRAM.
          * See PLAYBACK_SLICE.
          */
