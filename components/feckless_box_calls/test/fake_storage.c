@@ -9,6 +9,9 @@
 #include "storage_io.h"
 
 int io_depth, hold_id = -1, fat_open;
+/* u-feckless-0015: every f_read's destination, against the box's range. */
+uintptr_t box_lo, box_hi;
+int reads_into_box, reads_total;
 DWORD *last_cltbl;
 const char *mount_tmp = "/tmp";
 
@@ -29,6 +32,8 @@ FRESULT f_open(FIL *fp, const char *path, BYTE mode)
 }
 FRESULT f_read(FIL *fp, void *b, UINT n, UINT *got)
 {
+    reads_total++;
+    if ((uintptr_t)b < box_hi && (uintptr_t)b + n > box_lo) reads_into_box++;
     last_cltbl = fp->cltbl;
     fseek(fp->host_file, (long)fp->fptr, SEEK_SET);
     *got = (UINT)fread(b, 1, n, fp->host_file);

@@ -7,5 +7,5 @@ idf_component_register(
     REQUIRES feckless_umode
     PRIV_REQUIRES feckless_abi feckless_drivers feckless_graphics_handler
                   feckless_storage_handler fatfs vfs
-                  esp_timer log freertos esp_rom
+                  esp_timer log freertos esp_rom heap
 )

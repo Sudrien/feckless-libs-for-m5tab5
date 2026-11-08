@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "esp_heap_caps.h"
 #include "ff.h"
 #include "storage.h"
 #include "storage_io.h"
@@ -38,6 +39,33 @@
 #define PATH_MAX_BOX 1024u
 #define TOKEN_FILE 0x46494c00u              /* "FIL\0" + slot: a FILE * */
 #define TOKEN_DIR  0x44495200u              /* "DIR\0" + slot: a DIR * */
+
+/*
+ * u-feckless-0015: reads into the box go through internal RAM.
+ *
+ * The box is in PSRAM, and so is the framebuffer the DPI peripheral scans
+ * out continuously and cannot wait on. A large read handed the app's buffer
+ * goes to the filesystem as a DMA straight into PSRAM -- stdio bypasses its
+ * buffer for a request at least its size, FatFs reads whole sectors into the
+ * caller's buffer -- and the card becomes a second bus master on that
+ * memory: the panel underruns and goes cyan for a frame. On a Tab5, Spurious
+ * loading a 54189-word dictionary in its box did exactly that. So reads are
+ * cut into READ_SLICE pieces through one internal, DMA-capable staging
+ * buffer and copied into the box by the CPU -- what feckless_storage_handler's
+ * storage_io.c does for playback (PLAYBACK_SLICE, the same 8 KB), and for the
+ * same reason. If the staging buffer cannot be had, reads go direct, as before.
+ */
+#define READ_SLICE (8 * 1024)
+
+static uint8_t *s_stage;
+
+static uint8_t *stage(void)
+{
+    if (!s_stage) {
+        s_stage = heap_caps_aligned_alloc(64, READ_SLICE, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
+    }
+    return s_stage;
+}
 
 typedef struct {
     uint32_t app;                           /* the app's FIL: the key */
@@ -139,7 +167,25 @@ H(c_f_read)
     fil_cltbl(w, s);
 #endif
     UINT got = 0;
-    *ret = f_read(&s->fil, (void *)(uintptr_t)a[1], (UINT)a[2], &got);
+    uint8_t *const st = stage();
+    if (!st) {
+        *ret = f_read(&s->fil, (void *)(uintptr_t)a[1], (UINT)a[2], &got);
+    } else {
+        /* In slices through internal RAM; a short slice or an error ends it,
+         * as one f_read() would have. */
+        FRESULT r = FR_OK;
+        while (got < (UINT)a[2]) {
+            const UINT want = (UINT)a[2] - got > READ_SLICE ? READ_SLICE : (UINT)a[2] - got;
+            UINT g = 0;
+            r = f_read(&s->fil, st, want, &g);
+            memcpy((uint8_t *)(uintptr_t)a[1] + got, st, g);
+            got += g;
+            if (r != FR_OK || g < want) {
+                break;
+            }
+        }
+        *ret = r;
+    }
     memcpy((void *)(uintptr_t)a[3], &got, sizeof got);
     fil_out(s);
     return true;
@@ -261,7 +307,24 @@ H(c_fread)
     if (!f || len == 0 || len > UINT32_MAX || !ok_ptr(w, a[0], (uint32_t)len)) {
         return true;
     }
-    *ret = (uint32_t)fread((void *)(uintptr_t)a[0], a[1], a[2], f);
+    uint8_t *const st = stage();
+    if (!st) {
+        *ret = (uint32_t)fread((void *)(uintptr_t)a[0], a[1], a[2], f);
+        return true;
+    }
+    /* In slices through internal RAM, then the count of whole items, as
+     * fread() gives it. */
+    uint32_t done = 0;
+    while (done < (uint32_t)len) {
+        const uint32_t want = (uint32_t)len - done > READ_SLICE ? READ_SLICE : (uint32_t)len - done;
+        const size_t g = fread(st, 1, want, f);
+        memcpy((uint8_t *)(uintptr_t)a[0] + done, st, g);
+        done += (uint32_t)g;
+        if (g < want) {
+            break;
+        }
+    }
+    *ret = done / a[1];
     return true;
 }
 
@@ -461,6 +524,7 @@ const uint32_t box_storage_calls_n = sizeof box_storage_calls / sizeof box_stora
 
 void box_storage_end(void)
 {
+    /* s_stage is kept: the next app reads through it too. */
     for (int i = 0; i < MAX_FIL; i++) {
         if (s_fil[i]) fil_close(i);
     }

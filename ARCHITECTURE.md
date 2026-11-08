@@ -2222,3 +2222,44 @@ names up in exactly two places, both through `elf_find_sym()`.
 *What to look for:* the reader through a card swap, a dictionary opened and a
 word looked up; or, if the load now fails, `ELF: Can't find common <name>`,
 which is a name the box's table lacks (feckless_box_calls).
+
+### u-feckless-0015 -- reads into a box go through internal RAM
+
+*0014 on a Tab5* -- **Spurious in its box, end to end**: banner, panel and
+touch as before; the card swapped; then, all through the box's calls,
+
+    tab5_storage: microSD mounted at /sd
+    sd_io: 0:/dict/wiktionary_en-simple_all_nopic_2026-10/...dict.dz: fast seek, 4 of 256 table items
+    spurious: wiktionary_en-simple_all_nopic_2026-10: 54189 words, 475 synonyms (out of order: sorted), opened in 910 ms
+
+-- the dictionary scan (`opendir`/`readdir`, `storage_join_path`), the .ifo by
+`fgets`, the .idx by `fread`, the .dict.dz through FatFs with the box's
+mirrored fast-seek table (0007), and the sort in the app's own `qsort`. The
+reader's imports, read from its ELF (`readelf -s`), were 59, every one in the
+box's table and none an in-app name.
+
+And one thing seen: the panel went cyan for a moment while the dictionary
+loaded. That is the DSI underrun feckless_graphics_handler's lcd.c and
+feckless_storage_handler's storage_io.c describe: the panel scans out of
+PSRAM and cannot wait, and a large read whose DMA lands in PSRAM makes the
+card a second bus master there -- "the cyan follows reads, not draws". The box
+is in PSRAM, and 0007 handed the app's buffer straight to `fread()` and
+`f_read()`: the whole .idx in one `fread`, the .dict.dz in 16 KB `f_read`s.
+
+**So:** both now read through one internal, DMA-capable staging buffer in
+8 KB slices (`READ_SLICE`, storage_io's `PLAYBACK_SLICE`) and copy into the box
+with the CPU. A short slice or an error ends the read, as one call would have;
+`fread` returns whole items; the bytes and errors are what the unsliced call
+gave. If the buffer cannot be allocated, reads go direct as before. A boxed
+app's reads are then better behaved than a trusted app's, whose large reads
+still DMA into PSRAM.
+
+*Checked:* `test/box_storage_test.c`: a 19000-byte `f_read` across two slice
+edges lands byte for byte and is three FatFs reads; a read past the end
+stops short; the stand-in FatFs records that no `f_read` was given a
+destination in the box; `fread` of 20000 bytes byte for byte, and 3-byte
+items over 20000 bytes give 6666 with the file at its end. Two changes are
+each caught (FatFs handed the box again; `fread` counting bytes).
+`box_storage.c` parses with riscv32-esp-elf-gcc 15.2.0 and picolibc's headers
+at `-Wall -Wextra -Werror`. *Not on a Tab5.* What to look for: the same
+dictionary opening with no cyan, and the "opened in" time about the same.

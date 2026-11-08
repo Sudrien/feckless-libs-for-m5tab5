@@ -22,6 +22,8 @@
 
 extern int io_depth, hold_id, fat_open;
 extern DWORD *last_cltbl;
+extern uintptr_t box_lo, box_hi;
+extern int reads_into_box, reads_total;
 
 static int failed;
 #define CHECK(c) do { if (!(c)) { printf("FAIL %s:%d  %s\n", __FILE__, __LINE__, #c); failed++; } } while (0)
@@ -126,6 +128,18 @@ static void test_fatfs(void)
     CHECK(call("storage_io_release", 0, 0, 0, 0) == 0 && io_depth == 0);
     CHECK(call("storage_io_release", 0, 0, 0, 0) == 0 && io_depth == 0);     /* never the launcher's */
 
+    /* u-feckless-0015: a read larger than a slice, across slice edges,
+     * lands right, and FatFs was never handed the box. */
+    uint8_t *big = box_alloc(20000);
+    CHECK(call("f_lseek", P(fp), 5, 0, 0) == FR_OK);
+    reads_total = 0;
+    CHECK(call("f_read", P(fp), P(big), 19000, P(got)) == FR_OK && *got == 19000);
+    for (int i = 0; i < 19000; i++) if (big[i] != 'a' + (5 + i) % 26) { CHECK(!"f_read data"); break; }
+    CHECK(reads_total == 3);                                        /* 8 KB + 8 KB + 2616 */
+    CHECK(call("f_lseek", P(fp), 19990, 0, 0) == FR_OK);
+    CHECK(call("f_read", P(fp), P(big), 9000, P(got)) == FR_OK && *got == 10);   /* short: stops */
+    CHECK(reads_into_box == 0);
+
     FIL *other = box_alloc(sizeof(FIL));
     CHECK(call("f_read", P(other), P(dst), 16, P(got)) == FR_INVALID_OBJECT); /* never opened */
     CHECK(call("f_close", P(fp), 0, 0, 0) == FR_OK && fat_open == 0);
@@ -159,6 +173,10 @@ static void test_stdio(void)
     CHECK(call("fseek", g, 0, SEEK_SET, 0) == 0);
     uint8_t *b = box_alloc(20000);
     CHECK(call("fread", P(b), 1, 20000, g) == 20000 && b[19999] == 'a' + 19999 % 26);
+    for (int i = 0; i < 20000; i++) if (b[i] != 'a' + i % 26) { CHECK(!"fread data"); break; }
+    /* whole items only: 3-byte items over 20000 bytes are 6666 */
+    CHECK(call("fseek", g, 0, SEEK_SET, 0) == 0);
+    CHECK(call("fread", P(b), 3, 7000, g) == 6666 && call("ftell", g, 0, 0, 0) == 20000);
     /* size * n is 2^32: 0 in 32 bits. Rewound, so a read would happen,
      * into 16 bytes with a canary after them. */
     CHECK(call("fseek", g, 0, SEEK_SET, 0) == 0);
@@ -258,6 +276,8 @@ int main(void)
     w.lo = (uintptr_t)mem;
     w.hi = (uintptr_t)mem + MEM;
     w.ext_arg = &tab;
+    box_lo = w.lo;
+    box_hi = w.hi;
     make_files();
     nr_of("feckless_abi_storage_v2");
     test_fatfs();
