@@ -1991,3 +1991,41 @@ those lines.
 *Checked:* `grep -h '^version:' components/*/idf_component.yml | sort -u` is
 one line, `version: "0.10.2"`. The tag workflow sets every component at once
 when the branch is tagged or merged.
+
+### u-feckless-0010 -- IDF 6.1's stack-guard macro takes its registers
+
+The first ESP-IDF build (Avoidant's umode branch, IDF 6.1) stopped in
+`umode.S`, at both hand-overs of the stack guard:
+
+    umode.S:83: Error: illegal operands `sw ,(((0x3FF00000+0x6000)+0xb8)-(0x3FF00000+0x6000))(t0)'
+
+IDF 6.1's `ESP_HW_STACK_GUARD_SET_BOUNDS_CUR_CORE` is `reg1 sp_min sp_max`;
+IDF 5.5.4's, which the protected-mode sample was written against, took
+`reg1` alone and stored a0 and a1. Called with `t0` only, `\sp_min` and
+`\sp_max` were empty. Both calls now name them -- `t0 a0 a1`, where the code
+already put the bounds -- so the instructions are what 5.5 assembled. The
+`MONITOR_START`/`STOP` macros are unchanged between the two.
+
+**Why `make asm` did not catch it:** its stand-in for
+`esp_private/hw_stack_guard.h` (0002) made every guard macro a `nop`, so any
+arguments assembled. The stand-in is now IDF 6.1's own macros, copied from
+`components/esp_system/port/include/private/esp_private/hw_stack_guard.h`
+(Apache-2.0, Espressif's notice kept), with the ESP32-P4's register addresses
+from IDF 6.1's `assist_debug_reg.h`, `reg_base.h` and `assist_debug_ll.h`
+(base 0x3FF06000, spill bits 0x300). `make compare` rewrites the sample's
+5.5-style call to the 6.1 form in a copy before assembling it, and the guard
+path is now compared through the real macro bodies, not nops.
+
+Also from reading IDF 6.1's headers for the files the build had not reached:
+`ETS_INVALID_INUM` is in `soc/soc.h`, which `umode_idf.c` did not include and
+none of its includes bring in; it is included now. `esp_rom_route_intr_matrix()`,
+`ETS_ASSIST_DEBUG_INTR_SOURCE`, `esp_ipc_call_blocking()`,
+`esp_cpu_get_core_id()` and `portSET_INTERRUPT_MASK_FROM_ISR()` are where
+and as the code uses them.
+
+*Checked:* with the new stand-in, the old `umode.S` gives the build's error
+(`illegal operands 'sw ,((0x3FF06000+0xb8)-0x3FF06000)(t0)'`) from the IDF
+toolchain's GNU as (riscv32-esp-elf 15.2.0); the new one assembles with it,
+guard on and off, and with clang (`make asm`); `make compare`: the same
+instructions as the sample, guard on and off; the host tests pass.
+*Not checked:* the rest of the IDF build past `umode.S`.

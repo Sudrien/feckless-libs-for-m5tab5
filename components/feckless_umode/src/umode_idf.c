@@ -12,6 +12,7 @@
 #include "esp_rom_sys.h"
 #include "sdkconfig.h"
 #include "soc/interrupts.h"
+#include "soc/soc.h"         /* ETS_INVALID_INUM, in IDF 6.1 */
 #include "soc/soc_caps.h"
 
 void feckless_umode_guard_unroute(void)

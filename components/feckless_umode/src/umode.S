@@ -348,15 +348,17 @@ feckless_umode_enter:
   lw    t1, 0(t0)
   sw    t1, FUMODE_CTX_K_SP_MAX(a0)
 
-  /* Install the user's, from the range the caller put in the context.  IDF's
-   * SET_BOUNDS macro takes them in a0 and a1, so the context pointer steps
-   * aside into t3 and comes straight back.
+  /* Install the user's, from the range the caller put in the context, in
+   * a0 and a1, so the context pointer steps aside into t3 and comes straight
+   * back.  IDF 6.1's SET_BOUNDS macro names its three registers -- scratch,
+   * min, max -- where IDF 5.5's took the scratch alone and read a0 and a1
+   * (u-feckless-0010); the instructions are the same.
    */
 
   mv    t3, a0
   lw    a0, FUMODE_CTX_U_SP_MIN(t3)
   lw    a1, FUMODE_CTX_U_SP_MAX(t3)
-  ESP_HW_STACK_GUARD_SET_BOUNDS_CUR_CORE t0
+  ESP_HW_STACK_GUARD_SET_BOUNDS_CUR_CORE t0 a0 a1
   mv    a0, t3
 
   /* The monitor stays OFF until sp actually holds the user's stack, which is
@@ -598,7 +600,7 @@ feckless_umode_trap_entry:
   mv    t3, a0
   lw    a0, FUMODE_CTX_K_SP_MIN(t3)
   lw    a1, FUMODE_CTX_K_SP_MAX(t3)
-  ESP_HW_STACK_GUARD_SET_BOUNDS_CUR_CORE t0
+  ESP_HW_STACK_GUARD_SET_BOUNDS_CUR_CORE t0 a0 a1
   mv    a0, t3
 
 #endif

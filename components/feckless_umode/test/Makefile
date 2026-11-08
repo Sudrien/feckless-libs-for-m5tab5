@@ -6,7 +6,9 @@
 #                                                    umode_enter, the trap entry and the rest are the
 #                                                    same instructions as the sample's
 #
-# asm and compare need clang with the riscv32 target and llvm-objdump.
+# asm and compare need clang with the riscv32 target and llvm-objdump. The
+# stack guard's macros in fake/ are IDF 6.1's own (u-feckless-0010), so a
+# call with the wrong arguments fails here as in an IDF build.
 #
 # SPDX-License-Identifier: MIT
 
@@ -57,8 +59,12 @@ endef
 
 compare: asm
 	@test -n "$(SAMPLE)" || { echo "SAMPLE=<dir with umode.S and umode.h> is needed"; exit 2; }
-	$(CLANG) $(RV) -Ifake -I$(SAMPLE) -x assembler-with-cpp -DCONFIG_ESP_SYSTEM_HW_STACK_GUARD=1 -c $(SAMPLE)/umode.S -o sample_guard.o
-	$(CLANG) $(RV) -Ifake -I$(SAMPLE) -x assembler-with-cpp -DCONFIG_ESP_SYSTEM_HW_STACK_GUARD=0 -c $(SAMPLE)/umode.S -o sample_noguard.o
+	@# The sample is IDF 5.5's: its SET_BOUNDS call names one register and the
+	@# macro read a0 and a1. IDF 6.1's names all three (u-feckless-0010); the
+	@# copy assembled here says so, and the instructions are then compared.
+	sed 's/ESP_HW_STACK_GUARD_SET_BOUNDS_CUR_CORE t0$$/ESP_HW_STACK_GUARD_SET_BOUNDS_CUR_CORE t0 a0 a1/' $(SAMPLE)/umode.S > sample_umode.S
+	$(CLANG) $(RV) -Ifake -I$(SAMPLE) -x assembler-with-cpp -DCONFIG_ESP_SYSTEM_HW_STACK_GUARD=1 -c sample_umode.S -o sample_guard.o
+	$(CLANG) $(RV) -Ifake -I$(SAMPLE) -x assembler-with-cpp -DCONFIG_ESP_SYSTEM_HW_STACK_GUARD=0 -c sample_umode.S -o sample_noguard.o
 	@set -e; for g in guard noguard; do \
 	  for f in umode_enter umode_trap_entry umode_read_mstatus umode_read_mtvec umode_read_mintstatus \
 	           umode_read_pmpcfg umode_read_pmpaddr umode_pmp_program; do \
@@ -70,5 +76,5 @@ compare: asm
 	done; rm -f ours.txt theirs.txt; echo "same instructions as the sample, guard off and on"
 
 clean:
-	rm -f umode_plan_test umode_run_test umode_box_test *.o *.bin user_stub.s ours.txt theirs.txt
+	rm -f umode_plan_test umode_run_test umode_box_test *.o *.bin user_stub.s sample_umode.S ours.txt theirs.txt
 .PHONY: all run asm compare clean
