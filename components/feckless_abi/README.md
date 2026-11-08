@@ -167,6 +167,15 @@ checks both builds, and fails on:
   compiled with it.
 - `CONFIG_SPIRAM=y`, `CONFIG_ELF_LOADER_LOAD_PSRAM=y` and
   `CONFIG_ESP_SYSTEM_MEMPROT_FEATURE=n`. esp_elf runs apps from PSRAM.
+- `CONFIG_LIBC_PICOLIBC=y`, IDF 6's default. An app's libc calls are the
+  launcher's, and `FILE`, the ctype table and `errno` are the library's
+  own layout, so both sides are picolibc; `CONFIG_LIBC_NEWLIB=y` fails
+  the build. (An ELF built with newlib before 9017 imports `_ctype_`, which
+  no longer exists, and is refused by name.) The component also adds
+  `-D__PICOLIBC_ERRNO_FUNCTION=__errno` to every component's compile, so
+  `errno` is a call to `__errno()`, which the ABI exports, and not a
+  thread-local, which cannot be in an ELF. IDF adds the same definition
+  itself from `release/v6.1`, after the v6.1 tag.
 
 It warns without:
 

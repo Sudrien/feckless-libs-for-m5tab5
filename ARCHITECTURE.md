@@ -1476,3 +1476,48 @@ shim is restored, weak, as it was. `_uart_set_pin6` stays removed: the
 link did not ask for it, and 6.x has it.
 
 *Not checked:* a link on IDF 6.1; the C was not built here.
+
+### 9017 -- the feckless ABI is picolibc's
+
+IDF 6 builds with picolibc; Defeatist alone selected newlib
+(`CONFIG_LIBC_NEWLIB=y`, its 8134), because an app's `errno` was a
+thread-local and ld refuses one in a shared object: `R_RISCV_TPREL_HI20
+against errno can not be used when making a shared object`. This makes the
+ABI picolibc's, so no launcher or app needs the override.
+
+- **errno:** `feckless_abi` adds `-D__PICOLIBC_ERRNO_FUNCTION=__errno` to
+  every component's compile (`idf_build_set_property(COMPILE_DEFINITIONS
+  ... APPEND)`, as IDF's pthread component does for its own). `errno` is
+  then `(*__errno())`, and `__errno` was already in `exports.txt`; IDF's
+  `errno.c` keeps one variable behind both. IDF adds the same definition
+  itself on `release/v6.1`, but the v6.1 tag does not have it (checked: the
+  tag's `esp_libc/project_include.cmake` has no `__PICOLIBC_ERRNO_FUNCTION`
+  line); an identical second `-D` is not a redefinition.
+- **Configuration check:** `feckless_abi` stops the configure on
+  `CONFIG_LIBC_PICOLIBC` not set, for the launcher and the app alike: a
+  `FILE`, the ctype table and `errno` are the library's, and the two sides
+  must be one library.
+- **ABI names:** `_ctype_` is out, `_ctype_b` is in (picolibc's table;
+  `_ctype_` is a macro for an offset into it, so there is no such symbol
+  for the table to name). `toupper`, `fputc` and `stdout` are in:
+  picolibc inlines `putchar(c)` as `fputc(c, stdout)` into the app, so an
+  app that calls `putchar`, which `exports.txt` has always listed, imports
+  both. All additions but `_ctype_`; an ELF built against newlib's names
+  is refused by esp_elf for `_ctype_`, by name, before any of it runs. The
+  ABI version stays `feckless_abi_v1`, as it did for 0.10.0's change of
+  `_ctype_b` to `_ctype_`: bumping it is for the maintainer to decide, and
+  the configuration check above already stops a newlib app being built.
+  `__issignalingf` stays in the table (picolibc's libc defines it; an old
+  ELF may import it).
+- Comments that described newlib are 9018's.
+
+*Checked* with riscv32-esp-elf 15.2.0 (`esp-15.2.0_20251204`) and its
+picolibc: `errno` compiles to `tprel` references without the definition and
+to a call of `__errno` with it (-O0 to -Os, `-fpic`); a file using every
+ctype function, `strcasecmp`, `snprintf`, `sscanf`, `strtod`, `puts`,
+`putchar` and the rest of the libc section imports `_ctype_b` (below -Os;
+-Os inlines ctype), `toupper`, `fputc` and `stdout` and nothing else
+outside `exports.txt`; the generated table compiles; every name in the
+libc and libm sections is defined by that picolibc, `__errno` and
+`settimeofday` aside, which IDF's libc supplies. *Not checked:* an IDF
+build, a launcher or an app link, a board.

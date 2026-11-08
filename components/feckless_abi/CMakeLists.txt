@@ -37,6 +37,23 @@ if(NOT CMAKE_BUILD_EARLY_EXPANSION)
     if(CONFIG_ESP_SYSTEM_MEMPROT_FEATURE)
         message(FATAL_ERROR "feckless_abi: needs CONFIG_ESP_SYSTEM_MEMPROT_FEATURE=n")
     endif()
+    # 9017: the C library is picolibc, IDF 6's default. An app calls the
+    # launcher's libc through exports.txt, and a FILE, a ctype table or the
+    # errno it reads are the library's layout: newlib's and picolibc's are
+    # not the same, so the two sides must be the same library.
+    if(NOT CONFIG_LIBC_PICOLIBC)
+        message(FATAL_ERROR "feckless_abi: needs CONFIG_LIBC_PICOLIBC=y, IDF 6's default; "
+                "the feckless ABI is picolibc's, not newlib's (CONFIG_LIBC_NEWLIB)")
+    endif()
+    # picolibc's errno is a thread-local variable unless the build names a
+    # function for it, and a thread-local cannot be in an app's ELF (ld:
+    # "R_RISCV_TPREL_HI20 against `errno' can not be used when making a
+    # shared object"). IDF's own build adds this definition from
+    # release/v6.1 on, not at the v6.1 tag, so it is added here, for every
+    # component, ELF_COMPONENTS and the app's main included: `errno` then
+    # calls __errno(), which the ABI exports. The same definition twice is
+    # not a redefinition. IDF's libc keeps one variable behind both.
+    idf_build_set_property(COMPILE_DEFINITIONS "__PICOLIBC_ERRNO_FUNCTION=__errno" APPEND)
     # Not fatal: an app runs without them, worse.
     if(NOT CONFIG_CACHE_L2_CACHE_256KB)
         message(WARNING "feckless_abi: CONFIG_CACHE_L2_CACHE_256KB=y is recommended: an app runs from PSRAM")

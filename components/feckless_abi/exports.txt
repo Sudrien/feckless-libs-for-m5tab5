@@ -275,7 +275,9 @@ __assert_func
 # IDF 6.
 abort
 atof
-_ctype_
+# 9017: picolibc's ctype table. <ctype.h> reaches it through `_ctype_b`
+# (`_ctype_` is a macro for an offset into it); newlib's was `_ctype_`.
+_ctype_b
 __errno
 abs
 atoi
@@ -295,6 +297,10 @@ memset
 printf
 putchar
 puts
+# 9017: picolibc's putchar() is fputc(c, stdout), and the call is inlined
+# into the app; stdout is IDF's (esp_libc's picolibc_init.c).
+fputc
+stdout
 qsort
 rand
 realloc
@@ -331,12 +337,14 @@ strtoul
 strtoull
 time
 tolower
+toupper
 vprintf
 vsnprintf
 
 # ---- libm --------------------------------------------------------------
 # __issignalingf: newlib's newer float functions call it (IDF 6.1's
-# toolchain).
+# toolchain). An app built with picolibc does not; the name stays so that
+# one built with newlib, before 9017, still loads.
 acos
 asin
 asinh

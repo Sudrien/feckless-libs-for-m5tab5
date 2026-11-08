@@ -52,12 +52,14 @@ static void unregister_all(void)
     }
 }
 
-/* newlib's newer float functions call this, so an ELF built with
- * IDF 6.1's toolchain imports it, and the table names it. The toolchain's
+/* newlib's newer float functions call this, so an ELF built with newlib
+ * and IDF 6.1's toolchain imports it, and the table names it. Newlib's
  * libm does not define it (the host link fails on the table's reference),
- * so it is here. Weak, so a libm that does have it wins. A signalling NaN:
- * exponent all ones, the quiet bit clear, the rest of the mantissa not
- * zero. */
+ * so it is here. picolibc's libc does define it (libm/common/sf_issignaling),
+ * and an app built with picolibc does not import it; the name stays in the
+ * table for an ELF that does. Weak, so a libm that does have it wins. A
+ * signalling NaN: exponent all ones, the quiet bit clear, the rest of the
+ * mantissa not zero. */
 __attribute__((weak)) int __issignalingf(float x)
 {
     uint32_t u;
