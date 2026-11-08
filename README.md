@@ -19,6 +19,7 @@ under one tag:
 | `fatfs` | ESP-IDF's own fatfs with exFAT: it stands in for IDF's, and builds the installed IDF's FatFs from a copy patched at configure time |
 | `usb_host_msc` | Espressif's USB mass storage class driver 1.3.0, with the Tab5's fixes (Apache-2.0) |
 | `usb_host_uac` | Espressif's USB audio class driver 1.5.0, with the Tab5's fixes (Apache-2.0) |
+| `feckless_umode` | RISC-V user mode for the ESP32-P4 under FreeRTOS: a context that runs in U-mode until it traps, and the PMP grants that say what it may touch (the `umode` branch) |
 | `feckless_abi` | The ABI between a launcher and the apps it loads with esp_elf: the list of symbols an app's ELF may take from the launcher, and the build check |
 | `feckless_abi_storage` | The ABI's storage section: the storage handler, FatFs and file I/O for apps, from a launcher that links it, and the FatFs configuration both sides share |
 | `feckless_abi_nvs` | The ABI's nvs section: `feckless_nvs_handler` for apps, from a launcher that links it and brings NVS up |

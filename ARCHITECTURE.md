@@ -1602,3 +1602,55 @@ same way in either.
 
 *Not checked:* anything above on a board or with ESP-IDF 6.1; the
 sample was read, not run.
+
+### u-feckless-0002 -- `feckless_umode`: user mode and the PMP grants
+
+A new component, `components/feckless_umode`, at the siblings' version
+(0.10.3). The code is the sample's (0001), moved here and reduced to what
+every user of it needs; nothing dispatches a syscall yet.
+
+- `src/umode.S`, `include/feckless_umode.h`: the sample's, with the public
+  names prefixed (`feckless_umode_*`, `FUMODE_*`) so they cannot meet IDF's
+  `riscv/csr.h`. `umode_pmp_grant_extram()` is gone: it patched two entries
+  beside the ones IDF locks, which this component requires not to exist.
+  `NOTICE` says where it came from. The sample's files are marked Apache-2.0
+  and its LICENSE file is MIT; the files keep their mark and the licence text
+  is `LICENSE.Apache-2.0`. Which was meant is the author's to say.
+- `feckless_umode_pmp_plan()`: grants (range, R/W/X) to the sixteen pmpaddr
+  values and four pmpcfg words, as TOR pairs, nothing locked; at most eight
+  grants, 4-byte multiples, W only with R. No CSR is touched, so it is a host
+  test. Where grants overlap the earlier one wins (lowest matching entry).
+  The sample's fixed IRAM/pool/PSRAM grants are not carried over: the caller
+  chooses, and the PSRAM one in particular must be the app's block and not
+  all of PSRAM (0001).
+- `feckless_umode_pmp_apply()`: the plan, written on every core and read
+  back. Per core, with interrupts masked so the task cannot move between the
+  write and the read-back; a core the first call did not reach is reached by
+  `esp_ipc_call_blocking()`. A read-back that differs (a locked entry, or a
+  PMP coarser than 4 bytes) is `ESP_ERR_INVALID_STATE` and a log line, not a
+  grant that is not the one asked for.
+- `feckless_umode_ctx_init()`: a context ready to run.
+- `CMakeLists.txt` stops the configure on
+  `CONFIG_BOOTLOADER_REGION_PROTECTION_ENABLE=y`.
+
+*Checked:* `test/umode_plan_test.c` on the host under ASan and UBSan (empty,
+one, two and eight grants, every rejection, outputs untouched on an error,
+the context); `make asm`: `umode.S` assembles with clang for riscv32, stack
+guard off and on, against stand-in headers for the guard's macros;
+`make compare`: the instructions of `feckless_umode_enter`, the trap entry,
+the CSR reads and `pmp_program` are the same as the sample's umode.S, both
+guard settings (and a changed `slli` in the trap entry is reported, so the
+comparison is not vacuous; the first version of it stopped at the local
+labels and would have passed that change). `umode_pmp.c` was parsed against
+stand-in headers, which found a missing `<stdbool.h>`.
+
+*Not checked:* an ESP-IDF build of any of it, with 5.5 or 6.1 (the include
+paths for `esp_private/hw_stack_guard.h` and `esp_ipc.h`, the `PRIV_REQUIRES`
+list, `portSET_INTERRUPT_MASK_FROM_ISR` in an IPC callback); a board.
+
+*Not done, and needed before a window runs:* the stack guard's interrupt
+source is shared by both cores' monitors, so it has to be un-routed on every
+core at start-up (sample, hard-won-lessons 3.5) or a user's stack overflow
+panics the other core; ESP-IDF then no longer panics on an M-mode stack
+overflow. That, the host loop that services the traps, and the first
+syscalls are 0003.

@@ -1,0 +1,17 @@
+feckless_umode
+
+include/feckless_umode.h and src/umode.S are derived from main/umode.h and
+main/umode.S of
+
+    https://github.com/NevynUK/ESP32-P4-Protected-Mode-Sample
+    Copyright (c) 2026 Mark Stevens
+
+at its commit 6225988. Those files carry "SPDX-License-Identifier:
+Apache-2.0" and keep it here; the text is LICENSE.Apache-2.0. That
+repository's LICENSE file is the MIT licence, which is not what the files
+say: ask the author which was meant. The rest of this component is MIT
+(LICENSE).
+
+Changes to the derived files: public names prefixed feckless_ / FUMODE_;
+umode_pmp_grant_extram() removed; the planner and context helper added to
+the header. No instruction of umode_enter or the trap entry differs.

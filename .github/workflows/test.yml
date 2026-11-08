@@ -33,6 +33,9 @@ jobs:
       # 8012, 8013: the generator on a fixture.
       - name: feckless_libversions
         run: make -C components/feckless_libversions/test
+      # u-feckless-0002: the PMP plan, and umode.S assembling.
+      - name: feckless_umode
+        run: make -C components/feckless_umode/test run asm
       # 8003: the ABI's section filter and the crypto list.
       - name: feckless_abi section filter
         run: cmake -P components/feckless_abi/test/filter_test.cmake
