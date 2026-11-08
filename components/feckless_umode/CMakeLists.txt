@@ -15,7 +15,7 @@ if(CONFIG_BOOTLOADER_REGION_PROTECTION_ENABLE)
 endif()
 
 idf_component_register(
-    SRCS "src/umode.S" "src/umode_plan.c" "src/umode_pmp.c"
+    SRCS "src/umode.S" "src/umode_plan.c" "src/umode_run.c" "src/umode_pmp.c" "src/umode_idf.c"
     INCLUDE_DIRS "include"
     # esp_system: esp_ipc.h, and esp_private/hw_stack_guard.h, which umode.S
     # includes. soc: the assist_debug and CLIC register definitions.

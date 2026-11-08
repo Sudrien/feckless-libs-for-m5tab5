@@ -1654,3 +1654,57 @@ core at start-up (sample, hard-won-lessons 3.5) or a user's stack overflow
 panics the other core; ESP-IDF then no longer panics on an M-mode stack
 overflow. That, the host loop that services the traps, and the first
 syscalls are 0003.
+
+### u-feckless-0003 -- the host loop, the first syscalls, the guard's interrupt
+
+What runs a context, as far as it can be run without ESP-IDF, and the one
+start-up step it needs from ESP-IDF.
+
+- `feckless_umode_run()` (`umode_run.c`, no ESP-IDF in it): enter, then in
+  this order read the stack guard's verdict (independent of the trap that
+  ended the window, so first), re-enter after an interrupt, service an
+  `ecall` (pc stepped past it, the result in a0), or end on anything else
+  with the cause, `mtval` and pc. What it needs from the RTOS comes in
+  through `feckless_umode_ops_t`, so the test runs the loop as it is against
+  a scripted stand-in for `feckless_umode_enter()`.
+- Syscalls (`feckless_umode_sys.h`): NOP, WRITE, DELAY_MS, YIELD, EXIT,
+  GETCORE; a7 the number, a0..a6 the arguments, a0 the result. The sample's
+  PUTS is not carried over (WRITE is the counted form) and the numbers are
+  this component's own. From 16 up the window's `ext` function takes the call,
+  and may retire the program; that is where gfx, files and the rest come in
+  later. A call the host cannot answer is `FECKLESS_SYS_ERR_BADNR`; a pointer
+  outside the window's range is `FECKLESS_SYS_ERR_FAULT`, which is
+  recoverable (pc is still stepped), unlike a privilege violation or a stack
+  excursion, which end the window.
+- `feckless_umode_range_ok()` / `_strlen()`: pointers from the program are
+  checked against `[lo, hi)` with no addition that can wrap. The sample did
+  the same per slot; here the range is the window's, which is to be the app's
+  one PSRAM block (0001), so the check and the PMP grant are the same range.
+- `feckless_umode_run()` refuses a window whose own memory overlaps `[lo, hi)`:
+  the saved registers and pc must not be the program's to rewrite.
+- `feckless_umode_guard_unroute()` (`umode_idf.c`): the stack guard's one
+  interrupt source taken out of every core's routing, as the sample does once
+  at start-up, with the same price stated in its header: ESP-IDF no longer
+  panics on an M-mode stack overflow on either core.
+- `feckless_umode_run_default()`: the loop on FreeRTOS. The `ecall` stubs a
+  program uses are header-only (`feckless_umode_syscall*`, inline asm), so
+  they sit wherever the program's own code does.
+
+*Checked:* `test/umode_run_test.c` on the host under ASan and UBSan: the range
+check at and beyond its edges including wrap; strlen; every syscall, with the
+results as the program would read a0 on resume; a rejected pointer reaching no
+console write; the ext hook, including retiring; interrupts and core moves
+counted without stepping pc; a fault ending the window unresumed; the stack
+verdict taking precedence over an ordinary syscall; every refusal. Three
+changes to `umode_run.c` (pc stepped by 8, range off by one, interrupts not
+counted) are each caught. `make asm`: the user stubs compile to an `ecall`
+with the number in a7. `umode_idf.c` was parsed against stand-in headers.
+
+*Not checked:* an ESP-IDF build (the include for `ETS_INVALID_INUM`,
+`esp_rom_route_intr_matrix()`'s signature); a board; two windows at once.
+
+*Still to do before an ELF runs in it:* nothing yet puts a program in a
+granted block, so there is no program to enter -- the app's PSRAM block, its
+loader, and the table of `ecall` stubs for `esp_elf` are 0004. Interrupts
+stay masked for a whole window, so long computation between calls delays the
+tick (0001).

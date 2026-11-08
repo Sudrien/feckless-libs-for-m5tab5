@@ -2,8 +2,8 @@
 
 RISC-V user mode for the ESP32-P4 under ESP-IDF's FreeRTOS, as an ESP-IDF
 component: a context that runs in U-mode until it traps, and the PMP grants
-that say what it may touch. Nothing in it dispatches a syscall yet; that is
-the next patch of the `umode` branch.
+that say what it may touch. The host loop services a handful of syscalls and
+hands the rest to the embedder.
 
 It is the machinery of NevynUK's
 [ESP32-P4-Protected-Mode-Sample](https://github.com/NevynUK/ESP32-P4-Protected-Mode-Sample)
@@ -30,10 +30,22 @@ caller gives instead of a fixed one.
 - **`CONFIG_ESP_SYSTEM_HW_STACK_GUARD`** is handed over to the user's stack
   for the window and back, so a user stack overflow is the user's fault and
   not a kernel panic. Because the guard's interrupt source is shared by both
-  cores' monitors, the caller must un-route it on every core before the first
-  window, and ESP-IDF then no longer panics on an M-mode stack overflow
-  (`Documentation/hard-won-lessons.md` §3.5 of the sample says why). That is
-  not done here yet.
+  cores' monitors, `feckless_umode_guard_unroute()` takes it out of the routing
+  on every core, once, before the first window, and ESP-IDF then no longer
+  panics on an M-mode stack overflow (the sample's `hard-won-lessons.md` 3.5
+  says why).
+- **The host loop** (`feckless_umode_run()`, no ESP-IDF in it): enter the
+  context; on return read the stack-guard verdict first, then re-enter after an
+  interrupt, service an `ecall`, or end on anything else. The calls are NOP,
+  WRITE, DELAY_MS, YIELD, EXIT and GETCORE (`feckless_umode_sys.h`, which also
+  has the `ecall` stubs a U-mode program uses); numbers from 16 go to the
+  window's `ext` function. A pointer from the program goes through
+  `feckless_umode_range_ok()` first, and a rejected one is an error code in
+  `a0`, not the end of the program. The window, which holds the saved
+  registers, must not be in memory the program can write; `run` refuses one
+  that overlaps its own range.
+- **`feckless_umode_run_default()`** is that loop on FreeRTOS (vTaskDelay,
+  taskYIELD, the core id, stdout).
 
 ## Limits, as of this patch
 
