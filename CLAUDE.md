@@ -50,6 +50,16 @@ series. Since v0.2.0 every feckless library is here; 1.0.0 waits on the
 ABI settling, with file I/O in it. **The first patch after a tag updates this
 paragraph** and opens the next series' heading in `ARCHITECTURE.md`.
 
+**The `umode` branch has a numbering of its own: `u-feckless-NNNN`.**
+Its patches are named `u-feckless-0001-<subject>.patch`, `u-feckless-0002-...`,
+and apply to the `umode` branch, not to main. They are numbered from
+`--start-number 1` and renamed with the prefix; the subject has neither.
+Their `ARCHITECTURE.md` entries are under "The `umode` branch" at the end
+of the file, headed `u-feckless-NNNN`, so they cannot clash with a 9000
+patch that lands on main meanwhile. Look at the last `u-feckless` entry
+for the next number. When the branch merges, its entries move into the
+series of the release it goes into.
+
 **What a patch's `ARCHITECTURE.md` entry says:** its number and
 subject, one or two lines of what it does, how it was built or tested,
 and -- once a board has run it -- what the log showed.

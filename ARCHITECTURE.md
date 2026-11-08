@@ -1541,3 +1541,64 @@ on this toolchain's picolibc too (checked: `__builtin_types_compatible_p`).
 Comments only; no behaviour changes. The `stdio would use ... (st_blksize)`
 log line is as it was: under picolibc the figure is the VFS's, not what
 stdio would have chosen.
+
+## The `umode` branch
+
+Work toward running an app's ELF in RISC-V user mode, so that what the
+feckless ABI lets an app call is something the hardware enforces and not
+only the symbol table. Numbered `u-feckless-NNNN` (CLAUDE.md), applied to
+the `umode` branch. Nothing here changes `feckless_abi_v1` or the way a
+launcher runs an ABI v1 app today: that stays the trusted path.
+
+### u-feckless-0001 -- opens the branch: what is known, what is not
+
+Documentation only; no code, nothing built.
+
+**Where it starts from.** NevynUK/ESP32-P4-Protected-Mode-Sample (MIT,
+Mark Stevens; read at its 6225988) runs unprivileged code on a Tab5
+(ESP32-P4 v1.0, ESP-IDF 5.5.4) under stock FreeRTOS: `mret` into U-mode,
+`ecall` as the only way back, and eight windows migrating between both
+cores, each hosted by an ordinary task. Its trap vector only records the
+trap; the host task then services the syscall, so a syscall may block. It
+takes the PMP over: `CONFIG_BOOTLOADER_REGION_PROTECTION_ENABLE=n`, so
+IDF does not lock an entry that gives U-mode read/write over DRAM, and its
+own unlocked entries bind U-mode but not M-mode. Code taken from it keeps
+its copyright notice. Its documentation is the reference for the
+per-hart state, the CLIC threshold and `mcause`/`mstatus.MPP` traps.
+
+**What does not carry over as it is.**
+
+- *PSRAM.* The sample grants all of it to U-mode. Launchers and shims here
+  run their own code and rodata from PSRAM (`SPIRAM_XIP_FROM_PSRAM`), and
+  esp_elf loads an app into the general PSRAM heap. An app needs one
+  aligned PSRAM block for image, heap and stack, and only that block is
+  granted; the loader allocates it.
+- *Every export is a call across the boundary.* U-mode cannot call
+  FreeRTOS, the heap, gfx, FatFs or sockets. Each name in `exports.txt`
+  and the sections would be an `ecall` stub in the app's table, with a
+  dispatcher that checks the pointers against the app's block. libm,
+  libgcc and the string functions are better linked into the app than
+  trapped. That is a new ABI, `feckless_abi_v2`, and rebuilt apps.
+- *Callbacks and tasks.* A task entry, a timer or an HTTP handler is the
+  kernel entering U-mode for the app: a host task and a window each.
+- *Preemption.* The sample masks interrupts for the whole window, so a long
+  computation between syscalls delays the tick on its core. Real apps
+  (an FFT, a JPEG decode, a game loop) need U-mode to be preemptible,
+  which means the FreeRTOS trap path understanding U-mode.
+- *Narrower grants.* The sample gives U-mode execute over all IRAM text,
+  leaves the apps able to touch each other, and un-routes IDF's stack
+  guard interrupt on both cores. DMA masters (camera, JPEG, DSI) are not
+  under the PMP; peripheral registers stay outside every grant.
+- *Versions.* Verified on IDF 5.5.4 and a v1.0 chip; this repository is on
+  IDF 6.1 and the Tab5s report v1.3. Both are the pre-rev3 CLIC.
+
+**Intended order**, to be revised by what the board says: a
+`feckless_umode` component with the PMP take-over and the user entry; the
+app's PSRAM block; a stub and dispatcher generator from `exports.txt`;
+about ten calls (`gfx_fill_rect`, touch, delay, `printf`, exit); a spike
+in one app's standalone shim; only then a launcher. The kernel is one
+component that launchers and shims both link, so the same ELF is run the
+same way in either.
+
+*Not checked:* anything above on a board or with ESP-IDF 6.1; the
+sample was read, not run.
