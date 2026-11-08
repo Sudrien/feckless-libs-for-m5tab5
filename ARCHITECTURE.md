@@ -1977,3 +1977,17 @@ served, so its load would have failed on that name. (`access`, `open`,
 *Checked:* in `test/box_calls_test.c`, each ends the window, with what it
 logged, and the level calls with their refusals. 73 calls. Not built with
 ESP-IDF.
+
+### u-feckless-0009 -- the new components at the branch's version
+
+The `umode` branch was made from `ff85788`, the commit before v0.10.3's
+"Bump version to 0.10.3", so its components say `version: "0.10.2"`; the
+three this branch added (`feckless_umode` 0002, `feckless_box_libc` 0005,
+`feckless_box_calls` 0006) were written at 0.10.3, and the "One version"
+check in `test.yml` fails on two versions. They are 0.10.2 now, as the
+branch is. Nothing else changes; the code at `ff85788` is v0.10.3's but for
+those lines.
+
+*Checked:* `grep -h '^version:' components/*/idf_component.yml | sort -u` is
+one line, `version: "0.10.2"`. The tag workflow sets every component at once
+when the branch is tagged or merged.

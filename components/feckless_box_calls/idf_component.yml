@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-version: "0.10.3"
+version: "0.10.2"
 description: >-
   What a launcher answers an app in a feckless box with: the box's call
   table, every pointer checked, no host handle given out as a pointer.

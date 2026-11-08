@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-version: "0.10.3"
+version: "0.10.2"
 description: >-
   The part of libc an app built for a feckless box links into its own ELF:
   strtol and its family, errno, snprintf (eyalroz/printf), and the members
