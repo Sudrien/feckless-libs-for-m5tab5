@@ -2360,3 +2360,16 @@ WARN, unless something has already set it lower. The driver's warnings
 and errors still show. Network's temporary `ESP_LOG_NONE` during
 `esp_hosted_deinit()` saves and restores the level, so the two don't
 conflict.
+
+### u-feckless-0019 -- the mount poll is silent
+
+Under Avoidant (log of 2026-11-09), pulling the card made every 1 Hz
+mount attempt print five lines: `sdmmc_init_ocr: send_op_cond (1)
+returned 0x107`, two `sdmmc_card_init` / `sdcard_init failed`, and two
+HINTs telling the user to reboot. That is the poll's normal state with no
+card, not a fault. `sd_mount_at()` with `verbose == false`, the poll's
+call, now sets `sdmmc_common`, `sdmmc_sd`, `sdmmc_cmd`, `vfs_fat_sdmmc`,
+`vfs_fat` and `SD_HOST` to NONE around `esp_vfs_fat_sdmmc_mount()` and
+restores each saved level afterwards. The boot mount (`verbose == true`)
+still shows everything. The storage handler's own messages are
+unaffected, including the drop-to-a-slower-clock warning.

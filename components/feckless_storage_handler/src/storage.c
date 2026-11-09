@@ -485,8 +485,27 @@ static esp_err_t sd_mount_at(bool verbose, int freq_khz)
         .allocation_unit_size = 16 * 1024,
     };
 
+    /* The poll's attempts are silent. With the slot empty, or the card
+     * pulled, IDF prints three errors and two HINTs every second
+     * ("send_op_cond (1) returned 0x107", "Please reboot the board") --
+     * the poll's normal state, not a fault. The boot mount and any
+     * verbose retry still show them. Saved and put back, so a level set
+     * elsewhere survives. */
+    static const char *const QUIET[] = { "sdmmc_common", "sdmmc_sd", "sdmmc_cmd",
+                                         "vfs_fat_sdmmc", "vfs_fat", "SD_HOST" };
+    esp_log_level_t was[sizeof QUIET / sizeof *QUIET];
+    if (!verbose) {
+        for (size_t i = 0; i < sizeof QUIET / sizeof *QUIET; i++) {
+            was[i] = esp_log_level_get(QUIET[i]);
+            esp_log_level_set(QUIET[i], ESP_LOG_NONE);
+        }
+    }
     const esp_err_t ret = esp_vfs_fat_sdmmc_mount(STORAGE_SD_MOUNT, &host, &slot,
                                                   &mnt, &s_card);
+    if (!verbose) {
+        for (size_t i = 0; i < sizeof QUIET / sizeof *QUIET; i++)
+            esp_log_level_set(QUIET[i], was[i]);
+    }
     if (ret != ESP_OK) {
         /* A failed mount leaves the host initialised with its slot GPIOs
          * checked out; the next attempt then reports
