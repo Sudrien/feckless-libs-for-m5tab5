@@ -16,6 +16,9 @@
 #include "esp_heap_caps.h"
 #include "esp_lcd_mipi_dsi.h"
 #include "esp_log.h"
+#if CONFIG_FECKLESS_GFX_BLIT_GAP_US > 0
+#include "esp_rom_sys.h"   /* u-feckless-0033 */
+#endif
 #if CONFIG_FECKLESS_GFX_BLIT_STATS   /* u-feckless-0032; sdkconfig.h is in by now, from FreeRTOS */
 #include "esp_timer.h"
 #endif
@@ -374,7 +377,11 @@ esp_err_t gfx_blit_err(int y0, int y1)
                 if (berr != ESP_OK) return berr;
                 if (end < y1) {
                     BS_T(tg);
+#if CONFIG_FECKLESS_GFX_BLIT_GAP_US > 0
+                    esp_rom_delay_us(CONFIG_FECKLESS_GFX_BLIT_GAP_US);   /* u-feckless-0033 */
+#else
                     vTaskDelay(1);
+#endif
                     BS_ADD(gap, tg);
                 }
             }

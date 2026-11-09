@@ -20,5 +20,6 @@ idf_component_register(
     REQUIRES esp_lcd
     PRIV_REQUIRES esp_driver_ledc esp_driver_gpio esp_hw_support hal
                   esp_timer   # u-feckless-0032: the blit stats
+                  esp_rom     # u-feckless-0033: the blit gap
              esp_lcd_st7121
 )

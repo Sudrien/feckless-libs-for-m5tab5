@@ -11,4 +11,18 @@ menu "feckless_graphics_handler"
             gaps between the bands a big blit is split into -- with the
             bands and rows a blit averaged. Costs a timer read per part.
 
+    config FECKLESS_GFX_BLIT_GAP_US
+        int "Gap between the bands of a big blit, microseconds (0: one tick)"
+        default 0
+        range 0 5000
+        help
+            u-feckless-0033. A blit taller than 600 rows goes out in bands of
+            240 with a gap between them, so the panel's own refresh DMA gets
+            the bus (the flash it fixed was a whole-strip repaint). 0 keeps
+            the gap as it was, vTaskDelay(1): up to a tick each, about 1 ms
+            at 1000 Hz, which on Lothesome's 940-row frames is 3 ms of a 14 ms
+            blit (CONFIG_FECKLESS_GFX_BLIT_STATS). A value here waits that
+            many microseconds instead, on the CPU. Lower it until the panel
+            flashes, then raise it.
+
 endmenu

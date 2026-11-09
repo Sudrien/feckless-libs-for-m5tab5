@@ -2943,3 +2943,42 @@ with its own `s_blit_lock`, so the app's lock added nothing. It did
 hold that lock for the whole 14 ms of every blit, during which the
 capture thread's locked calls had to wait. `box_calls_test` checks the
 flag.
+
+### u-feckless-0033 -- the blit's band gap, in microseconds
+
+0032's numbers, from Lothesome in the box:
+
+```
+tab5_gfx: blit, last 100: 14.37 ms each, 4.0 bands of 235 rows: lock 0.02,
+          filter 0.01, draw 1.28, done 9.90, gaps 3.07 ms
+touch_get   14/s  1194 us each (3.31 waiting for the lock)    [bars]
+touch_get   16/s  8127 us each (3.01 waiting for the lock)    [waterfall]
+```
+
+**Blit.** About 70% of the time is the transfer itself: four 235-row
+bands, 2.5 ms each, with the CPU waiting for the DMA. Another 3 ms is
+the three gaps between bands, each a `vTaskDelay(1)`, so each waits for
+the next tick. The lock and the filter copy are nothing.
+
+The gaps are the part that can be changed. The band split exists to
+stop a whole-strip repaint flashing the panel: the panel's own refresh
+DMA must get the bus between bands. Nothing says it needs a whole
+tick, though. `CONFIG_FECKLESS_GFX_BLIT_GAP_US` (default 0, the old
+tick) instead waits that many microseconds with `esp_rom_delay_us`,
+in the blit's caller, which in a box is a host call on core 1 and
+outside any window. Lowering it until the panel flashes, then raising
+it, finds the real need. At 300 µs, a 940-row blit should save about
+2 ms.
+
+The transfer is 2.5 ms per 235 rows, about 135 MB/s from the shadow
+buffer to the panel's. From the stats alone I can't say whether that is
+slower than outside the box (about 12 ms a blit then, against 14.4 now).
+The measured parts don't include anything the box adds; the box's only
+link is that the DMA shares PSRAM with everything else.
+
+**Touch.** The lock is not it: about 3 µs of `touch_get`'s 8.1–8.8 ms
+in the waterfall. The time is in `esp_lcd_touch_read_data()`, the I2C
+read of the touch controller, which takes about 1.2 ms in the bars view.
+That points at the I2C transfer itself waiting in the waterfall, not at
+the box. The next step there is timing inside `touch_get` (read versus
+get_data), not more box stats.
