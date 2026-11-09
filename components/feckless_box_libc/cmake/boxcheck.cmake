@@ -2,7 +2,8 @@
 #
 # A boxed app's ELF, after feckless_abi's own check (abicheck.cmake):
 #
-#   cmake -DREADELF=<readelf> -DELF=<app.elf> -DINAPP=<inapp.txt> -P cmake/boxcheck.cmake
+#   cmake -DREADELF=<readelf> -DELF=<app.elf> -DINAPP=<inapp.txt>
+#         -DANSWERS=<boxcalls_names.txt> -P cmake/boxcheck.cmake
 #
 # It must refer to feckless_abi_box_v1 (feckless_abi_require_box()), and it
 # must not import any name in inapp.txt: those are linked into the app, and
@@ -43,5 +44,22 @@ if(_bad)
     message(FATAL_ERROR "feckless_box_libc: ${ELF} imports names that must be inside a "
             "boxed app (inapp.txt); the link did not take them from feckless_box_libc:\n  ${_bad}")
 endif()
+# u-feckless-0026: and every import must be one the box's table answers
+# (boxcalls_names.txt): the ABI check passes a name the launcher exports, but
+# the box answers only its own table, so a name outside it failed the load,
+# on the board ("Can't find common sqrt"), not the build.
+file(STRINGS "${ANSWERS}" _answers REGEX "^[A-Za-z_][A-Za-z0-9_]*$")
+set(_unanswered "")
+foreach(_s IN LISTS _und)
+    if(NOT _s IN_LIST _answers)
+        list(APPEND _unanswered "${_s}")
+    endif()
+endforeach()
+if(_unanswered)
+    string(REPLACE ";" "\n  " _unanswered "${_unanswered}")
+    file(REMOVE "${ELF}")
+    message(FATAL_ERROR "feckless_box_libc: ${ELF} imports names the box does not answer "
+            "(feckless_box_calls' table, boxcalls_names.txt); its load would fail on them:\n  ${_unanswered}")
+endif()
 list(LENGTH _und _n)
-message(STATUS "feckless_box_libc: boxed, ${_n} imports, none of them in-app names")
+message(STATUS "feckless_box_libc: boxed, ${_n} imports, none of them in-app names, all answered by the box")

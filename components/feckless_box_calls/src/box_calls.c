@@ -230,6 +230,39 @@ H(c_xTaskCreatePinnedToCore)
     return true;
 }
 
+/* u-feckless-0026: the host's name for an error, copied into the box -- the
+ * host's string is outside it. One box copy per code, kept for the app's
+ * life, so a pointer the app holds stays the name it was; ERR_NAMES codes,
+ * then the last buffer is reused. */
+#define ERR_NAMES    16
+#define ERR_NAME_MAX 48u
+static struct { uint32_t code, at; } s_err_name[ERR_NAMES];
+static int s_err_names;
+
+H(c_esp_err_to_name)
+{
+    for (int i = 0; i < s_err_names; i++) {
+        if (s_err_name[i].code == a[0] && feckless_box_len(box_of_win(w), s_err_name[i].at) == ERR_NAME_MAX) {
+            *ret = s_err_name[i].at;
+            return true;
+        }
+    }
+    int i = s_err_names < ERR_NAMES ? s_err_names++ : ERR_NAMES - 1;
+    if (!s_err_name[i].at || feckless_box_len(box_of_win(w), s_err_name[i].at) != ERR_NAME_MAX) {
+        s_err_name[i].at = (uint32_t)feckless_box_alloc(box_of_win(w), ERR_NAME_MAX);
+    }
+    if (!s_err_name[i].at) {
+        *ret = 0;
+        return true;
+    }
+    s_err_name[i].code = a[0];
+    char *d = (char *)(uintptr_t)s_err_name[i].at;
+    strncpy(d, esp_err_to_name((esp_err_t)a[0]), ERR_NAME_MAX - 1);
+    d[ERR_NAME_MAX - 1] = '\0';
+    *ret = s_err_name[i].at;
+    return true;
+}
+
 /* ---- the app gives up -------------------------------------------------
  * ESP_ERROR_CHECK(), abort() and assert() end the app, not the launcher: the
  * reason is logged (strings checked and copied) and the handler returns
@@ -446,7 +479,7 @@ static const feckless_umode_call_t s_own[] = {
     FNU(atan2), FNU(pow), FNU(fmod), FNU(ldexp), FNU(lround),
     FN(putchar), FN(puts), FNU(vTaskDelay), FNU(esp_timer_get_time), FNU(esp_log_timestamp),
     FNU(esp_rom_delay_us), FNU(time), FNU(gettimeofday), FNU(feckless_box_log),
-    FN(xTaskCreatePinnedToCore),
+    FN(xTaskCreatePinnedToCore), FN(esp_err_to_name),
     FN(_esp_error_check_failed), FN(abort), FN(__assert_func), FN(esp_log_level_get),
     FN(esp_log_level_set),
     FN(tab5io_init), FN(tab5io_bus), FN(lcd_init), FN(gfx_init), FN(touch_init),
@@ -493,5 +526,7 @@ void feckless_box_calls_end(void)
 {
     box_storage_end();
     box_audio_end();
+    memset(s_err_name, 0, sizeof s_err_name);   /* the box goes with the app */
+    s_err_names = 0;
     s_panel = NULL;
 }

@@ -113,6 +113,14 @@ static void test_libgcc(void)
 }
 
 /* u-feckless-0025: the double libm names, by value in register pairs */
+static void test_err_name(void)
+{
+    const uint32_t a = C1("esp_err_to_name", 0x102), b = C1("esp_err_to_name", 0);
+    CHECK(a >= P(mem) && a < P(mem) + MEM && !strcmp((char *)(uintptr_t)a, "an error"));
+    CHECK(b != a && !strcmp((char *)(uintptr_t)b, "ESP_OK"));
+    CHECK(C1("esp_err_to_name", 0x102) == a);              /* the same copy again */
+}
+
 static void test_double_math(void)
 {
     CHECK(dbl(hi_lo(C2("sqrt", (uint32_t)bits(2.0), (uint32_t)(bits(2.0) >> 32)))) == sqrt(2.0));
@@ -385,7 +393,29 @@ static void test_threads(void)
         CHECK(flags_of(locked[i]) == 0);
 }
 
-int main(void)
+/* u-feckless-0026: the table's names are feckless_box_libc's
+ * boxcalls_names.txt, which boxcheck holds every import of a boxed ELF to:
+ * the same set, one name a line. */
+static void test_names_file(void)
+{
+    FILE *f = fopen("../../feckless_box_libc/boxcalls_names.txt", "r");
+    CHECK(f != NULL);
+    if (!f) return;
+    char line[128];
+    uint32_t listed = 0;
+    while (fgets(line, sizeof line, f)) {
+        line[strcspn(line, "\r\n")] = '\0';
+        if (!line[0] || line[0] == '#') continue;
+        listed++;
+        uint32_t i = 0;
+        while (i < ncalls && strcmp(calls_tab[i].name, line)) i++;
+        if (i == ncalls) { printf("FAIL boxcalls_names.txt has %s, the table does not\n", line); failed++; }
+    }
+    fclose(f);
+    if (listed != ncalls) { printf("FAIL boxcalls_names.txt has %u names, the table %u\n", listed, ncalls); failed++; }
+}
+
+int main(int argc, char **argv)
 {
     mem = mmap(NULL, MEM, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT, -1, 0);
     if (mem == MAP_FAILED) { printf("no memory below 4 GB\n"); return 1; }
@@ -396,9 +426,15 @@ int main(void)
     w.lo = (uintptr_t)mem;
     w.hi = (uintptr_t)mem + MEM;
     w.ext_arg = &tab;
+    if (argc > 1 && !strcmp(argv[1], "--names")) {     /* to write boxcalls_names.txt */
+        for (uint32_t i = 0; i < ncalls; i++) printf("%s\n", calls_tab[i].name);
+        return 0;
+    }
     test_table();
+    test_names_file();
     test_libgcc();
     test_double_math();
+    test_err_name();
     test_console_time();
     test_log();
     test_give_up();

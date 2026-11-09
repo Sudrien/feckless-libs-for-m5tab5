@@ -2661,3 +2661,39 @@ present.
 the box's table, so the load is the first place that shows up. A names
 file that the host test checks against the table, and that boxcheck
 reads, would catch it at build time.
+
+### u-feckless-0026 -- esp_err_to_name, and the build checks what the box answers
+
+The next load failure, after 0025:
+
+```
+E (963) ELF: Can't find common esp_err_to_name
+```
+
+Lothesome logs `esp_err_to_name(err)`. That function returns a pointer
+to a host string, which the app can't read, so it can't simply be
+passed through. `feckless_box_calls` now copies the name into a
+48-byte buffer in the box and returns that. There is one copy per code,
+kept for the app's life, so a pointer the app holds still names the
+same error later. Up to 16 codes are kept; after that the last buffer
+is reused. `feckless_box_calls_end()` drops the copies.
+
+This is the second load to fail on one missing name at a time, so
+the build now checks for it. `feckless_box_libc/boxcalls_names.txt`
+lists every name in the box's table, one a line (131, including
+`feckless_umode`'s heap calls and the data entries). `boxcheck.cmake`
+now fails a boxed ELF that imports a name in neither that file nor
+`inapp.txt`, and lists every such name at once. The load would fail
+on each of them. `feckless_box_calls`' host test checks that the file
+and the table hold exactly the same names, and `box_calls_test
+--names` prints the table to regenerate the file. That keeps the two
+in step.
+
+Exercised with a stand-in readelf:
+- an in-app name imported (`memcpy`): refused, as before;
+- `mystery_call`: refused by the new check, naming it;
+- `sqrt` and `esp_err_to_name`: pass.
+
+`box_calls_test` also checks the copy: it is in the box, holds the
+right text, is a separate buffer per code, and the same buffer comes
+back for the same code.

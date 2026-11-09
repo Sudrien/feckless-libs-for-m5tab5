@@ -74,6 +74,7 @@ macro(feckless_abi_box_elf _name)
                 -DREADELF=${_fb_readelf}
                 -DELF=${CMAKE_BINARY_DIR}/${_name}.app.elf
                 -DINAPP=${FECKLESS_BOX_LIBC_DIR}/inapp.txt
+                -DANSWERS=${FECKLESS_BOX_LIBC_DIR}/boxcalls_names.txt
                 -P ${FECKLESS_BOX_LIBC_DIR}/cmake/boxcheck.cmake
         COMMENT "Checking ${_name}.app.elf for a box"
         VERBATIM)
