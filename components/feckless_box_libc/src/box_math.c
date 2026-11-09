@@ -464,3 +464,41 @@ float BOX_NAME(tanhf)(float x)
     }
     return copysign_(t, x);
 }
+
+/* ---- u-feckless-0025: the rest of the ABI's float names ------------------ */
+
+float BOX_NAME(ldexpf)(float x, int n)
+{
+    if (isnan_(x) || isinf_(x) || x == 0.0f) return x;
+    return scale2(x, n);
+}
+
+/* Round to nearest, ties to even (the FPU's default mode): adding and taking
+ * away 2^23 leaves no fraction bits for the rounding to keep. */
+float BOX_NAME(rintf)(float x)
+{
+    if (!(fabs_(x) < 0x1p23f)) return x;
+    const float big = copysign_(0x1p23f, x);
+    volatile float t = x + big;                 /* volatile: not folded away */
+    return copysign_(t - big, x);
+}
+
+float BOX_NAME(hypotf)(float x, float y)
+{
+    float a = fabs_(x), b = fabs_(y);
+    if (isinf_(a) || isinf_(b)) return 0x1p127f * 0x1p127f;   /* inf, even with a NaN */
+    if (isnan_(a) || isnan_(b)) return a + b;
+    if (a < b) { const float t = a; a = b; b = t; }
+    if (a == 0.0f) return 0.0f;
+    const float r = b / a;
+    return a * BOX_NAME(sqrtf)(1.0f + r * r);
+}
+
+float BOX_NAME(cbrtf)(float x)
+{
+    if (isnan_(x) || isinf_(x) || x == 0.0f) return x;
+    const float a = fabs_(x);
+    float y = BOX_NAME(exp2f)(BOX_NAME(log2f)(a) * (1.0f / 3));
+    y -= (y * y * y - a) / (3.0f * y * y);      /* one Newton step */
+    return copysign_(y, x);
+}

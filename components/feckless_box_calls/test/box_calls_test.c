@@ -112,6 +112,21 @@ static void test_libgcc(void)
     CHECK(C2("__clzdi2", 0, 1) == 31 && C2("__clzdi2", 1, 0) == 63 && C2("__clzdi2", 0, 0) == 64);
 }
 
+/* u-feckless-0025: the double libm names, by value in register pairs */
+static void test_double_math(void)
+{
+    CHECK(dbl(hi_lo(C2("sqrt", (uint32_t)bits(2.0), (uint32_t)(bits(2.0) >> 32)))) == sqrt(2.0));
+    CHECK(dbl(c64("pow", bits(10.0), bits(-2.0))) == pow(10.0, -2.0));
+    CHECK(dbl(c64("atan2", bits(1.0), bits(-1.0))) == atan2(1.0, -1.0));
+    CHECK(dbl(hi_lo(C4("ldexp", (uint32_t)bits(3.0), (uint32_t)(bits(3.0) >> 32), 4, 0))) == 48.0);
+    CHECK((int32_t)C2("lround", (uint32_t)bits(-2.5), (uint32_t)(bits(-2.5) >> 32)) == -3);
+    CHECK(isnan(dbl(hi_lo(C2("log", (uint32_t)bits(-1.0), (uint32_t)(bits(-1.0) >> 32))))));
+    const char *d[] = { "sqrt", "sin", "cos", "tan", "asin", "acos", "atan", "sinh", "asinh", "exp",
+                        "log", "log10", "floor", "ceil", "round", "fabs", "atan2", "pow", "fmod",
+                        "ldexp", "lround" };
+    for (unsigned i = 0; i < sizeof d / sizeof *d; i++) nr_of(d[i]);
+}
+
 static void test_console_time(void)
 {
     char *s = put_str("hello box");
@@ -383,6 +398,7 @@ int main(void)
     w.ext_arg = &tab;
     test_table();
     test_libgcc();
+    test_double_math();
     test_console_time();
     test_log();
     test_give_up();

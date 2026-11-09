@@ -11,6 +11,7 @@
  */
 #include "feckless_box_calls.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/time.h>
@@ -114,6 +115,21 @@ H(c_clzdi2)
     *ret = x ? (uint32_t)__builtin_clzll(x) : 64;
     return true;
 }
+
+/* ---- double-precision maths (u-feckless-0025) ------------------------------
+ * The P4 has single-precision float only, so a double is soft-float either
+ * way; feckless_box_libc's maths are float. These are the ABI's double libm
+ * names (exports.txt), answered by the host's libm: values in and out, in
+ * register pairs, as the libgcc helpers above. esp-dsp's set-up calls sqrt(). */
+
+#define D1(n) H(c_##n) { feckless_umode_ret64(w, u_of_d(n(d_of(a[0], a[1]))), ret); return true; }
+#define D2(n) H(c_##n) { feckless_umode_ret64(w, u_of_d(n(d_of(a[0], a[1]), d_of(a[2], a[3]))), ret); return true; }
+D1(sqrt) D1(sin) D1(cos) D1(tan) D1(asin) D1(acos) D1(atan) D1(sinh) D1(asinh)
+D1(exp) D1(log) D1(log10) D1(floor) D1(ceil) D1(round) D1(fabs)
+D2(atan2) D2(pow) D2(fmod)
+H(c_ldexp) { feckless_umode_ret64(w, u_of_d(ldexp(d_of(a[0], a[1]), (int)a[2])), ret); return true; }
+/* long is 32 bits on both sides */
+H(c_lround) { (void)w; *ret = (uint32_t)lround(d_of(a[0], a[1])); return true; }
 
 /* ---- console, time, log -------------------------------------------------- */
 
@@ -425,6 +441,9 @@ static const feckless_umode_call_t s_own[] = {
     FNG(divdi3), FNG(moddi3), FNG(udivdi3), FNG(umoddi3),
     FNG(floatsidf), FNG(floatunsidf), FNG(floatdidf), FNG(floatundidf),
     FNG(clzsi2), FNG(ctzsi2), FNG(clzdi2),
+    FNU(sqrt), FNU(sin), FNU(cos), FNU(tan), FNU(asin), FNU(acos), FNU(atan), FNU(sinh),
+    FNU(asinh), FNU(exp), FNU(log), FNU(log10), FNU(floor), FNU(ceil), FNU(round), FNU(fabs),
+    FNU(atan2), FNU(pow), FNU(fmod), FNU(ldexp), FNU(lround),
     FN(putchar), FN(puts), FNU(vTaskDelay), FNU(esp_timer_get_time), FNU(esp_log_timestamp),
     FNU(esp_rom_delay_us), FNU(time), FNU(gettimeofday), FNU(feckless_box_log),
     FN(xTaskCreatePinnedToCore),

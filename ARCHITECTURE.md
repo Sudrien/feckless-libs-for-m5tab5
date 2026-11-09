@@ -2618,3 +2618,46 @@ The test fake's `ff.h` now drops `cltbl` the way FatFs does when
 `FF_USE_FASTSEEK` is 0. The test Makefile has a `nofastseek` target,
 part of `run`, that compiles `box_storage.c` that way with `-Wextra
 -Werror`. Before this fix, it reproduced the board build's error.
+
+### u-feckless-0025 -- double maths as host calls, and the last float names
+
+Lothesome's ELF built and passed both checks (72 imports), then failed
+to load on the board:
+
+```
+E (957) ELF: Can't find common sqrt
+E (958) feckless_umode: esp_elf_relocate: -88
+```
+
+esp-dsp's set-up calls `sqrt()`, the double version. The ABI exports
+it, so abicheck passed. It isn't in `inapp.txt`, so boxcheck passed.
+But it wasn't in the box's call table either. Neither check knows that
+table.
+
+The P4's FPU is single-precision, so a double is soft-float whether the
+app or the host computes it. `feckless_box_calls` now answers every
+double libm name the ABI exports with the host's libm. They are values
+in register pairs, like the libgcc helpers already in the table:
+`sqrt`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`, `asinh`,
+`exp`, `log`, `log10`, `floor`, `ceil`, `round`, `fabs`, `atan2`,
+`pow`, `fmod`, `ldexp` (a double and an int) and `lround` (a 32-bit
+long). All are unlocked, since they share nothing. The table now has
+130 entries.
+
+The float names the ABI exports that 0020 did not cover are now in
+`box_math.c`: `ldexpf`, `rintf` (ties to even, by the 2^23 trick),
+`hypotf` (scaled by the larger argument) and `cbrtf` (exp2/log2 and one
+Newton step). Measured against the host: cbrtf 0.9 ulp, hypotf 1.9
+ulp, rintf exact. They are added to `inapp.txt`. With these, every
+libm name in `exports.txt` is either in the box's libc or in its
+call table.
+
+Host tests: `math_test` covers the four new float functions and their
+special values. `box_calls_test` calls `sqrt`, `pow`, `atan2`, `ldexp`,
+`lround` and `log(-1)` through the table and checks all 21 names are
+present.
+
+*Still open:* the build cannot tell that an ABI name is missing from
+the box's table, so the load is the first place that shows up. A names
+file that the host test checks against the table, and that boxcheck
+reads, would catch it at build time.

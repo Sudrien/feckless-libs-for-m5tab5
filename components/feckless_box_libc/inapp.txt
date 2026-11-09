@@ -85,6 +85,10 @@ atan2f
 asinf
 acosf
 tanhf
+ldexpf
+rintf
+hypotf
+cbrtf
 # ---- u-feckless-0020: heap_caps_* as the box's own heap (src/box_heap.c)
 heap_caps_malloc
 heap_caps_calloc

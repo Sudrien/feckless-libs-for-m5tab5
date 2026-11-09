@@ -18,6 +18,7 @@ F1(asinf) F1(acosf) F1(tanhf)
 float box_fmaxf(float, float), box_fminf(float, float), box_fmodf(float, float);
 float box_powf(float, float), box_atan2f(float, float), box_copysignf(float, float);
 long box_lroundf(float);
+float box_ldexpf(float, int), box_rintf(float), box_hypotf(float, float), box_cbrtf(float);
 void box_sincosf(float, float *, float *);
 
 static int failures;
@@ -187,6 +188,29 @@ int main(void)
     box_sincosf(1.0f, &s, &c);
     SAME(s, box_sinf(1.0f));
     SAME(c, box_cosf(1.0f));
+
+    /* u-feckless-0025 */
+    check1("cbrtf", box_cbrtf, cbrt, -1e30f, 1e30f, 2);
+    check1("rintf", box_rintf, rint, -10, 10, 0);
+    worst = 0;
+    for (int i = 0; i < 400000; i++) {
+        const float x = rnd(-1e18f, 1e18f), y = rnd(-1e18f, 1e18f);
+        const double u = ulps(box_hypotf(x, y), hypot(x, y));
+        if (u > worst) worst = u;
+    }
+    printf("hypotf   [-1e18,1e18]^2: worst %.2f ulp\n", worst);
+    if (worst > 2) { printf("  FAIL\n"); failures++; }
+    SAME(box_rintf(2.5f), 2.0f);
+    SAME(box_rintf(3.5f), 4.0f);
+    SAME(box_rintf(-0.5f), -0.0f);
+    SAME(box_ldexpf(1.5f, 4), 24.0f);
+    SAME(box_ldexpf(1.0f, -149), 0x1p-149f);
+    SAME(box_ldexpf(1.0f, 128), INFINITY);
+    SAME(box_ldexpf(-0.0f, 5), -0.0f);
+    SAME(box_hypotf(3, 4), 5.0f);
+    SAME(box_hypotf(INFINITY, NAN), INFINITY);
+    SAME(box_cbrtf(-27), -3.0f);
+    SAME(box_cbrtf(-0.0f), -0.0f);
 
     printf(failures ? "math: %d FAILED\n" : "math: all passed\n", failures);
     return failures != 0;

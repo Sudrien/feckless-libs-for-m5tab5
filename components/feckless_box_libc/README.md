@@ -58,9 +58,12 @@ it (`cmake/boxcheck.cmake`):
   component's own): `sinf`, `cosf`, `sincosf`, `tanf`, `atanf`, `atan2f`,
   `asinf`, `acosf`, `tanhf`, `expf`, `exp2f`, `exp10f`, `logf`, `log2f`,
   `log10f`, `powf`, `sqrtf`, `fmodf`, `floorf`, `ceilf`, `truncf`, `roundf`,
-  `lroundf`, `lrintf`, `fabsf`, `copysignf`, `fmaxf`, `fminf`. picolibc's
+  `lroundf`, `lrintf`, `fabsf`, `copysignf`, `fmaxf`, `fminf`, and (u-feckless-0025)
+  `ldexpf`, `rintf`, `hypotf`, `cbrtf`. picolibc's
   are in its `libc.a` but not position-independent. A few ulp, not
-  correctly rounded; no `errno`. No double-precision maths.
+  correctly rounded; no `errno`. The ABI's double-precision names (`sqrt`,
+  `sin`, `pow` and the rest) are host calls in `feckless_box_calls`
+  (u-feckless-0025).
 - **`heap_caps_malloc`, `_calloc`, `_realloc`, `_free`** (u-feckless-0020,
   `src/box_heap.c`): the box's own heap, whatever the caps say.
 
