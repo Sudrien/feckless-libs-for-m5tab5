@@ -2746,3 +2746,55 @@ conversions, about 9 million cases:
 - the rounding edges (2^24 + 1, a halfway carry, the INT64 extremes),
   the saturation cases, and `__issignalingf` on a signalling NaN, a
   quiet one and a number.
+
+### u-feckless-0028 -- the FPU is on before a window
+
+Lothesome loaded, set up the board and its capture, then ended:
+
+```
+E (1798) standalone: the analyzer ended: reason 1, illegal instruction at 0x480066f2
+```
+
+That is about 0x1e into the ELF's entry: `app_main`'s first float
+instruction, in its prologue or its first float code. Spurious never
+got here because it uses almost no float. ESP-IDF enables the FPU per
+task, lazily: a task starts with `mstatus.FS` Off, its first float
+instruction traps in M-mode, and the port turns the FPU on for that
+task and saves its float state from then on. The 0016 panic's
+`MSTATUS 0x00011880` showed FS = 0 in the host task. A window builds
+U-mode's mstatus from the host task's, so in U-mode that first float
+instruction is the program's illegal instruction, and nothing turns
+the FPU on.
+
+`feckless_umode_ops_t` gains two optional hooks.
+- `fpu_on` is called before every window, in the host task. On the P4
+  it reads `fcsr`, which is a float-state access: with the FPU off it
+  takes the RTOS's lazy-enable trap there, in M-mode, as any task's
+  first float use would. It writes no float register, and those may
+  hold the program's values: the FPU registers are the host task's,
+  which is how the RTOS saves them across task switches.
+- `fpu_off` reads `mstatus.FS`. If a window ends on an illegal
+  instruction while FS is Off, the task was switched out between
+  `fpu_on` and the window and came back with the FPU off. The window
+  is retried at the same pc, with `fpu_on` first, up to 4 times. After
+  that, or with the FPU on, the illegal instruction is the program's
+  fault, as before.
+
+`feckless_umode_run_default()` sets both hooks when
+`SOC_CPU_HAS_FPU`.
+
+Between windows the float registers are left alone, apart from what
+the host's own C code does across a host call. That follows the
+calling convention: fs0 to fs11 are kept, and ft and fa are the
+caller's to lose. A window holds interrupts off, so it ends only on an
+ecall or a fault, never in the middle of the program's float work.
+
+Host test: `umode_run_test` checks that `fpu_on` is called before each
+window, that two FPU-off faults are retried at the same pc and the run
+then exits, that with the FPU on the first illegal instruction is a
+fault, and that a fifth fault in a row with it off is a fault.
+
+*Assumed, not checked here:* that IDF 6.1's RISC-V port lazy-enables
+the FPU on an M-mode illegal instruction, as described above. If it
+doesn't, `fpu_on` would panic the host task on its first window, with
+an illegal instruction at `op_fpu_on`.

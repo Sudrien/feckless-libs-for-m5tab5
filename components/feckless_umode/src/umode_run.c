@@ -129,7 +129,11 @@ feckless_umode_end_t feckless_umode_run(feckless_umode_window_t *w, const feckle
     }
 
     w->core = ops->core_id ? (int)ops->core_id() : 0;
+    int fpu_retries = 0;
     for (;;) {
+        if (ops->fpu_on) {
+            ops->fpu_on();
+        }
         const uint32_t cause = ops->enter(&w->ctx);
 
         /* Where did that window run? A different core from the last means
@@ -158,10 +162,16 @@ feckless_umode_end_t feckless_umode_run(feckless_umode_window_t *w, const feckle
             continue;
         }
         if ((cause & FUMODE_MCAUSE_EXCCODE_MASK) == FUMODE_EXC_ECALL_U) {
+            fpu_retries = 0;
             w->syscalls++;
             if (!dispatch(w, ops, &end)) {
                 return end;
             }
+            continue;
+        }
+        if ((cause & FUMODE_MCAUSE_EXCCODE_MASK) == FUMODE_EXC_ILLEGAL_INSN && ops->fpu_off &&
+            fpu_retries < 4 && ops->fpu_off()) {
+            fpu_retries++;                      /* the FPU was off: on, and the same pc again */
             continue;
         }
         end.reason = FECKLESS_UMODE_END_FAULT;

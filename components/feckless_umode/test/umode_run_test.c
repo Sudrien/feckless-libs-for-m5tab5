@@ -293,6 +293,53 @@ static void test_refused(void)
     CHECK(a0_after[2] == FECKLESS_SYS_ERR_BADNR && a0_after[3] == FECKLESS_SYS_ERR_BADNR);
 }
 
+/* u-feckless-0028: the FPU, switched on before every window; an illegal
+ * instruction while it is off retried, a few times; one while it is on, and
+ * one past the retries, a fault as before. */
+static int fpu_ons, fpu_off_answers;
+static bool fpu_is_off;
+static void fake_fpu_on(void) { fpu_ons++; }
+static bool fake_fpu_off(void) { fpu_off_answers++; return fpu_is_off; }
+
+static void test_fpu(void)
+{
+    feckless_umode_ops_t fops = ops;
+    fops.fpu_on = fake_fpu_on;
+    fops.fpu_off = fake_fpu_off;
+    feckless_umode_window_t w;
+    static const step_t s[] = {
+        { FUMODE_EXC_ILLEGAL_INSN },
+        { FUMODE_EXC_ILLEGAL_INSN },
+        { ECALL, FECKLESS_SYS_NOP },
+        { FUMODE_EXC_ILLEGAL_INSN },
+        { ECALL, FECKLESS_SYS_EXIT },
+    };
+    new_window(&w);
+    run_script(s, 5);
+    fpu_ons = fpu_off_answers = 0;
+    fpu_is_off = true;
+    feckless_umode_end_t e = feckless_umode_run(&w, &fops);
+    CHECK(e.reason == FECKLESS_UMODE_END_EXIT);
+    CHECK(fpu_ons == 5 && fpu_off_answers == 3);    /* on before each window; each fault asked */
+    CHECK(w.ctx.pc == 0x1100 + 4);                  /* a retry is the same pc; the NOP stepped it */
+
+    new_window(&w);
+    run_script(s, 5);
+    fpu_is_off = false;                             /* on: an illegal instruction is the program's */
+    e = feckless_umode_run(&w, &fops);
+    CHECK(e.reason == FECKLESS_UMODE_END_FAULT && script_pos == 1);
+
+    static const step_t many[] = {
+        { FUMODE_EXC_ILLEGAL_INSN }, { FUMODE_EXC_ILLEGAL_INSN }, { FUMODE_EXC_ILLEGAL_INSN },
+        { FUMODE_EXC_ILLEGAL_INSN }, { FUMODE_EXC_ILLEGAL_INSN }, { ECALL, FECKLESS_SYS_EXIT },
+    };
+    new_window(&w);
+    run_script(many, 6);
+    fpu_is_off = true;                              /* off and staying off: give up after 4 */
+    e = feckless_umode_run(&w, &fops);
+    CHECK(e.reason == FECKLESS_UMODE_END_FAULT && script_pos == 5);
+}
+
 int main(void)
 {
     test_range();
@@ -305,6 +352,7 @@ int main(void)
     test_faults();
     test_stack_verdict_first();
     test_refused();
+    test_fpu();
     printf(failed ? "%d FAILED\n" : "umode_run: all passed\n", failed);
     return failed != 0;
 }

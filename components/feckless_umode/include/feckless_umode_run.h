@@ -58,6 +58,16 @@ typedef struct {
     void (*yield)(void);
     uint32_t (*core_id)(void);
     void (*write)(const char *buf, uint32_t len);      /* buf is read in place; already range-checked */
+    /* u-feckless-0028: the FPU, which the RTOS enables per task, lazily: a
+     * task's first float instruction traps, in M-mode, and the RTOS turns
+     * the FPU on for it (and saves its state from then on). In U-mode that
+     * trap is the program's illegal instruction instead. fpu_on, if set, is
+     * called before every window, in the host task, to take that trap there;
+     * fpu_off, if set, says the FPU is off now -- after an illegal
+     * instruction, a sign it was switched off between fpu_on and the
+     * window, so the window is retried (a few times) rather than ended. */
+    void (*fpu_on)(void);
+    bool (*fpu_off)(void);
 } feckless_umode_ops_t;
 
 typedef enum {
