@@ -2870,3 +2870,37 @@ The capture thread's `__adddf3`, 49 000 a second, comes from
 Lothesome's sound-level meter, which accumulates in double. At about
 58 ms/s on core 1 it doesn't slow the drawing, but moving the meter to
 float, or linking soft-double into the app, would remove it.
+
+### u-feckless-0031 -- app_main on the other core
+
+With 0030 and u-lothesome-0003, Lothesome draws at about 48 FPS
+(`bars 3.5 ms`), but the panel now flashes the cyan of a DSI underrun.
+The call stats explain it: `app_main` makes 3 300 host calls a second,
+down from 52 000. The gfx_fb and gfx_w calls that were wasting time
+were also ending the drawing thread's windows every few microseconds.
+Without them the windows run for milliseconds (the bars, the FFT, the
+waterfall). Each window holds interrupts off on its core (u-feckless-
+0017), and core 0, where the box ran, is also where the launcher
+brought up the panel. IDF's DPI driver restarts the framebuffer DMA
+from an interrupt every frame (`mipi_dsi_dma_trans_done_cb`), so a
+window of a few milliseconds starves it. This is the same cyan Spurious
+showed in its sort.
+
+`feckless_umode_app_run_on(app, core)` runs
+`feckless_umode_app_run()` on a host task of its own (16 KB internal
+stack, the caller's priority), pinned to `core`, while the caller
+waits. With the board brought up on core 0, an app run on core 1
+leaves core 0's interrupts alone however long its windows are. The
+app's own inits are answered on core 1 by drivers already brought up,
+so nothing moves its interrupt there. Threads the app spawns go where
+the app asks; Lothesome puts its capture task on core 1 as well. If
+the task can't be made, the app runs on the caller as before.
+
+This holds only while the board's drivers were brought up before the
+app and away from its core. A driver the app brings up itself, from a
+host call on core 1, gets its interrupt on core 1, where windows delay
+it. For Lothesome that is the audio (I2S, behind DMA buffers of about
+20 ms) and the USB host.
+
+*Not host-tested*; ESP-IDF only. Callers: u-lothesome-0004 (standalone)
+and u-avoidant-0002.

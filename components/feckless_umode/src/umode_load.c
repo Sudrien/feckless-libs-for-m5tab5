@@ -593,6 +593,37 @@ feckless_umode_end_t feckless_umode_app_run(feckless_umode_app_t *a)
     return finish(a, run_one(a, (uintptr_t)a->elf.entry));
 }
 
+/* u-feckless-0031 */
+typedef struct {
+    feckless_umode_app_t *app;
+    feckless_umode_end_t end;
+    SemaphoreHandle_t done;
+} run_on_t;
+
+static void run_on_task(void *arg)
+{
+    run_on_t *r = arg;
+    r->end = feckless_umode_app_run(r->app);
+    xSemaphoreGive(r->done);
+    vTaskDelete(NULL);
+}
+
+feckless_umode_end_t feckless_umode_app_run_on(feckless_umode_app_t *a, int core)
+{
+    run_on_t r = { .app = a, .done = xSemaphoreCreateBinary() };
+    if (r.done && (core == 0 || core == 1) &&
+        xTaskCreatePinnedToCore(run_on_task, "box_main", FECKLESS_UMODE_APP_STACK, &r,
+                                uxTaskPriorityGet(NULL), NULL, core) == pdPASS) {
+        ESP_LOGI(TAG, "app_main on core %d", core);
+        xSemaphoreTake(r.done, portMAX_DELAY);
+        vSemaphoreDelete(r.done);
+        return r.end;
+    }
+    if (r.done) vSemaphoreDelete(r.done);
+    ESP_LOGW(TAG, "app_main could not be moved to core %d; it runs here", core);
+    return feckless_umode_app_run(a);
+}
+
 feckless_umode_app_t *feckless_umode_app_loaded(void)
 {
     return s_loaded;

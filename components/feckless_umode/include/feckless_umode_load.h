@@ -81,6 +81,19 @@ esp_err_t feckless_umode_app_grant(feckless_umode_app_t *app, uint32_t lo, uint3
 esp_err_t feckless_umode_app_spawn(feckless_umode_app_t *app, uint32_t fn, uint32_t arg,
                                    uint32_t stack_bytes, int prio, int core, uint32_t *id);
 
+/* u-feckless-0031: feckless_umode_app_run(), on a host task of its own
+ * pinned to `core`, with the calling task waiting for it. A window holds
+ * interrupts off on its core, so an app's long computations between host
+ * calls delay every interrupt there -- the panel's DMA restart among them,
+ * which IDF's DPI driver needs every frame, or the panel shows the cyan of
+ * an underrun. Run the app on the core the drivers' interrupts are NOT on:
+ * the launcher brought the board up on core 0 (app_main's), so core 1. The
+ * app's own driver inits, run there, are answered by the launcher's
+ * already-initialised drivers. Falls back to running here if the task
+ * cannot be made. */
+#define FECKLESS_UMODE_APP_STACK 16384     /* the host task: the run loop and the host calls */
+feckless_umode_end_t feckless_umode_app_run_on(feckless_umode_app_t *app, int core);
+
 /* The window, for its counters and range. */
 feckless_umode_window_t *feckless_umode_app_window(feckless_umode_app_t *app);
 
