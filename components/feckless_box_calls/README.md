@@ -30,6 +30,11 @@ feckless_umode_load(image, size, calls, n, 4 << 20, 64 << 10, &app);
 - **The board**: `tab5io_init`, `tab5io_bus`, `lcd_init`, `gfx_init`,
   `touch_init`, `lcd_backlight_set`, `touch_get`. The app gets numbers for the
   panel and the bus, never the host's pointers.
+- **The framebuffer in place** (u-feckless-0022): `gfx_fb`, `gfx_w`,
+  `gfx_h`. `gfx_fb()` returns the host's buffer and grants the app that
+  range, read and write but never execute, on top of its box, until it is
+  unloaded (`feckless_umode_app_grant()`). Host calls still take pointers
+  into the box only.
 - **More of the board** (u-feckless-0021): `tab5io_exp1`, `tab5io_exp2`
   (numbers again), `touch_present`, `touch_set_rotation`.
 - **Ark12's tables** (u-feckless-0021) as data, for `ark12.h`'s inline

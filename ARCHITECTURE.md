@@ -2483,3 +2483,42 @@ running exactly once. Two mutations were each caught: dropping the
 overflow guard, and dropping the stop of the capture at the end.
 `feckless_umode`'s tests pass. The lazy copy in `umode_load.c` runs
 only under ESP-IDF, so it is not host-tested.
+
+### u-feckless-0022 -- the framebuffer, granted beside the box
+
+This is step 2 of the plan for running Lothesome in a box. Lothesome
+draws its spectrum straight into `gfx_fb()`, sizing it with
+`gfx_w()`/`gfx_h()`, then calls `gfx_blit()`. The framebuffer is the
+host's 1.8 MB of PSRAM, outside the box. Copying it through a host call
+every frame would cost more than the analysis does, so the app is given
+the range itself.
+
+`feckless_umode` gains two functions:
+- `feckless_umode_app_grant(app, lo, hi, perm)` adds a PMP grant beside
+  the box and reapplies the whole list on every core (IPC, as at load).
+- `feckless_umode_app_loaded()` returns the app that is loaded now.
+
+The app keeps its grants in a list; entry 0 is the box. A grant can be
+read, or read and write. Execute is refused, so nothing outside the box
+runs. The same grant asked for twice is accepted. A grant that overlaps
+an existing one is refused, because the earlier PMP entry would win. If
+the PMP does not take the new list, the old one is put back.
+`feckless_umode_unload()` already clears every grant, so the next app
+starts with its box alone. The window's `[lo, hi)` is unchanged: a host
+call still accepts pointers into the box only, and the framebuffer is
+for the app to draw in.
+
+`feckless_box_calls` gets `gfx_fb`, `gfx_w` and `gfx_h`. `gfx_fb()`
+asks for the grant, read and write, then returns the host's address. If
+there is no framebuffer yet, or the grant is refused, it logs the
+reason and returns NULL. gfx allocates the buffer with
+`heap_caps_aligned_alloc(128, ...)`, and 720 × 1280 × 2 bytes is a whole
+number of the P4's 128-byte PMP granules, so the grant covers exactly
+the buffer and no neighbouring allocation. A buffer that wasn't on the
+granule would be refused by `feckless_umode_pmp_apply()` (0013's check).
+
+Host tests: `box_calls_test` (107 calls) checks the grant `gfx_fb()`
+asks for: the exact range, R|W and never X, NULL when refused, and no
+request when there is no framebuffer. `feckless_umode_app_grant()` runs
+only under ESP-IDF and is not host-tested; the PMP plan it uses already
+has host tests for up to 8 grants.

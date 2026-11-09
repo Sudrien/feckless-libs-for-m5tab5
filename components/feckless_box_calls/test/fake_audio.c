@@ -84,3 +84,28 @@ size_t uac_mic_read(int32_t *f, size_t max, uint32_t ms)
 bool uac_mic_gone(void) { return false; }
 void uac_mic_close(void) { a_mic_open = 0; }
 const char *uac_mic_product(void) { return "a very long product name indeed, longer than anything a box should be handed back unbounded by a call that copies it into the app's own memory -- 128 is the cap"; }
+
+/* u-feckless-0022: the framebuffer, and feckless_umode's grant (umode_load.c
+ * runs only under ESP-IDF): records what was asked. */
+#include "gfx.h"
+#include "feckless_umode.h"
+#include "feckless_umode_load.h"
+static uint16_t fb_obj[64] __attribute__((aligned(128)));
+uint16_t *fake_fb = fb_obj;
+int fake_fb_w = 8, fake_fb_h = 8;
+uint32_t g_lo, g_hi, g_perm;
+int g_calls;
+esp_err_t g_result = ESP_OK;
+static int app_obj;
+uint16_t *gfx_fb(void) { return fake_fb; }
+int gfx_w(void) { return fake_fb_w; }
+int gfx_h(void) { return fake_fb_h; }
+feckless_umode_app_t *feckless_umode_app_loaded(void) { return (feckless_umode_app_t *)&app_obj; }
+esp_err_t feckless_umode_app_grant(feckless_umode_app_t *a, uint32_t lo, uint32_t hi, uint32_t perm)
+{
+    g_calls++;
+    if (a != (feckless_umode_app_t *)&app_obj) return ESP_ERR_INVALID_STATE;
+    g_lo = lo; g_hi = hi; g_perm = perm;
+    return g_result;
+}
+const char *esp_err_to_name(esp_err_t e) { return e == ESP_OK ? "ESP_OK" : "an error"; }

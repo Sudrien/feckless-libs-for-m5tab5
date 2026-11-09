@@ -16,6 +16,7 @@
 
 #include "feckless_box_calls.h"
 #include "audio_out.h"   /* u-feckless-0021: ESP_OK, the capture sources */
+#include "feckless_umode.h"   /* u-feckless-0022: FECKLESS_UMODE_R, _W */
 
 extern int calls, last_i[8], log_kind;
 extern char last_fn[32], last_str[700], log_tag[80];
@@ -304,6 +305,28 @@ static void test_audio(void)
     calls_tab = feckless_box_calls_v1(&ncalls);
 }
 
+/* u-feckless-0022 */
+extern uint16_t *fake_fb;
+extern uint32_t g_lo, g_hi, g_perm;
+extern int g_calls;
+extern esp_err_t g_result;
+
+static void test_fb(void)
+{
+    CHECK(C0("gfx_w") == 8 && C0("gfx_h") == 8);
+    const uint32_t fb = C0("gfx_fb");
+    CHECK(fb == (uint32_t)(uintptr_t)fake_fb);
+    CHECK(g_calls == 1 && g_lo == fb && g_hi == fb + 8 * 8 * 2);
+    CHECK(g_perm == (FECKLESS_UMODE_R | FECKLESS_UMODE_W));      /* never X */
+    g_result = ESP_ERR_NO_MEM;
+    CHECK(C0("gfx_fb") == 0);                                      /* refused: no pointer */
+    g_result = ESP_OK;
+    uint16_t *keep = fake_fb;
+    fake_fb = NULL;
+    CHECK(C0("gfx_fb") == 0 && g_calls == 2);                      /* no framebuffer: no grant asked */
+    fake_fb = keep;
+}
+
 int main(void)
 {
     mem = mmap(NULL, MEM, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT, -1, 0);
@@ -323,6 +346,7 @@ int main(void)
     test_board();
     test_gfx();
     test_audio();
+    test_fb();
     printf(failed ? "%d FAILED\n" : "box_calls: all passed (%u calls)\n", failed ? failed : (int)ncalls);
     return failed != 0;
 }

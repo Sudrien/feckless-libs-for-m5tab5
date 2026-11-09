@@ -30,6 +30,9 @@
 #include "tab5io.h"
 #include "touch.h"
 
+#include "feckless_umode.h"
+#include "feckless_umode_load.h"
+
 #include "box_calls_priv.h"
 
 #define TOKEN_PANEL  BOX_TOKEN_PANEL
@@ -305,6 +308,34 @@ H(c_touch_get)
     *ret = down;
     return true;
 }
+/* u-feckless-0022: the framebuffer, to draw into in place. Its address is
+ * the host's, outside the box, so the first call grants the app that range
+ * -- read and write, never execute -- on top of its box, for as long as it
+ * is loaded (feckless_umode_app_grant()). gfx's buffer is allocated on the
+ * PMP's 128-byte granule and is a whole number of them (720 x 1280 x 2), so
+ * the grant is exactly the buffer. NULL if there is no framebuffer yet or
+ * the grant was refused: the app then cannot draw in place, and says so. */
+H(c_gfx_fb)
+{
+    (void)w; (void)a;
+    uint16_t *fb = gfx_fb();
+    *ret = 0;
+    if (!fb) {
+        return true;
+    }
+    const uint32_t lo = (uint32_t)(uintptr_t)fb;
+    const uint32_t hi = lo + (uint32_t)gfx_w() * (uint32_t)gfx_h() * (uint32_t)sizeof(uint16_t);
+    const esp_err_t e = feckless_umode_app_grant(feckless_umode_app_loaded(), lo, hi,
+                                                 FECKLESS_UMODE_R | FECKLESS_UMODE_W);
+    if (e != ESP_OK) {
+        ESP_LOGE("box", "gfx_fb: the framebuffer could not be granted: %s", esp_err_to_name(e));
+        return true;
+    }
+    *ret = lo;
+    return true;
+}
+H(c_gfx_w) { (void)w; (void)a; *ret = (uint32_t)gfx_w(); return true; }
+H(c_gfx_h) { (void)w; (void)a; *ret = (uint32_t)gfx_h(); return true; }
 H(c_gfx_fill_rect) { (void)w; gfx_fill_rect((int)a[0], (int)a[1], (int)a[2], (int)a[3], (uint16_t)a[4]); *ret = 0; return true; }
 H(c_gfx_fill_circle) { (void)w; gfx_fill_circle((int)a[0], (int)a[1], (int)a[2], (uint16_t)a[3]); *ret = 0; return true; }
 H(c_gfx_blit) { (void)w; gfx_blit((int)a[0], (int)a[1]); *ret = 0; return true; }
@@ -381,6 +412,7 @@ static const feckless_umode_call_t s_own[] = {
     DATA(ark12_lit, ARK12_LIT_BYTES), DATA(ark12_tiles, ARK12_TILES * 3u),
     FN(gfx_fill_rect), FN(gfx_fill_circle), FN(gfx_blit), FN(gfx_draw_text), FN(gfx_text_w),
     FN(gfx_wrap_line), FN(gfx_draw_para),
+    FN(gfx_fb), FN(gfx_w), FN(gfx_h),
 };
 
 #define OWN_N (sizeof s_own / sizeof s_own[0])

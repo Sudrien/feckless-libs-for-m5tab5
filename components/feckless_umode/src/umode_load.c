@@ -26,6 +26,7 @@
 #include "private/elf_symbol.h"     /* u-feckless-0014: elf_set_symbol_resolver() */
 #include "private/elf_types.h"
 
+#include "feckless_umode.h"          /* FECKLESS_UMODE_MAX_GRANTS, _R, _W */
 #include "feckless_umode_box.h"
 #include "feckless_umode_idf.h"
 #include "feckless_umode_pmp.h"
@@ -44,6 +45,8 @@ struct feckless_umode_app {
     void *block;
     uintptr_t exit_stub;
     bool relocated;
+    feckless_umode_grant_t grants[FECKLESS_UMODE_MAX_GRANTS];   /* [0] is the box */
+    int ngrants;
 };
 
 /* The box being loaded or unloaded, or NULL: the wrap's switch. */
@@ -210,12 +213,13 @@ esp_err_t feckless_umode_load(const uint8_t *image, size_t size,
         goto fail;
     }
 
-    /* The grant: the box, and nothing else. */
-    const feckless_umode_grant_t g = {
+    /* The grant: the box, and nothing else (until feckless_umode_app_grant()). */
+    a->grants[0] = (feckless_umode_grant_t){
         (uint32_t)a->box.base, (uint32_t)(a->box.base + a->box.size),
         FECKLESS_UMODE_R | FECKLESS_UMODE_W | FECKLESS_UMODE_X,
     };
-    if (feckless_umode_pmp_apply(&g, 1) != ESP_OK) {
+    a->ngrants = 1;
+    if (feckless_umode_pmp_apply(a->grants, a->ngrants) != ESP_OK) {
         err = ESP_ERR_INVALID_STATE;
         goto fail;
     }
@@ -281,6 +285,45 @@ feckless_umode_end_t feckless_umode_app_run(feckless_umode_app_t *a)
         }
     }
     return run_one(a, (uintptr_t)a->elf.entry);
+}
+
+feckless_umode_app_t *feckless_umode_app_loaded(void)
+{
+    return s_loaded;
+}
+
+/* u-feckless-0022 */
+esp_err_t feckless_umode_app_grant(feckless_umode_app_t *a, uint32_t lo, uint32_t hi, uint32_t perm)
+{
+    if (!a || a != s_loaded) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if ((perm & FECKLESS_UMODE_X) || !(perm & FECKLESS_UMODE_R) ||
+        (perm & ~(FECKLESS_UMODE_R | FECKLESS_UMODE_W)) || lo >= hi) {
+        return ESP_ERR_INVALID_ARG;             /* data only: nothing outside the box runs */
+    }
+    for (int i = 0; i < a->ngrants; i++) {
+        const feckless_umode_grant_t *g = &a->grants[i];
+        if (g->lo == lo && g->hi == hi && g->perm == perm) {
+            return ESP_OK;                      /* already */
+        }
+        if (lo < g->hi && g->lo < hi) {
+            return ESP_ERR_INVALID_ARG;         /* overlapping grants: the earlier would win */
+        }
+    }
+    if (a->ngrants == FECKLESS_UMODE_MAX_GRANTS) {
+        return ESP_ERR_NO_MEM;
+    }
+    a->grants[a->ngrants] = (feckless_umode_grant_t){ lo, hi, perm };
+    esp_err_t e = feckless_umode_pmp_apply(a->grants, a->ngrants + 1);
+    if (e != ESP_OK) {
+        feckless_umode_pmp_apply(a->grants, a->ngrants);   /* back to what it was */
+        return e;
+    }
+    a->ngrants++;
+    ESP_LOGI(TAG, "granted 0x%08x..0x%08x (%s) beside the box", (unsigned)lo, (unsigned)hi,
+             perm & FECKLESS_UMODE_W ? "read, write" : "read");
+    return ESP_OK;
 }
 
 feckless_umode_window_t *feckless_umode_app_window(feckless_umode_app_t *a)

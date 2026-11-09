@@ -44,6 +44,20 @@ esp_err_t feckless_umode_load(const uint8_t *image, size_t size,
  * task's stack is the host's; the program's is in the box. */
 feckless_umode_end_t feckless_umode_app_run(feckless_umode_app_t *app);
 
+/* u-feckless-0022: the app loaded now, or NULL. One at a time. */
+feckless_umode_app_t *feckless_umode_app_loaded(void);
+
+/* u-feckless-0022: grant the app [lo, hi) as well as its box, on every core,
+ * from now until it is unloaded: FECKLESS_UMODE_R, or _R | _W -- never _X,
+ * so nothing outside the box runs. lo and hi on the PMP's granule (128 bytes
+ * on the P4). For memory a host call hands the app to use in place, such as
+ * the framebuffer (feckless_box_calls' gfx_fb()). The same grant again is
+ * ESP_OK. ESP_ERR_INVALID_ARG: bad perm or range, off the granule, or
+ * overlapping a grant already made. ESP_ERR_NO_MEM: no PMP entries left.
+ * ESP_ERR_INVALID_STATE: not the loaded app. The window's range checks are
+ * unchanged: a host call still takes pointers into the box only. */
+esp_err_t feckless_umode_app_grant(feckless_umode_app_t *app, uint32_t lo, uint32_t hi, uint32_t perm);
+
 /* The window, for its counters and range. */
 feckless_umode_window_t *feckless_umode_app_window(feckless_umode_app_t *app);
 
