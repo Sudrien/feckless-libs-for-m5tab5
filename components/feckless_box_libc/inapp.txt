@@ -55,6 +55,41 @@ strtoul
 strtoull
 vprintf
 vsnprintf
+# ---- u-feckless-0020: this component's single-precision maths
+# (src/box_math.c); picolibc's are not position-independent
+truncf
+floorf
+ceilf
+roundf
+lroundf
+lrintf
+fabsf
+copysignf
+fmaxf
+fminf
+sqrtf
+fmodf
+expf
+exp2f
+exp10f
+logf
+log2f
+log10f
+powf
+sinf
+cosf
+sincosf
+tanf
+atanf
+atan2f
+asinf
+acosf
+tanhf
+# ---- u-feckless-0020: heap_caps_* as the box's own heap (src/box_heap.c)
+heap_caps_malloc
+heap_caps_calloc
+heap_caps_realloc
+heap_caps_free
 # ---- from the toolchain's libgcc.a (libgcc_names.txt)
 __ashldi3
 __ashrdi3

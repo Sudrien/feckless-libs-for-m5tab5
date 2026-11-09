@@ -54,6 +54,16 @@ it (`cmake/boxcheck.cmake`):
   host never walks a format whose `%s` would be the app's pointer, and is
   handed to the host's `feckless_box_log` as a tag and a message.
 
+- **Single-precision maths** (u-feckless-0020, `src/box_math.c`, this
+  component's own): `sinf`, `cosf`, `sincosf`, `tanf`, `atanf`, `atan2f`,
+  `asinf`, `acosf`, `tanhf`, `expf`, `exp2f`, `exp10f`, `logf`, `log2f`,
+  `log10f`, `powf`, `sqrtf`, `fmodf`, `floorf`, `ceilf`, `truncf`, `roundf`,
+  `lroundf`, `lrintf`, `fabsf`, `copysignf`, `fmaxf`, `fminf`. picolibc's
+  are in its `libc.a` but not position-independent. A few ulp, not
+  correctly rounded; no `errno`. No double-precision maths.
+- **`heap_caps_malloc`, `_calloc`, `_realloc`, `_free`** (u-feckless-0020,
+  `src/box_heap.c`): the box's own heap, whatever the caps say.
+
 Not here, so not usable in a box yet: `sscanf`, `strtod`, `strtof`, `atof`,
 `strftime`, `rand` (picolibc's are not position-independent).
 
@@ -62,4 +72,5 @@ Not here, so not usable in a box yet: `sscanf`, `strtod`, `strtof`, `atof`,
     make -C components/feckless_box_libc/test
 
 `strto*` against the host's libc (800 000 comparisons), the vendored printf
-against the host's `snprintf`.
+against the host's `snprintf`, the maths against the host's libm (the worst
+error of each function over a sweep, and the special values).

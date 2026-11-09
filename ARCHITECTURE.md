@@ -2373,3 +2373,52 @@ call, now sets `sdmmc_common`, `sdmmc_sd`, `sdmmc_cmd`, `vfs_fat_sdmmc`,
 restores each saved level afterwards. The boot mount (`verbose == true`)
 still shows everything. The storage handler's own messages are
 unaffected, including the drop-to-a-slower-clock warning.
+
+### u-feckless-0020 -- maths and heap_caps in a box
+
+The next boxed app is Lothesome, the audio analyzer. It calls `powf`,
+`cosf`, `atan2f`, `sqrtf` and `fmaxf`, and esp-dsp's FFT set-up uses the
+trig. picolibc has these in its `libc.a`, but most were not compiled
+position-independent. Linked with `-shared`, `atan2f`, `expf`, `exp2f`,
+`fmodf`, `logf`, `log10f`, `log2f`, `powf`, the sin/cos range reduction
+(`__rem_pio2f`) and `scalbnf` all fail with
+`relocation R_RISCV_HI20 against a local symbol`. Building them from
+source would mean bringing picolibc's maths build along too.
+
+So `feckless_box_libc` gets its own, `src/box_math.c`, compiled with the
+app:
+- expf, exp2f, exp10f: range reduction by ln 2 split in two parts, then
+  a degree-7 polynomial.
+- logf: fdlibm's atanh series on [0.707, 1.414). log2f and log10f are
+  logf scaled.
+- sinf, cosf, tanf: k·π/2 subtracted using π/2 in nine 8-bit pieces.
+  For k < 2^16 each product is exact, so a float near a multiple of π/2
+  keeps its precision. Above |x| = 65536 the argument is first taken
+  mod a float 2π, so the phase is only approximate.
+- atanf: reduced to [0, tan π/12], then a series. atan2f, asinf and
+  acosf are built on it.
+- powf: exp2 of y·log2 x, with y·e split so that it doesn't round.
+  Bases 10 and 2 go to exp10f and exp2f.
+- fmodf: exact.
+- The rounding functions, fmax/fmin and copysign: bit operations.
+- sqrtf: `fsqrt.s`.
+
+Compiled with `-fPIC` for the P4, `box_math.o` has no undefined
+symbols, and with `box_heap.o` it links into a shared object at both -O2
+and -Os.
+
+`test/math_test.c` compares each function with the host's libm over
+400 000 random arguments. Worst errors seen: expf 1.2 ulp, exp10f 1.4,
+logf 1.3, log10f 2.2, sinf/cosf 3.1 up to 60 000 and 1.9 at the floats
+nearest k·π/2, tanf 3.0, atan2f 2.6, tanhf 2.5, powf 6.5 for
+x ≤ 100, |y| ≤ 8, and 10^y 1.3. sqrtf and the rounding functions are
+exact. The test also checks the special values from C99 Annex F. powf's
+error grows with |y·log2 x|, because float has no wider type for the
+logarithm.
+
+`src/box_heap.c` adds `heap_caps_malloc`, `_calloc`, `_realloc` and
+`_free` as the box's own `malloc` family. The caps are ignored: a box
+has one heap, and a host call that does DMA copies through its own
+staging buffer. `heap_caps_aligned_alloc` is left out, because the
+box's `free` would not know the offset. All of these names are in
+`inapp.txt`, so a boxed ELF that imports any of them fails the build.

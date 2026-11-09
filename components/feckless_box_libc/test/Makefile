@@ -1,5 +1,5 @@
 # Host tests for feckless_box_libc: strto* and the vendored printf against
-# the host's libc.
+# the host's libc, and the maths (u-feckless-0020) against its libm.
 #
 #   make -C components/feckless_box_libc/test
 #
@@ -22,10 +22,16 @@ strto_test: strto_test.c ../src/box_strto.c
 printf_test: printf_test.c ../vendor/printf/printf.c
 	$(CC) $(CFLAGS) -w -I../vendor -o $@ printf_test.c ../vendor/printf/printf.c $(LDFLAGS)
 
-run: strto_test printf_test
+# u-feckless-0020. -ffp-contract=off: the target's float has no fused
+# multiply-add unless asked, and the host's compiler must not add one.
+math_test: math_test.c ../src/box_math.c
+	$(CC) $(CFLAGS) -ffp-contract=off -fno-builtin -D'BOX_NAME(n)=box_##n' -o $@ math_test.c ../src/box_math.c -lm $(LDFLAGS)
+
+run: strto_test printf_test math_test
 	./strto_test
 	./printf_test
+	./math_test
 
 clean:
-	rm -f strto_test printf_test
+	rm -f strto_test printf_test math_test
 .PHONY: all run clean
