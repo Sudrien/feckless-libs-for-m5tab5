@@ -2829,3 +2829,44 @@ off, nothing is compiled in.
 
 Not host-tested: it lives in `umode_load.c`, which runs only under
 ESP-IDF.
+
+### u-feckless-0030 -- gfx_fb, gfx_w and gfx_h cheap
+
+0029's call stats on Lothesome, in the box at 26 FPS:
+
+```
+host calls, last 5.0 s: 107099/s, 1387.2 ms/s in the host
+  audio_out_capture_read       399/s 1525.01 us each  608.2 ms/s
+  gfx_blit                      31/s 12137.20 us each  373.8 ms/s
+  gfx_fb                     24492/s    5.89 us each  144.2 ms/s
+  gfx_w                      24492/s    5.59 us each  137.0 ms/s
+  __adddf3                   49052/s    1.19 us each   58.4 ms/s
+  app_main: 52057 calls/s, 699.5 ms/s in them
+  thread: 55043 calls/s, 688.0 ms/s in them
+```
+
+The capture read and the blit are waits (for samples, and for the
+panel's DMA), as they were outside the box. The new cost is
+Lothesome's `repaint_rows()`, which asks for `gfx_fb()` and `gfx_w()`
+for every column it paints: about 940 times a frame each, roughly
+11 ms of a 31 ms frame. That's the app's to fix (u-lothesome-0003).
+
+The box side was also needlessly dear. A bare trap costs about 1.2 µs,
+which is what `__adddf3` shows. These calls cost about 6 µs because
+each took the app's lock, and `gfx_fb()` went through
+`feckless_umode_app_grant()`'s search every time. Now:
+- `gfx_fb()` remembers the buffer it has granted and returns it
+  straight away after that. `feckless_box_calls_end()` forgets it,
+  since the grant goes with the app.
+- All three are unlocked (FNU). They read gfx's state, and
+  `gfx_fb()`'s one write stores the same value from whichever thread
+  makes it.
+
+`box_calls_test` checks that a second `gfx_fb()` asks for no grant,
+that a new app (after `feckless_box_calls_end()`) asks again, and that
+the three are unlocked.
+
+The capture thread's `__adddf3`, 49 000 a second, comes from
+Lothesome's sound-level meter, which accumulates in double. At about
+58 ms/s on core 1 it doesn't slow the drawing, but moving the meter to
+float, or linking soft-double into the app, would remove it.

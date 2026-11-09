@@ -389,12 +389,18 @@ H(c_touch_get)
  * PMP's 128-byte granule and is a whole number of them (720 x 1280 x 2), so
  * the grant is exactly the buffer. NULL if there is no framebuffer yet or
  * the grant was refused: the app then cannot draw in place, and says so. */
+static uint32_t s_fb_granted;           /* u-feckless-0030: the buffer already granted */
+
 H(c_gfx_fb)
 {
     (void)w; (void)a;
     uint16_t *fb = gfx_fb();
     *ret = 0;
     if (!fb) {
+        return true;
+    }
+    if ((uint32_t)(uintptr_t)fb == s_fb_granted) {
+        *ret = s_fb_granted;                /* granted before: no grant to ask for again */
         return true;
     }
     const uint32_t lo = (uint32_t)(uintptr_t)fb;
@@ -405,6 +411,7 @@ H(c_gfx_fb)
         ESP_LOGE("box", "gfx_fb: the framebuffer could not be granted: %s", esp_err_to_name(e));
         return true;
     }
+    s_fb_granted = lo;
     *ret = lo;
     return true;
 }
@@ -490,7 +497,11 @@ static const feckless_umode_call_t s_own[] = {
     DATA(ark12_lit, ARK12_LIT_BYTES), DATA(ark12_tiles, ARK12_TILES * 3u),
     FN(gfx_fill_rect), FN(gfx_fill_circle), FN(gfx_blit), FN(gfx_draw_text), FN(gfx_text_w),
     FN(gfx_wrap_line), FN(gfx_draw_para),
-    FN(gfx_fb), FN(gfx_w), FN(gfx_h),
+    /* u-feckless-0030: unlocked -- they read gfx's state, and gfx_fb's one
+     * write (s_fb_granted) is the same value from either thread. An app
+     * that asks for them per column (Lothesome did, 49 000 a second) then
+     * pays the trap and not the lock. */
+    FNU(gfx_fb), FNU(gfx_w), FNU(gfx_h),
 };
 
 #define OWN_N (sizeof s_own / sizeof s_own[0])
@@ -528,5 +539,6 @@ void feckless_box_calls_end(void)
     box_audio_end();
     memset(s_err_name, 0, sizeof s_err_name);   /* the box goes with the app */
     s_err_names = 0;
+    s_fb_granted = 0;                       /* the grant goes with the app */
     s_panel = NULL;
 }

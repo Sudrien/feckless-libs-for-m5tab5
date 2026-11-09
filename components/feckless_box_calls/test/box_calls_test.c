@@ -328,6 +328,7 @@ static void test_audio(void)
     calls_tab = feckless_box_calls_v1(&ncalls);
 }
 
+static uint32_t flags_of(const char *name);
 /* u-feckless-0022 */
 extern uint16_t *fake_fb;
 extern uint32_t g_lo, g_hi, g_perm;
@@ -341,8 +342,12 @@ static void test_fb(void)
     CHECK(fb == (uint32_t)(uintptr_t)fake_fb);
     CHECK(g_calls == 1 && g_lo == fb && g_hi == fb + 8 * 8 * 2);
     CHECK(g_perm == (FECKLESS_UMODE_R | FECKLESS_UMODE_W));      /* never X */
+    CHECK(C0("gfx_fb") == fb && g_calls == 1);                     /* u-feckless-0030: granted once */
+    CHECK(flags_of("gfx_fb") == FECKLESS_UMODE_CALL_UNLOCKED && flags_of("gfx_w") == FECKLESS_UMODE_CALL_UNLOCKED);
+    feckless_box_calls_end();                                      /* a new app asks again */
+    calls_tab = feckless_box_calls_v1(&ncalls);
     g_result = ESP_ERR_NO_MEM;
-    CHECK(C0("gfx_fb") == 0);                                      /* refused: no pointer */
+    CHECK(C0("gfx_fb") == 0 && g_calls == 2);                      /* refused: no pointer */
     g_result = ESP_OK;
     uint16_t *keep = fake_fb;
     fake_fb = NULL;
