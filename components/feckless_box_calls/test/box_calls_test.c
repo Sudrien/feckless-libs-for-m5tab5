@@ -344,6 +344,7 @@ static void test_fb(void)
     CHECK(g_perm == (FECKLESS_UMODE_R | FECKLESS_UMODE_W));      /* never X */
     CHECK(C0("gfx_fb") == fb && g_calls == 1);                     /* u-feckless-0030: granted once */
     CHECK(flags_of("gfx_fb") == FECKLESS_UMODE_CALL_UNLOCKED && flags_of("gfx_w") == FECKLESS_UMODE_CALL_UNLOCKED);
+    CHECK(flags_of("gfx_blit") == FECKLESS_UMODE_CALL_UNLOCKED);    /* u-feckless-0032 */
     feckless_box_calls_end();                                      /* a new app asks again */
     calls_tab = feckless_box_calls_v1(&ncalls);
     g_result = ESP_ERR_NO_MEM;
@@ -392,7 +393,7 @@ static void test_threads(void)
                                "uac_mic_gone", "__divdi3", "feckless_box_log" };
     for (unsigned i = 0; i < sizeof unlocked / sizeof *unlocked; i++)
         CHECK(flags_of(unlocked[i]) == FECKLESS_UMODE_CALL_UNLOCKED);
-    const char *locked[] = { "malloc", "free", "f_read", "fopen", "gfx_blit", "uac_mic_open_bits",
+    const char *locked[] = { "malloc", "free", "f_read", "fopen", "gfx_fill_rect", "uac_mic_open_bits",
                              "uac_mic_close", "xTaskCreatePinnedToCore", "audio_out_capture_begin" };
     for (unsigned i = 0; i < sizeof locked / sizeof *locked; i++)
         CHECK(flags_of(locked[i]) == 0);

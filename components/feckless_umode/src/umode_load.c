@@ -181,6 +181,9 @@ static void note_end(feckless_umode_app_t *a, const feckless_umode_end_t *e)
 #define STAT_THREADS (FECKLESS_UMODE_MAX_THREADS + 1)   /* [0] is app_main */
 static uint32_t s_st_n[FECKLESS_BOX_MAX_STUBS], s_st_us[FECKLESS_BOX_MAX_STUBS];
 static uint32_t s_st_last_n[FECKLESS_BOX_MAX_STUBS], s_st_last_us[FECKLESS_BOX_MAX_STUBS];
+/* u-feckless-0032: of each call's time, how much was the wait for the app's
+ * lock -- another thread's call holding it -- rather than the call itself */
+static uint32_t s_st_wait[FECKLESS_BOX_MAX_STUBS], s_st_last_wait[FECKLESS_BOX_MAX_STUBS];
 static uint32_t s_th_n[STAT_THREADS], s_th_us[STAT_THREADS], s_th_last_n[STAT_THREADS], s_th_last_us[STAT_THREADS];
 static esp_timer_handle_t s_st_timer;
 static int64_t s_st_last_t;
@@ -201,15 +204,18 @@ static void stats_tick(void *arg)
     s_st_last_t = now;
     if (secs <= 0.0f || !a) return;
     /* the deltas since the last line; unsigned, so a wrap is still right */
-    static uint32_t dn[FECKLESS_BOX_MAX_STUBS], dus[FECKLESS_BOX_MAX_STUBS];
+    static uint32_t dn[FECKLESS_BOX_MAX_STUBS], dus[FECKLESS_BOX_MAX_STUBS], dwait[FECKLESS_BOX_MAX_STUBS];
     uint32_t total_n = 0, total_us = 0;
     for (uint32_t i = 0; i < a->calls.n; i++) {
         const uint32_t n = __atomic_load_n(&s_st_n[i], __ATOMIC_RELAXED);
         const uint32_t us = __atomic_load_n(&s_st_us[i], __ATOMIC_RELAXED);
+        const uint32_t wt = __atomic_load_n(&s_st_wait[i], __ATOMIC_RELAXED);
         dn[i] = n - s_st_last_n[i];
         dus[i] = us - s_st_last_us[i];
+        dwait[i] = wt - s_st_last_wait[i];
         s_st_last_n[i] = n;
         s_st_last_us[i] = us;
+        s_st_last_wait[i] = wt;
         total_n += dn[i];
         total_us += dus[i];
     }
@@ -220,9 +226,10 @@ static void stats_tick(void *arg)
         for (uint32_t i = 0; i < a->calls.n; i++)
             if (dn[i] && dus[i] >= best_us) { best = i; best_us = dus[i]; }
         if (best == UINT32_MAX) break;
-        ESP_LOGI(TAG, "  %-28s %8.0f/s %7.2f us each %6.1f ms/s", a->calls.calls[best].name,
-                 (double)(dn[best] / secs), (double)((float)dus[best] / (float)dn[best]),
-                 (double)(dus[best] / secs / 1000.0f));
+        ESP_LOGI(TAG, "  %-28s %8.0f/s %8.2f us each (%7.2f waiting for the lock) %6.1f ms/s",
+                 a->calls.calls[best].name, (double)(dn[best] / secs),
+                 (double)((float)dus[best] / (float)dn[best]),
+                 (double)((float)dwait[best] / (float)dn[best]), (double)(dus[best] / secs / 1000.0f));
         dn[best] = 0;
     }
     for (int t = 0; t < STAT_THREADS; t++) {
@@ -242,6 +249,7 @@ static void stats_start(feckless_umode_app_t *a)
 {
     memset(s_st_n, 0, sizeof s_st_n); memset(s_st_us, 0, sizeof s_st_us);
     memset(s_st_last_n, 0, sizeof s_st_last_n); memset(s_st_last_us, 0, sizeof s_st_last_us);
+    memset(s_st_wait, 0, sizeof s_st_wait); memset(s_st_last_wait, 0, sizeof s_st_last_wait);
     memset(s_th_n, 0, sizeof s_th_n); memset(s_th_us, 0, sizeof s_th_us);
     memset(s_th_last_n, 0, sizeof s_th_last_n); memset(s_th_last_us, 0, sizeof s_th_last_us);
     const esp_timer_create_args_t args = { .callback = stats_tick, .arg = a, .name = "box_stats" };
@@ -294,6 +302,11 @@ static bool app_ext(feckless_umode_window_t *w, uint32_t nr, const uint32_t args
         go_on = feckless_umode_calls_ext(w, nr, args, ret);
     } else {
         xSemaphoreTakeRecursive(a->lock, portMAX_DELAY);
+#if CONFIG_FECKLESS_UMODE_CALL_STATS
+        if (i < FECKLESS_BOX_MAX_STUBS) {
+            __atomic_fetch_add(&s_st_wait[i], (uint32_t)(esp_timer_get_time() - t0), __ATOMIC_RELAXED);
+        }
+#endif
         go_on = feckless_umode_calls_ext(w, nr, args, ret);
         xSemaphoreGiveRecursive(a->lock);
     }

@@ -2904,3 +2904,42 @@ it. For Lothesome that is the audio (I2S, behind DMA buffers of about
 
 *Not host-tested*; ESP-IDF only. Callers: u-lothesome-0004 (standalone)
 and u-avoidant-0002.
+
+### u-feckless-0032 -- where the blit's time goes, and the lock wait
+
+Lothesome in the box, with the capture task on core 0 and drawing on
+core 1, runs at 42 FPS. Two figures in the call stats need explaining:
+- `gfx_blit` takes 14.4 ms, against about 12 ms when the app ran on
+  core 0;
+- `touch_get` rises from about 1.2 ms to 8.3–8.8 ms a call while the
+  waterfall is shown.
+
+This patch measures before changing anything.
+
+**`CONFIG_FECKLESS_GFX_BLIT_STATS`** (feckless_graphics_handler, new
+Kconfig, default n) logs a line every 100 blits: the average blit,
+the bands it was split into and their rows, and the time in each part
+(see the blit-banding notes in gfx.c):
+- waiting for `s_blit_lock`;
+- the brightness filter's copy into the scratch;
+- `esp_lcd_panel_draw_bitmap()`, retries included;
+- waiting for the transfer to finish (`s_blit_done`);
+- the one-tick gaps between bands.
+
+A landscape graph 1170 columns wide is about 1170 portrait rows, so
+five bands with four `vTaskDelay(1)` gaps, each up to a tick. The
+gaps and the filter copy are the likely suspects, but this line will
+say. `esp_timer.h` is included only with the option on, so the host
+tests build unchanged; `esp_timer` joins the component's PRIV_REQUIRES.
+
+**The call stats** (0029) now report, for each call, how much of its
+time was spent waiting for the app's lock while another thread's call
+held it: `us each (… waiting for the lock)`. If `touch_get`'s 8 ms is
+waiting, it is the lock; if not, it is the touch read or the I2C bus
+it shares with the audio codecs.
+
+**And one change:** `gfx_blit` is now unlocked. gfx serialises blits
+with its own `s_blit_lock`, so the app's lock added nothing. It did
+hold that lock for the whole 14 ms of every blit, during which the
+capture thread's locked calls had to wait. `box_calls_test` checks the
+flag.

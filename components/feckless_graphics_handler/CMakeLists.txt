@@ -19,5 +19,6 @@ idf_component_register(
     INCLUDE_DIRS "include" "fonts/ark12" "fonts/arabixel"
     REQUIRES esp_lcd
     PRIV_REQUIRES esp_driver_ledc esp_driver_gpio esp_hw_support hal
+                  esp_timer   # u-feckless-0032: the blit stats
              esp_lcd_st7121
 )

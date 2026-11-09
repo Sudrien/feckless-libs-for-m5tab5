@@ -495,7 +495,7 @@ static const feckless_umode_call_t s_own[] = {
     DATA(ark12_runs, sizeof ark12_runs), DATA(ark12_flags, sizeof ark12_flags),
     DATA(ark12_ckpt, sizeof ark12_ckpt), DATA(ark12_litbase, sizeof ark12_litbase),
     DATA(ark12_lit, ARK12_LIT_BYTES), DATA(ark12_tiles, ARK12_TILES * 3u),
-    FN(gfx_fill_rect), FN(gfx_fill_circle), FN(gfx_blit), FN(gfx_draw_text), FN(gfx_text_w),
+    FN(gfx_fill_rect), FN(gfx_fill_circle), FNU(gfx_blit),   /* u-feckless-0032: gfx has its own lock */ FN(gfx_draw_text), FN(gfx_text_w),
     FN(gfx_wrap_line), FN(gfx_draw_para),
     /* u-feckless-0030: unlocked -- they read gfx's state, and gfx_fb's one
      * write (s_fb_granted) is the same value from either thread. An app

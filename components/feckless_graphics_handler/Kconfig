@@ -1,0 +1,14 @@
+menu "feckless_graphics_handler"
+
+    config FECKLESS_GFX_BLIT_STATS
+        bool "Log where gfx_blit()'s time goes (diagnostic)"
+        default n
+        help
+            u-feckless-0032. Every 100 blits, logs the average blit and its
+            parts: waiting for the blit lock, the brightness filter's copy
+            into the scratch, esp_lcd_panel_draw_bitmap() (retries
+            included), waiting for the transfer to finish, and the one-tick
+            gaps between the bands a big blit is split into -- with the
+            bands and rows a blit averaged. Costs a timer read per part.
+
+endmenu

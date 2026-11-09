@@ -16,6 +16,9 @@
 #include "esp_heap_caps.h"
 #include "esp_lcd_mipi_dsi.h"
 #include "esp_log.h"
+#if CONFIG_FECKLESS_GFX_BLIT_STATS   /* u-feckless-0032; sdkconfig.h is in by now, from FreeRTOS */
+#include "esp_timer.h"
+#endif
 
 #include "ark12.h"
 #include "arabixel.h"
@@ -332,6 +335,19 @@ static void gather_rotated(uint16_t *dst, int y0, int y1, int rot, int filter)
     }
 }
 
+/* u-feckless-0032: where a blit's time goes. */
+#if CONFIG_FECKLESS_GFX_BLIT_STATS
+static struct {
+    uint32_t calls, bands, rows;
+    int64_t total, lock, dim, draw, done, gap;
+} s_bs;
+#define BS_T(v) const int64_t v = esp_timer_get_time()
+#define BS_ADD(field, since) (s_bs.field += esp_timer_get_time() - (since))
+#else
+#define BS_T(v) do {} while (0)
+#define BS_ADD(field, since) do {} while (0)
+#endif
+
 esp_err_t gfx_blit_err(int y0, int y1)
 {
     if (!s_fb) return ESP_ERR_INVALID_STATE;
@@ -356,7 +372,11 @@ esp_err_t gfx_blit_err(int y0, int y1)
                 const int end = (y + step < y1) ? y + step : y1;
                 const esp_err_t berr = gfx_blit_err(y, end);
                 if (berr != ESP_OK) return berr;
-                if (end < y1) vTaskDelay(1);
+                if (end < y1) {
+                    BS_T(tg);
+                    vTaskDelay(1);
+                    BS_ADD(gap, tg);
+                }
             }
             return ESP_OK;
         }
@@ -365,7 +385,13 @@ esp_err_t gfx_blit_err(int y0, int y1)
     /* Full-width band, so the source rows are contiguous and the driver
      * copies the region in one go. Passing the whole-screen base pointer
      * with a y offset would be a different bitmap entirely. */
+    BS_T(tl);
     xSemaphoreTake(s_blit_lock, portMAX_DELAY);
+    BS_ADD(lock, tl);
+#if CONFIG_FECKLESS_GFX_BLIT_STATS
+    s_bs.bands++;
+    s_bs.rows += (uint32_t)(y1 - y0);
+#endif
 
     /* The filter, read once for this band. When it is on, the band is
      * scaled into the scratch and that is what goes out. A band is never
@@ -396,6 +422,7 @@ esp_err_t gfx_blit_err(int y0, int y1)
         dx1 = (rot == GFX_ROT_90) ? s_pw - y0 : y1;
     }
 
+    BS_T(td);
     if (filter < BRIGHTNESS_FILTER_FULL || flipped || rotated) {
         if (!s_dim) {
             s_dim = heap_caps_malloc(BLIT_SCRATCH_PX(s_pw, s_ph) * sizeof(uint16_t),
@@ -445,6 +472,8 @@ esp_err_t gfx_blit_err(int y0, int y1)
         /* No scratch, no turn: sent undimmed rather than not at all. */
     }
 
+    BS_ADD(dim, td);
+    BS_T(tb);
     esp_err_t err = ESP_OK;
     for (int i = 0; i < BLIT_RETRIES; i++) {
         err = esp_lcd_panel_draw_bitmap(s_panel, dx0, dy0, dx1, dy1, src);
@@ -459,9 +488,12 @@ esp_err_t gfx_blit_err(int y0, int y1)
      * so the next caller finds the panel idle. The synchronous path in
      * the driver invokes the callback before returning, in which case the
      * token is already there and this does not block at all. */
+    BS_ADD(draw, tb);
+    BS_T(tw);
     if (err == ESP_OK) {
         xSemaphoreTake(s_blit_done, pdMS_TO_TICKS(BLIT_DONE_MS));
     }
+    BS_ADD(done, tw);
 
     xSemaphoreGive(s_blit_lock);
     if (err != ESP_OK) ESP_LOGW(TAG, "blit %d..%d failed: %s", y0, y1,
@@ -471,7 +503,24 @@ esp_err_t gfx_blit_err(int y0, int y1)
 
 void gfx_blit(int y0, int y1)
 {
+#if CONFIG_FECKLESS_GFX_BLIT_STATS
+    const int64_t t0 = esp_timer_get_time();
     (void)gfx_blit_err(y0, y1);
+    s_bs.total += esp_timer_get_time() - t0;
+    if (++s_bs.calls == 100) {
+        const float n = (float)s_bs.calls;
+        ESP_LOGI(TAG, "blit, last 100: %.2f ms each, %.1f bands of %.0f rows: lock %.2f, "
+                 "filter %.2f, draw %.2f, done %.2f, gaps %.2f ms",
+                 (double)(s_bs.total / 1000.0f / n), (double)(s_bs.bands / n),
+                 (double)(s_bs.bands ? (float)s_bs.rows / (float)s_bs.bands : 0.0f),
+                 (double)(s_bs.lock / 1000.0f / n), (double)(s_bs.dim / 1000.0f / n),
+                 (double)(s_bs.draw / 1000.0f / n), (double)(s_bs.done / 1000.0f / n),
+                 (double)(s_bs.gap / 1000.0f / n));
+        memset(&s_bs, 0, sizeof s_bs);
+    }
+#else
+    (void)gfx_blit_err(y0, y1);
+#endif
 }
 
 /* ------------------------------------------------------------------ */
