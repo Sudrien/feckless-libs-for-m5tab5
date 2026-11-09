@@ -70,6 +70,9 @@
 #define ARK12_COUNT   32334
 #define ARK12_TILES   23867
 #define ARK12_RUNS    3350
+/* sizeof ark12_lit, which is declared without one below; feckless_box_calls
+ * copies the tables into a box and needs it (u-feckless-0021). */
+#define ARK12_LIT_BYTES 266488
 
 #define ARK12_NPOS         6    /* tiles a glyph: 3 across, 2 down */
 #define ARK12_IBITS        15   /* bits a literal: ceil(log2(ARK12_TILES)) */

@@ -30,6 +30,12 @@ feckless_umode_load(image, size, calls, n, 4 << 20, 64 << 10, &app);
 - **The board**: `tab5io_init`, `tab5io_bus`, `lcd_init`, `gfx_init`,
   `touch_init`, `lcd_backlight_set`, `touch_get`. The app gets numbers for the
   panel and the bus, never the host's pointers.
+- **More of the board** (u-feckless-0021): `tab5io_exp1`, `tab5io_exp2`
+  (numbers again), `touch_present`, `touch_set_rotation`.
+- **Ark12's tables** (u-feckless-0021) as data, for `ark12.h`'s inline
+  `ark12_glyph()`: `ark12_runs`, `ark12_flags`, `ark12_ckpt`,
+  `ark12_litbase`, `ark12_lit`, `ark12_tiles`, about 380 KB, copied into the
+  box only if the app imports them.
 - **gfx**: `gfx_fill_rect`, `gfx_fill_circle`, `gfx_blit`, `gfx_draw_text`,
   `gfx_text_w`, `gfx_wrap_line`, `gfx_draw_para` (eight arguments: the
   eighth comes through `t0`).
@@ -53,6 +59,24 @@ feckless_umode_load(image, size, calls, n, 4 << 20, 64 << 10, &app);
 
   Not yet: writing (`f_write`, `fwrite`), `f_stat`, `f_opendir`, `open`/`read`,
   `access`, `fseeko`, the storage list; the storage section's other names.
+
+- **Audio and USB** (u-feckless-0021, `src/box_audio.c`), as Lothesome
+  uses them:
+  - `audio_out_init` (the bus's and the first expander's numbers),
+    `audio_out_set_volume`, `audio_out_headphones`,
+    `audio_out_capture_begin`, `_read`, `_end`, `audio_out_monitor_write`.
+  - `usbhost_init` (the second expander's number), `usbhost_start`.
+  - `uac_init`, `uac_present`, `uac_stream_start`, `uac_stream_stop`,
+    `uac_write`, `uac_product`, `uac_mic_announced`, `uac_mic_open_bits`,
+    `uac_mic_read`, `uac_mic_gone`, `uac_mic_close`, `uac_mic_product`.
+
+  Every buffer is checked to lie in the box for its whole length: a
+  capture read for `max_frames * 2` int32 (what `audio_out.h` asks of the
+  caller), a microphone read for `max_frames` times the channels the open
+  reported, a monitor write for `frames * 2` int16. A read or write waits
+  at most 2 s. The product strings are copied into the box, 127
+  characters at most. `feckless_box_calls_end()` closes a microphone the
+  app left open and stops its stream and capture.
 
 ## Tests
 

@@ -24,6 +24,7 @@
 #include "freertos/task.h"
 
 #include "feckless_abi.h"
+#include "ark12.h"
 #include "gfx.h"
 #include "lcd.h"
 #include "tab5io.h"
@@ -31,9 +32,8 @@
 
 #include "box_calls_priv.h"
 
-/* What the app is given in place of the host's handles. */
-#define TOKEN_PANEL  0x50414e31u    /* "PAN1" */
-#define TOKEN_BUS    0x42555331u    /* "BUS1" */
+#define TOKEN_PANEL  BOX_TOKEN_PANEL
+#define TOKEN_BUS    BOX_TOKEN_BUS
 
 #define TAG_MAX      64u
 #define LOG_MAX      512u
@@ -257,6 +257,12 @@ static esp_lcd_panel_handle_t s_panel;
 
 H(c_tab5io_init) { (void)w; (void)a; *ret = (uint32_t)tab5io_init(); return true; }
 H(c_tab5io_bus) { (void)w; (void)a; *ret = TOKEN_BUS; return true; }
+/* u-feckless-0021: the I/O expanders, for audio_out_init() and
+ * usbhost_init() (box_audio.c), which take the tokens back. */
+H(c_tab5io_exp1) { (void)w; (void)a; *ret = BOX_TOKEN_EXP1; return true; }
+H(c_tab5io_exp2) { (void)w; (void)a; *ret = BOX_TOKEN_EXP2; return true; }
+H(c_touch_present) { (void)w; (void)a; *ret = touch_present(); return true; }
+H(c_touch_set_rotation) { (void)w; touch_set_rotation((int)a[0]); *ret = 0; return true; }
 H(c_lcd_init)
 {
     if (!ok_ptr(w, a[0], 4)) {
@@ -350,6 +356,11 @@ static const uint32_t s_abi_v1 = FECKLESS_ABI_VERSION;
 static const uint32_t s_box_v1 = 1;
 
 #define FNG(n) { "__" #n, c_##n, NULL, 0 }
+/* u-feckless-0021: Ark12's tables, which ark12.h's inline ark12_glyph()
+ * reads in place. Copied into the box only if the app imports them
+ * (feckless_umode's resolver copies a data entry on first use): about
+ * 380 KB, for an app that draws its own text. */
+#define DATA(n, len) { #n, NULL, n, (uint32_t)(len) }
 
 static const feckless_umode_call_t s_own[] = {
     { FECKLESS_ABI_NAME, NULL, &s_abi_v1, sizeof s_abi_v1 },
@@ -364,6 +375,10 @@ static const feckless_umode_call_t s_own[] = {
     FN(esp_log_level_set),
     FN(tab5io_init), FN(tab5io_bus), FN(lcd_init), FN(gfx_init), FN(touch_init),
     FN(lcd_backlight_set), FN(touch_get),
+    FN(tab5io_exp1), FN(tab5io_exp2), FN(touch_present), FN(touch_set_rotation),
+    DATA(ark12_runs, sizeof ark12_runs), DATA(ark12_flags, sizeof ark12_flags),
+    DATA(ark12_ckpt, sizeof ark12_ckpt), DATA(ark12_litbase, sizeof ark12_litbase),
+    DATA(ark12_lit, ARK12_LIT_BYTES), DATA(ark12_tiles, ARK12_TILES * 3u),
     FN(gfx_fill_rect), FN(gfx_fill_circle), FN(gfx_blit), FN(gfx_draw_text), FN(gfx_text_w),
     FN(gfx_wrap_line), FN(gfx_draw_para),
 };
@@ -371,10 +386,11 @@ static const feckless_umode_call_t s_own[] = {
 #define OWN_N (sizeof s_own / sizeof s_own[0])
 #define HEAP_MAX 8
 #define STORAGE_MAX 32
+#define AUDIO_MAX 32
 
 const feckless_umode_call_t *feckless_box_calls_v1(uint32_t *n)
 {
-    static feckless_umode_call_t table[HEAP_MAX + OWN_N + STORAGE_MAX];
+    static feckless_umode_call_t table[HEAP_MAX + OWN_N + STORAGE_MAX + AUDIO_MAX];
     static uint32_t count;
     if (!count) {
         uint32_t k = 0;
@@ -387,6 +403,9 @@ const feckless_umode_call_t *feckless_box_calls_v1(uint32_t *n)
         for (uint32_t i = 0; i < box_storage_calls_n && i < STORAGE_MAX; i++) {
             table[k++] = box_storage_calls[i];
         }
+        for (uint32_t i = 0; i < box_audio_calls_n && i < AUDIO_MAX; i++) {
+            table[k++] = box_audio_calls[i];
+        }
         count = k;
     }
     *n = count;
@@ -396,5 +415,6 @@ const feckless_umode_call_t *feckless_box_calls_v1(uint32_t *n)
 void feckless_box_calls_end(void)
 {
     box_storage_end();
+    box_audio_end();
     s_panel = NULL;
 }

@@ -89,14 +89,34 @@ void __wrap_esp_elf_free(void *ptr)
  * registered at all; while a box is relocated, this is the resolver. A name
  * not here returns 0, and esp_elf fails the load naming it.
  */
-static const struct esp_elfsym *s_resolving;
+static struct esp_elfsym *s_resolving;
+static const feckless_umode_call_t *s_resolving_calls;
 
+/* u-feckless-0021: a data entry is copied into the box the first time the
+ * ELF names it, not at every load -- Ark12's tables are 380 KB, and only an
+ * app that draws its own text reads them. Allocated from the box as the
+ * relocation's own allocations are (s_loading). */
 static uintptr_t box_resolve(const char *name)
 {
-    for (const struct esp_elfsym *p = s_resolving; p && p->name; p++) {
-        if (strcmp(p->name, name) == 0) {
-            return (uintptr_t)p->sym;
+    for (struct esp_elfsym *p = s_resolving; p && p->name; p++) {
+        if (strcmp(p->name, name) != 0) {
+            continue;
         }
+        if (!p->sym) {
+            const feckless_umode_call_t *c = &s_resolving_calls[p - s_resolving];
+            const uint32_t len = c->data_len ? c->data_len : 4;
+            const uintptr_t d = s_loading ? feckless_box_alloc(s_loading, len) : 0;
+            if (!d) {
+                ESP_LOGE(TAG, "no room in the box for %s (%u bytes)", name, (unsigned)len);
+                return 0;
+            }
+            memset((void *)d, 0, len);
+            if (c->data && c->data_len) {
+                memcpy((void *)d, c->data, c->data_len);
+            }
+            p->sym = (const void *)d;
+        }
+        return (uintptr_t)p->sym;
     }
     return 0;
 }
@@ -147,7 +167,8 @@ esp_err_t feckless_umode_load(const uint8_t *image, size_t size,
         goto fail;
     }
 
-    /* The stubs first, then the data copies; the symbol table points at them. */
+    /* The stubs first; the symbol table points at them, and at each data
+     * entry once box_resolve() has copied it (u-feckless-0021). */
     const uintptr_t stubs = feckless_box_alloc(&a->box, FECKLESS_BOX_STUBS_BYTES(n));
     a->syms = heap_caps_calloc(n + 1, sizeof *a->syms, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     if (!stubs || !a->syms) {
@@ -159,15 +180,7 @@ esp_err_t feckless_umode_load(const uint8_t *image, size_t size,
         if (calls[i].fn) {
             a->syms[i].sym = (const void *)(stubs + i * FECKLESS_BOX_STUB_SIZE);
         } else {
-            const uintptr_t d = feckless_box_alloc(&a->box, calls[i].data_len ? calls[i].data_len : 4);
-            if (!d) {
-                goto fail;
-            }
-            memset((void *)d, 0, calls[i].data_len ? calls[i].data_len : 4);
-            if (calls[i].data && calls[i].data_len) {
-                memcpy((void *)d, calls[i].data, calls[i].data_len);
-            }
-            a->syms[i].sym = (const void *)d;
+            a->syms[i].sym = NULL;              /* copied on first use, by box_resolve() */
         }
     }
     /* syms[n] is the terminator, zeroed by calloc. */
@@ -178,10 +191,12 @@ esp_err_t feckless_umode_load(const uint8_t *image, size_t size,
     esp_elf_init(&a->elf);
     s_loading = &a->box;
     s_resolving = a->syms;
+    s_resolving_calls = calls;
     elf_set_symbol_resolver(box_resolve);
     int r = esp_elf_relocate(&a->elf, image, size);
     elf_reset_symbol_resolver();
     s_resolving = NULL;
+    s_resolving_calls = NULL;
     s_loading = NULL;
     if (r < 0) {
         ESP_LOGE(TAG, "esp_elf_relocate: %d (an import not in the box's table is named above)", r);

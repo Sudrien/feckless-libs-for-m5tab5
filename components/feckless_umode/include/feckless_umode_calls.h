@@ -6,9 +6,11 @@
  * FECKLESS_SYS_EXT_BASE + its index. The loader resolves the program's import
  * to the stub, so the program calls it like any function; the window's ext
  * hook, feckless_umode_calls_ext(), sends the ecall to `fn` with the
- * program's a0..a6. A data entry is copied into the box at load and the import
- * resolves to the copy: the program reads its own copy, never the host's
- * variable (the ABI's version symbols are such entries).
+ * program's a0..a6. A data entry is copied into the box the first time the
+ * program's import names it (u-feckless-0021; at every load before), and the
+ * import resolves to the copy: the program reads its own copy, never the
+ * host's variable (the ABI's version symbols, and Ark12's font tables, are
+ * such entries).
  *
  * An import with no entry here fails the load by name, as with ABI v1. An
  * import that somehow resolved to a host address would fault on its first
@@ -34,7 +36,7 @@ typedef bool (*feckless_umode_call_fn)(feckless_umode_window_t *w, const uint32_
 typedef struct {
     const char *name;
     feckless_umode_call_fn fn;      /* a function; or NULL and data: */
-    const void *data;               /* copied into the box at load */
+    const void *data;               /* copied into the box when imported */
     uint32_t data_len;
 } feckless_umode_call_t;
 

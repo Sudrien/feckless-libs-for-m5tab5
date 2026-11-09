@@ -2422,3 +2422,64 @@ has one heap, and a host call that does DMA copies through its own
 staging buffer. `heap_caps_aligned_alloc` is left out, because the
 box's `free` would not know the offset. All of these names are in
 `inapp.txt`, so a boxed ELF that imports any of them fails the build.
+
+### u-feckless-0021 -- audio, USB and the font in a box
+
+This is step 3 of the plan for running Lothesome in a box. Step 5, the
+maths, and step 4's heap went in with 0020.
+
+`feckless_box_calls` gets a new file, `src/box_audio.c`, with:
+- `audio_out_init`, `_set_volume`, `_headphones`, `_capture_begin`,
+  `_capture_read`, `_capture_end` and `_monitor_write`;
+- `usbhost_init` and `_start`;
+- twelve `uac_*` calls, covering streaming out and the USB microphone.
+
+`box_calls.c` adds `tab5io_exp1`/`exp2`, `touch_present` and
+`touch_set_rotation`. That brings the table to 104 entries.
+
+The handles work like the panel and the bus. The app gets a number for
+each expander, and `audio_out_init()` and `usbhost_init()` accept only
+the right one. Each buffer is checked over its whole length before a
+driver touches it, with the multiplication checked for overflow:
+- a capture read: `max_frames * 2` int32, the size `audio_out.h`
+  requires whichever source is running;
+- a microphone read: `max_frames` times the channels the open reported
+  (0 if no microphone is open);
+- a monitor write: `frames * 2` int16;
+- `uac_write`: `len` bytes.
+
+The drivers copy with the CPU into and out of their own DMA buffers, so
+box memory is never a DMA target. A read or write waits at most 2 s;
+the app's task is blocked in the host call meanwhile. `uac_product()`
+and `uac_mic_product()` copy their string into a buffer in the box, one
+buffer each, so one call does not overwrite the other's result. Each is
+capped at 127 characters. `uac_mic_open_bits` reads its in/out
+arguments once and writes them once, through locals.
+`feckless_box_calls_end()` closes a microphone the app left open, and
+stops a stream or capture it started.
+
+The font: `ark12.h`'s `ark12_glyph()` is inline and reads the tables in
+place, so a boxed app that draws its own text needs them in the box. The
+six tables are now data entries in the table. `ark12_lit` is declared
+without a size, so `ark12.h` gets `ARK12_LIT_BYTES` (266488), and
+`tools/gen_ark12.py` now writes that define too.
+
+At about 380 KB the tables were too big to copy into every box, which
+is what a data entry used to cost. So `feckless_umode`'s resolver now
+copies a data entry the first time the ELF imports it, allocating from
+the box as the relocation's own allocations do, and no longer at load.
+Spurious imports none of them, so its box doesn't grow.
+
+`heap_caps_malloc` stays in `feckless_umode`'s heap calls for apps
+built before 0020. An app built now defines it itself, and
+`inapp.txt` stops it from importing it.
+
+Host tests: `box_calls_test` checks every new call against recording
+stand-ins (`test/fake_audio.c`; fake `audio_out.h`, `uac.h`,
+`usbhost.h` and `ark12.h`). That covers the token checks, buffers
+running off the end of the box, a multiplication that overflows, host
+addresses, the timeout cap, the two product buffers, and teardown
+running exactly once. Two mutations were each caught: dropping the
+overflow guard, and dropping the stop of the capture at the end.
+`feckless_umode`'s tests pass. The lazy copy in `umode_load.c` runs
+only under ESP-IDF, so it is not host-tested.

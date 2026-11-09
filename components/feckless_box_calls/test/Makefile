@@ -11,14 +11,14 @@ CFLAGS := -std=gnu11 -g -O1 -Wall -Wextra -Werror \
           -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer \
           -Ifake -I../include -I$(U)/include
 LDFLAGS := -fsanitize=address,undefined -lm
-SRC := box_calls_test.c fake_board.c fake_storage.c ../src/box_calls.c ../src/box_storage.c $(U)/src/umode_calls.c $(U)/src/umode_box.c $(U)/src/umode_run.c
+SRC := box_calls_test.c fake_board.c fake_storage.c fake_audio.c ../src/box_calls.c ../src/box_storage.c ../src/box_audio.c $(U)/src/umode_calls.c $(U)/src/umode_box.c $(U)/src/umode_run.c
 
 all: run
 
 box_calls_test: $(SRC) $(wildcard fake/*.h fake/freertos/*.h) ../src/box_calls_priv.h ../include/feckless_box_calls.h
 	$(CC) $(CFLAGS) -o $@ $(SRC) $(LDFLAGS)
 
-SSRC := box_storage_test.c fake_board.c fake_storage.c ../src/box_calls.c ../src/box_storage.c $(U)/src/umode_calls.c $(U)/src/umode_box.c $(U)/src/umode_run.c
+SSRC := box_storage_test.c fake_board.c fake_storage.c fake_audio.c ../src/box_calls.c ../src/box_storage.c ../src/box_audio.c $(U)/src/umode_calls.c $(U)/src/umode_box.c $(U)/src/umode_run.c
 
 box_storage_test: $(SSRC) $(wildcard fake/*.h fake/freertos/*.h) ../src/box_calls_priv.h ../include/feckless_box_calls.h
 	$(CC) $(CFLAGS) -o $@ $(SSRC) $(LDFLAGS)

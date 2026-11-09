@@ -27,6 +27,17 @@ static inline feckless_box_t *box_of_win(win_t *w)
     return feckless_umode_calls_of(w)->box;
 }
 
+/* What the app is given in place of the host's handles. */
+#define BOX_TOKEN_PANEL  0x50414e31u    /* "PAN1" */
+#define BOX_TOKEN_BUS    0x42555331u    /* "BUS1" */
+#define BOX_TOKEN_EXP1   0x45585031u    /* "EXP1", u-feckless-0021 */
+#define BOX_TOKEN_EXP2   0x45585032u    /* "EXP2" */
+
 extern const feckless_umode_call_t box_storage_calls[];
 extern const uint32_t box_storage_calls_n;
 void box_storage_end(void);
+
+/* u-feckless-0021: audio, USB audio and the USB host (box_audio.c). */
+extern const feckless_umode_call_t box_audio_calls[];
+extern const uint32_t box_audio_calls_n;
+void box_audio_end(void);

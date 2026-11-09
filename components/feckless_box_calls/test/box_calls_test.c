@@ -15,6 +15,7 @@
 #include <sys/time.h>
 
 #include "feckless_box_calls.h"
+#include "audio_out.h"   /* u-feckless-0021: ESP_OK, the capture sources */
 
 extern int calls, last_i[8], log_kind;
 extern char last_fn[32], last_str[700], log_tag[80];
@@ -75,8 +76,13 @@ static void test_table(void)
         for (uint32_t j = i + 1; j < ncalls; j++)
             CHECK(strcmp(calls_tab[i].name, calls_tab[j].name) != 0);       /* no name twice */
     int data = 0;
-    for (uint32_t i = 0; i < ncalls; i++) if (!calls_tab[i].fn) { data++; CHECK(calls_tab[i].data && calls_tab[i].data_len == 4); }
-    CHECK(data == 3);                                               /* abi_v1, box_v1, storage_v2 */
+    for (uint32_t i = 0; i < ncalls; i++) if (!calls_tab[i].fn) { data++; CHECK(calls_tab[i].data && calls_tab[i].data_len >= 4); }
+    CHECK(data == 9);       /* abi_v1, box_v1, storage_v2; Ark12's six tables (u-feckless-0021) */
+    for (uint32_t i = 0; i < ncalls; i++) {
+        if (!strcmp(calls_tab[i].name, "ark12_lit")) CHECK(calls_tab[i].data_len == 10);
+        if (!strcmp(calls_tab[i].name, "ark12_tiles")) CHECK(calls_tab[i].data_len == 12);
+        if (!strcmp(calls_tab[i].name, "ark12_runs")) CHECK(calls_tab[i].data_len == 12);
+    }
     nr_of("malloc"); nr_of("feckless_abi_v1"); nr_of("feckless_abi_box_v1");
 }
 
@@ -225,6 +231,79 @@ static void test_gfx(void)
     CHECK(!strcmp(last_str, "two words") && last_i[4] == 24 && last_i[5] == 9 && last_i[6] == 0xabcd);
 }
 
+/* u-feckless-0021 */
+extern int a_calls, a_last[4], a_begun, a_ended, a_streaming, a_mic_open, a_rotation;
+extern const void *a_ptr;
+
+static void test_audio(void)
+{
+    const uint32_t bus = C0("tab5io_bus"), e1 = C0("tab5io_exp1"), e2 = C0("tab5io_exp2");
+    CHECK(e1 != e2 && e1 != bus);
+    CHECK(C1("touch_present", 0) == 1);
+    C1("touch_set_rotation", 3);
+    CHECK(a_rotation == 3);
+
+    /* handles are tokens, and only the right ones */
+    CHECK(C4("audio_out_init", bus, e1, 48000, 0) == ESP_OK && a_last[0] == 1 && a_last[1] == 48000);
+    CHECK(C4("audio_out_init", bus, e2, 48000, 0) == (uint32_t)ESP_ERR_INVALID_ARG);
+    CHECK(C4("audio_out_init", P(mem), e1, 48000, 0) == (uint32_t)ESP_ERR_INVALID_ARG);
+    CHECK(C1("usbhost_init", e2) == ESP_OK && a_last[0] == 1);
+    CHECK(C1("usbhost_init", e1) == (uint32_t)ESP_ERR_INVALID_ARG);
+    CHECK(C1("audio_out_set_volume", 300) == ESP_OK && a_last[0] == 44);   /* uint8_t, as the app's would be */
+    CHECK(C0("audio_out_headphones") == 1);
+
+    /* capture: max_frames * 2 int32, all of it in the box */
+    int32_t *buf = (int32_t *)(uintptr_t)feckless_box_alloc(&box, 64 * 8);
+    CHECK(C1("audio_out_capture_begin", AUDIO_CAPTURE_HEADSET) == ESP_OK);
+    CHECK(C4("audio_out_capture_read", P(buf), 64, 10, 0) == 64 && a_ptr == buf && buf[127] == 127);
+    CHECK(C4("audio_out_capture_read", P(buf), 64, 999999, 0) == 64 && a_last[1] == 2000);   /* capped */
+    a_ptr = NULL;
+    CHECK(C4("audio_out_capture_read", P(mem + MEM - 8 * 10), 11, 10, 0) == 0 && !a_ptr);    /* runs off the end */
+    CHECK(C4("audio_out_capture_read", P(buf), 0x40000000u, 10, 0) == 0 && !a_ptr);          /* * 8 overflows */
+    CHECK(C4("audio_out_capture_read", 0x1000, 4, 10, 0) == 0 && !a_ptr);                    /* host memory */
+    int16_t *mon = (int16_t *)(uintptr_t)feckless_box_alloc(&box, 4 * 4);
+    for (int i = 0; i < 8; i++) mon[i] = (int16_t)(i + 1);
+    CHECK(C2("audio_out_monitor_write", P(mon), 4) == ESP_OK && a_last[0] == 36);
+    CHECK(C2("audio_out_monitor_write", P(mem + MEM - 8), 3) == (uint32_t)ESP_ERR_INVALID_ARG);
+
+    /* USB audio */
+    CHECK(C0("uac_present") == 1);
+    CHECK(C2("uac_stream_start", 48000, 2) == ESP_OK && a_streaming);
+    uint8_t *pcm = (uint8_t *)(uintptr_t)feckless_box_alloc(&box, 6);
+    memcpy(pcm, "\1\2\3\4\5\6", 6);
+    CHECK(C4("uac_write", P(pcm), 6, 5, 0) == ESP_OK && a_last[0] == 21);
+    CHECK(C4("uac_write", P(mem + MEM - 4), 6, 5, 0) == (uint32_t)ESP_ERR_INVALID_ARG);
+    const uint32_t prod = C0("uac_product");
+    CHECK(prod >= P(mem) && prod < P(mem) + MEM && !strcmp((char *)(uintptr_t)prod, "Blue Snowball"));
+
+    uint32_t *rate = (uint32_t *)(uintptr_t)feckless_box_alloc(&box, 8);
+    uint8_t *ch = (uint8_t *)(rate + 1), *bits = ch + 1;
+    *rate = 48000; *ch = 1; *bits = 0;
+    CHECK(C4("uac_mic_open_bits", P(rate), P(ch), 24, P(bits)) == ESP_OK);
+    CHECK(a_last[0] == 48000 && a_last[1] == 1 && a_last[2] == 24);
+    CHECK(*rate == 44100 && *ch == 2 && *bits == 24 && a_mic_open);
+    CHECK(C4("uac_mic_open_bits", P(rate), P(ch), 24, 0) == ESP_OK);            /* bits may be NULL */
+    CHECK(C4("uac_mic_open_bits", 0x1000, P(ch), 24, 0) == (uint32_t)ESP_ERR_INVALID_ARG);
+    /* reads are sized by the channels the open reported: 2 */
+    CHECK(C4("uac_mic_read", P(buf), 64, 10, 0) == 64 && buf[127] == -127);
+    CHECK(C4("uac_mic_read", P(mem + MEM - 8 * 10), 11, 10, 0) == 0);
+    const uint32_t mp = C0("uac_mic_product");
+    CHECK(mp != prod && strlen((char *)(uintptr_t)mp) == 127);                   /* its own buffer, capped */
+    CHECK(!strcmp((char *)(uintptr_t)prod, "Blue Snowball"));                    /* the other kept */
+    CHECK(C0("uac_mic_gone") == 0);
+    C0("uac_mic_close");
+    CHECK(!a_mic_open && C4("uac_mic_read", P(buf), 4, 10, 0) == 0);            /* closed: nothing */
+
+    /* what the app started, the end of the app stops */
+    CHECK(C4("uac_mic_open_bits", P(rate), P(ch), 16, 0) == ESP_OK && a_mic_open);
+    const int ended = a_ended;
+    feckless_box_calls_end();
+    CHECK(!a_mic_open && !a_streaming && a_ended == ended + 1);
+    feckless_box_calls_end();
+    CHECK(a_ended == ended + 1);                                                 /* once */
+    calls_tab = feckless_box_calls_v1(&ncalls);
+}
+
 int main(void)
 {
     mem = mmap(NULL, MEM, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT, -1, 0);
@@ -243,6 +322,7 @@ int main(void)
     test_give_up();
     test_board();
     test_gfx();
+    test_audio();
     printf(failed ? "%d FAILED\n" : "box_calls: all passed (%u calls)\n", failed ? failed : (int)ncalls);
     return failed != 0;
 }

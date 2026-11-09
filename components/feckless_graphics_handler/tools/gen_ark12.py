@@ -392,6 +392,9 @@ HEADER = """/*
 #define ARK12_COUNT   {count}
 #define ARK12_TILES   {tiles}
 #define ARK12_RUNS    {runs}
+/* sizeof ark12_lit, which is declared without one below; feckless_box_calls
+ * copies the tables into a box and needs it (u-feckless-0021). */
+#define ARK12_LIT_BYTES {nlit}
 
 #define ARK12_NPOS         {npos}    /* tiles a glyph: 3 across, 2 down */
 #define ARK12_IBITS        {ibits}   /* bits a literal: ceil(log2(ARK12_TILES)) */
@@ -683,7 +686,7 @@ def emit(glyphs: dict[int, tuple[int, list[int]]], outdir: str, commit: str) -> 
                               count=len(order), tiles=len(e.tiles), runs=len(runs),
                               tiles_total=e.tiles_total, bytes=total, old_bytes=old,
                               npos=NPOS, ibits=e.ibits, bshift=BLOCK_SHIFT,
-                              nwords=e.nwords, nck=e.nck))
+                              nwords=e.nwords, nck=e.nck, nlit=len(e.lit)))
     with open(os.path.join(outdir, "ark12.c"), "w") as f:
         f.write(SOURCE.format(commit=commit, galmuri=GALMURI_VERSION, runs=runs_c,
                               flags=flags_c, ckpt=ckpt_c, litbase=litbase_c,
