@@ -23,10 +23,15 @@ SSRC := box_storage_test.c fake_board.c fake_storage.c fake_audio.c ../src/box_c
 box_storage_test: $(SSRC) $(wildcard fake/*.h fake/freertos/*.h) ../src/box_calls_priv.h ../include/feckless_box_calls.h
 	$(CC) $(CFLAGS) -o $@ $(SSRC) $(LDFLAGS)
 
-run: box_calls_test box_storage_test
+# u-feckless-0024: box_storage.c without fast seek, as an app whose sdkconfig
+# lacks CONFIG_FATFS_USE_FASTSEEK builds it -- FIL then has no cltbl.
+nofastseek:
+	$(CC) $(CFLAGS) -DFF_USE_FASTSEEK=0 -fsyntax-only ../src/box_storage.c
+
+run: nofastseek box_calls_test box_storage_test
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=0 ./box_calls_test
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=0 ./box_storage_test
 
 clean:
 	rm -f box_calls_test box_storage_test
-.PHONY: all run clean
+.PHONY: all run clean nofastseek

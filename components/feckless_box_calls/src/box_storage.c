@@ -146,7 +146,9 @@ H(c_f_open)
         return true;
     }
     s_fil[i] = s;
+#if FF_USE_FASTSEEK   /* u-feckless-0024: the one use 0007 left unguarded */
     ((FIL *)(uintptr_t)s->app)->cltbl = NULL;
+#endif
     fil_out(s);
     *ret = FR_OK;
     return true;
@@ -194,6 +196,7 @@ H(c_f_read)
 /* f_lseek(fp, ofs): a 64-bit FSIZE_t arrives in a1 (low) and a2 (high). */
 H(c_f_lseek)
 {
+    (void)w;              /* only fast seek reads it */
     fil_slot_t *s = fil_of(a[0]);
     if (!s) {
         *ret = FR_INVALID_OBJECT;

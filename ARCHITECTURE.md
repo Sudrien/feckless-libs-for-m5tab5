@@ -2598,3 +2598,23 @@ spawn returning -1, and which calls are unlocked and which are not.
 `__errno` is `mv a5,tp` and a branch, and `vTaskDelete` is `li a7,4;
 ecall`. The spawn, join and lock code in `umode_load.c` runs only under
 ESP-IDF and is not host-tested.
+
+### u-feckless-0024 -- box_storage.c builds without fast seek
+
+This is the first ESP-IDF build of Lothesome's box (u-lothesome-0002):
+
+```
+box_storage.c:149:31: error: 'FIL' has no member named 'cltbl'
+```
+
+FatFs's `FIL` has `cltbl` only with `FF_USE_FASTSEEK`, which is
+`CONFIG_FATFS_USE_FASTSEEK`. Spurious sets it; Lothesome does not, and
+has no reason to. Every other use of `cltbl` in `box_storage.c` was
+inside `#if FF_USE_FASTSEEK`, but `c_f_open`'s clearing of the app's
+copy was not. It is now guarded too. `c_f_lseek` also gets `(void)w`,
+since only the fast-seek branch reads `w`.
+
+The test fake's `ff.h` now drops `cltbl` the way FatFs does when
+`FF_USE_FASTSEEK` is 0. The test Makefile has a `nofastseek` target,
+part of `run`, that compiles `box_storage.c` that way with `-Wextra
+-Werror`. Before this fix, it reproduced the board build's error.
