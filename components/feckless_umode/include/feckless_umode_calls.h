@@ -38,7 +38,16 @@ typedef struct {
     feckless_umode_call_fn fn;      /* a function; or NULL and data: */
     const void *data;               /* copied into the box when imported */
     uint32_t data_len;
+    uint32_t flags;                 /* FECKLESS_UMODE_CALL_*; 0 for most */
 } feckless_umode_call_t;
+
+/* u-feckless-0023: an app may have threads, and their host calls may come
+ * at once. Each call runs under the app's lock (feckless_umode_load.c), so
+ * the box's heap and a call's own statics see one thread at a time -- except
+ * a call flagged UNLOCKED, which shares no state between the app's threads
+ * and may block (a delay, an audio read). Without the flag a capture thread
+ * waiting in its read would hold up the drawing thread's every call. */
+#define FECKLESS_UMODE_CALL_UNLOCKED 1u
 
 typedef struct {
     const feckless_umode_call_t *calls;

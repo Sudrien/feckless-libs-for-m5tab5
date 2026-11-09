@@ -41,7 +41,16 @@ esp_err_t feckless_umode_load(const uint8_t *image, size_t size,
 /* Run each preinit and init function, then the entry (app_main), each in its
  * own window on the calling task, with ra on the exit stub so that returning
  * is SYS_EXIT 0. Stops at the first that does not end with EXIT. The calling
- * task's stack is the host's; the program's is in the box. */
+ * task's stack is the host's; the program's is in the box.
+ *
+ * u-feckless-0023: and the app's threads. When app_main returns, this waits
+ * for every thread to end, as an IDF app_main may return and leave its tasks
+ * running. When any of them -- app_main or a thread -- ends other than by
+ * EXIT, the app is stopping: every other thread is ended at its next host
+ * call (KILLED), and this returns that first end. A thread that makes no
+ * host call for FECKLESS_UMODE_STOP_WAIT_MS cannot be stopped (its window
+ * holds interrupts off); the app is then stuck, and unload refuses it. */
+#define FECKLESS_UMODE_STOP_WAIT_MS 3000   /* > the longest a host call may wait */
 feckless_umode_end_t feckless_umode_app_run(feckless_umode_app_t *app);
 
 /* u-feckless-0022: the app loaded now, or NULL. One at a time. */
@@ -58,11 +67,27 @@ feckless_umode_app_t *feckless_umode_app_loaded(void);
  * unchanged: a host call still takes pointers into the box only. */
 esp_err_t feckless_umode_app_grant(feckless_umode_app_t *app, uint32_t lo, uint32_t hi, uint32_t perm);
 
+/* u-feckless-0023: a thread for the app -- xTaskCreatePinnedToCore() as
+ * the app sees it (feckless_box_calls). fn runs in a window of its own,
+ * with arg in a0, ra on the exit stub (so returning ends the thread), a
+ * stack of stack_bytes from the box's heap, its own errno block (tp), on a
+ * host task of its own at prio (clamped to the RTOS's range) pinned to core
+ * (0, 1, or tskNO_AFFINITY). *id (may be NULL) is 1 + its slot.
+ * ESP_ERR_INVALID_ARG: fn not in the box, a stack outside 1 KB..1 MB, a
+ * bad core. ESP_ERR_NO_MEM: no slot (FECKLESS_UMODE_MAX_THREADS), no room
+ * in the box, or no host task. ESP_ERR_INVALID_STATE: not the loaded app,
+ * or it is stopping. */
+#define FECKLESS_UMODE_MAX_THREADS 8
+esp_err_t feckless_umode_app_spawn(feckless_umode_app_t *app, uint32_t fn, uint32_t arg,
+                                   uint32_t stack_bytes, int prio, int core, uint32_t *id);
+
 /* The window, for its counters and range. */
 feckless_umode_window_t *feckless_umode_app_window(feckless_umode_app_t *app);
 
 /* Revoke the grant, then free everything. The app's fini functions are not
- * run: esp_elf would run them in M-mode. */
+ * run: esp_elf would run them in M-mode. u-feckless-0023: not if a thread of
+ * the app is still running (see feckless_umode_app_run()): that is logged,
+ * the app stays loaded, and only a reset recovers it. */
 void feckless_umode_unload(feckless_umode_app_t *app);
 
 #ifdef __cplusplus

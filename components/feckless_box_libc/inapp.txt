@@ -90,6 +90,8 @@ heap_caps_malloc
 heap_caps_calloc
 heap_caps_realloc
 heap_caps_free
+# ---- u-feckless-0023: vTaskDelete(NULL) ends the thread (src/box_task.c)
+vTaskDelete
 # ---- from the toolchain's libgcc.a (libgcc_names.txt)
 __ashldi3
 __ashrdi3

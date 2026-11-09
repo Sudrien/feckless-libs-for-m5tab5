@@ -2522,3 +2522,79 @@ asks for: the exact range, R|W and never X, NULL when refused, and no
 request when there is no framebuffer. `feckless_umode_app_grant()` runs
 only under ESP-IDF and is not host-tested; the PMP plan it uses already
 has host tests for up to 8 grants.
+
+### u-feckless-0023 -- threads in a box
+
+This is step 1 of the plan for running Lothesome in a box, and the last.
+Lothesome's `app_main` starts a capture task with
+`xTaskCreatePinnedToCore()`, then loops on drawing. Until now a box had
+one context and one window.
+
+`feckless_umode_app_spawn()` starts a thread:
+- A slot (up to 8), a stack from the box's heap (1 KB to 1 MB, 16-byte
+  aligned), and a 16-byte block for its `errno`.
+- A window copied from the app's: the same box range and calls, but its
+  own context, with `pc` = fn, `a0` = arg, `ra` on the exit stub and `tp`
+  on its block.
+- A host task of its own, with an 8 KB internal stack, on the requested
+  core. The priority is clamped to the RTOS's range.
+
+Each thread's host task runs `feckless_umode_run_default()` on its
+window. When the thread ends, its box allocations are freed and the app
+is told. The windows live in the app struct, in internal RAM, so the
+program cannot reach them.
+
+**Locking.** Every window's ext hook is now `app_ext()`, which takes the
+app's recursive mutex around the call. The box's heap and the statics in
+the storage and audio calls therefore see one thread at a time. The
+exception is a call flagged `FECKLESS_UMODE_CALL_UNLOCKED` (a new
+`flags` field in `feckless_umode_call_t`, 0 by default). Those are the
+calls that share no state between threads and may block: `vTaskDelay`,
+the delays and clocks, `feckless_box_log`, libgcc's value helpers, the
+audio reads and writes that wait (`audio_out_capture_read`,
+`_monitor_write`, `uac_write`, `uac_mic_read`), and the queries that
+only read a driver flag. Without this, the capture thread sitting in a
+read for up to 2 s would hold up every call the drawing thread makes.
+`feckless_box_calls`' table uses the new `FNU()` for those entries.
+
+**Ending.** `feckless_umode_app_run()` still runs the constructors and
+`app_main`. When `app_main` ends it waits for the threads, because an
+IDF `app_main` may return and leave its tasks running. The first end
+that isn't EXIT is the app's; a KILLED caused by the stop itself
+doesn't count. Once there is one, the app is stopping: `app_ext()`
+answers every thread's next host call with KILLED, and `app_run`
+waits up to `FECKLESS_UMODE_STOP_WAIT_MS` (3 s, longer than any host
+call may wait) for the rest.
+
+A thread that makes no host call can't be stopped, because its window
+holds interrupts off on its core. In that case the app is marked stuck.
+`feckless_umode_unload()` then refuses it with a log line: revoking its
+PMP grant would mean an IPC to a core that won't take one. Only a reset
+recovers.
+
+**errno.** `feckless_box_libc`'s `__errno` returns the word at `tp`,
+falling back to its one static when `tp` is 0, as under a launcher from
+before this patch. `run_one` sets `app_main`'s `tp` to a block allocated
+at load. Nothing else in a boxed ELF uses `tp`.
+
+**vTaskDelete.** `vTaskDelete(NULL)` is `src/box_task.c`: SYS_EXIT 0,
+the same as returning from the thread's function. A non-NULL handle is
+ignored, because the host could not end another thread mid-window. The
+handle `xTaskCreatePinnedToCore` writes is 1 + the slot.
+
+**Also.** `uac_generation` (Lothesome uses it to notice a replugged
+microphone), as an unlocked call.
+
+**Cost.** Each running window holds interrupts off on its core. Two
+threads both computing between host calls hold off both cores. For
+Lothesome that's the drawing thread on one core; the capture thread
+spends its time in unlocked reads.
+
+**Testing.** `box_calls_test` (109 calls) checks
+`xTaskCreatePinnedToCore`'s arguments, the handle written into the box,
+a handle pointer outside the box refused before any spawn, a refused
+spawn returning -1, and which calls are unlocked and which are not.
+`feckless_umode`'s tests pass with the new field. Compiled for the P4,
+`__errno` is `mv a5,tp` and a branch, and `vTaskDelete` is `li a7,4;
+ecall`. The spawn, join and lock code in `umode_load.c` runs only under
+ESP-IDF and is not host-tested.

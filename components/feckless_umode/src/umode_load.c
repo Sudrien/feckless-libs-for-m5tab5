@@ -18,11 +18,15 @@
 #include "feckless_umode_load.h"
 
 #include <errno.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "esp_elf.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "freertos/task.h"
 #include "private/elf_symbol.h"     /* u-feckless-0014: elf_set_symbol_resolver() */
 #include "private/elf_types.h"
 
@@ -35,6 +39,21 @@ static const char *TAG = "feckless_umode";
 
 #define MAX_CTORS 64
 #define BOX_ALIGN 4096u
+#define TLS_BYTES 16u               /* a thread's errno, and room */
+#define HOST_STACK 8192u            /* a thread's host task: the run loop and the host calls */
+
+/* u-feckless-0023: one of the app's threads. In host memory (the app struct
+ * is internal RAM): the window holds the thread's registers, and the program
+ * must not reach it. */
+typedef struct {
+    feckless_umode_window_t win;
+    struct feckless_umode_app *app;
+    uintptr_t stack;                /* box allocations, freed as the thread ends */
+    uintptr_t tls;
+    TaskHandle_t task;
+    volatile bool running;
+    feckless_umode_end_t end;
+} app_thread_t;
 
 struct feckless_umode_app {
     feckless_box_t box;
@@ -47,6 +66,15 @@ struct feckless_umode_app {
     bool relocated;
     feckless_umode_grant_t grants[FECKLESS_UMODE_MAX_GRANTS];   /* [0] is the box */
     int ngrants;
+    /* u-feckless-0023: threads */
+    SemaphoreHandle_t lock;         /* recursive: one host call at a time (but UNLOCKED ones) */
+    SemaphoreHandle_t ended;        /* given by each thread as it ends */
+    volatile bool stopping;
+    bool stuck;                     /* a thread would not stop: never freed */
+    bool have_bad;
+    feckless_umode_end_t bad;       /* the first end that was not EXIT */
+    uintptr_t tls_main;             /* app_main's errno block (tp) */
+    app_thread_t th[FECKLESS_UMODE_MAX_THREADS];
 };
 
 /* The box being loaded or unloaded, or NULL: the wrap's switch. */
@@ -129,6 +157,156 @@ static bool in_box(const feckless_umode_app_t *a, uintptr_t p)
     return p >= a->box.base && p < a->box.base + a->box.size;
 }
 
+/* u-feckless-0023: the first end that was not EXIT is the app's. A KILLED
+ * that the stop itself caused is not a cause. Under the lock. */
+static void note_end(feckless_umode_app_t *a, const feckless_umode_end_t *e)
+{
+    if (e->reason == FECKLESS_UMODE_END_EXIT) {
+        return;
+    }
+    xSemaphoreTakeRecursive(a->lock, portMAX_DELAY);
+    if (!a->have_bad && !(e->reason == FECKLESS_UMODE_END_KILLED && a->stopping)) {
+        a->bad = *e;
+        a->have_bad = true;
+    }
+    a->stopping = true;
+    xSemaphoreGiveRecursive(a->lock);
+}
+
+/* Every window's ext hook: the app's lock around the call, unless the call
+ * says it needs none; and once the app is stopping, the end of the thread. */
+static bool app_ext(feckless_umode_window_t *w, uint32_t nr, const uint32_t args[7], uint32_t *ret)
+{
+    feckless_umode_app_t *a = s_loaded;
+    if (!a || a->stopping) {
+        *ret = 0;
+        return false;                           /* KILLED */
+    }
+    const feckless_umode_calls_t *t = feckless_umode_calls_of(w);
+    const uint32_t i = nr - FECKLESS_SYS_EXT_BASE;
+    const bool unlocked = t && nr >= FECKLESS_SYS_EXT_BASE && i < t->n &&
+                          (t->calls[i].flags & FECKLESS_UMODE_CALL_UNLOCKED);
+    if (unlocked) {
+        return feckless_umode_calls_ext(w, nr, args, ret);
+    }
+    xSemaphoreTakeRecursive(a->lock, portMAX_DELAY);
+    const bool go_on = feckless_umode_calls_ext(w, nr, args, ret);
+    xSemaphoreGiveRecursive(a->lock);
+    return go_on;
+}
+
+static void thread_main(void *arg)
+{
+    app_thread_t *t = arg;
+    feckless_umode_app_t *a = t->app;
+    t->end = feckless_umode_run_default(&t->win);
+    note_end(a, &t->end);
+    if (t->end.reason != FECKLESS_UMODE_END_EXIT) {
+        ESP_LOGE(TAG, "thread %d ended: reason %d, %s at 0x%08x", (int)(t - a->th) + 1,
+                 (int)t->end.reason,
+                 t->end.reason == FECKLESS_UMODE_END_FAULT ? feckless_umode_cause_name(t->end.mcause) : "-",
+                 (unsigned)t->end.pc);
+    }
+    xSemaphoreTakeRecursive(a->lock, portMAX_DELAY);
+    feckless_box_free(&a->box, t->stack);
+    feckless_box_free(&a->box, t->tls);
+    t->stack = t->tls = 0;
+    t->task = NULL;
+    t->running = false;
+    xSemaphoreGiveRecursive(a->lock);
+    xSemaphoreGive(a->ended);
+    vTaskDelete(NULL);
+}
+
+esp_err_t feckless_umode_app_spawn(feckless_umode_app_t *a, uint32_t fn, uint32_t arg,
+                                   uint32_t stack_bytes, int prio, int core, uint32_t *id)
+{
+    if (!a || a != s_loaded || a->stopping) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (!in_box(a, fn) || stack_bytes < 1024 || stack_bytes > (1u << 20) ||
+        !(core == 0 || core == 1 || core == tskNO_AFFINITY)) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    xSemaphoreTakeRecursive(a->lock, portMAX_DELAY);
+    app_thread_t *t = NULL;
+    for (int i = 0; i < FECKLESS_UMODE_MAX_THREADS; i++) {
+        if (!a->th[i].running && !a->th[i].task) {
+            t = &a->th[i];
+            break;
+        }
+    }
+    esp_err_t err = ESP_ERR_NO_MEM;
+    if (!t) {
+        goto out;
+    }
+    stack_bytes = (stack_bytes + 15u) & ~15u;
+    t->stack = feckless_box_alloc(&a->box, stack_bytes);
+    t->tls = feckless_box_alloc(&a->box, TLS_BYTES);
+    if (!t->stack || !t->tls) {
+        goto undo;
+    }
+    memset((void *)t->tls, 0, TLS_BYTES);
+    t->app = a;
+    t->win = a->win;                            /* the box's range and calls; counters from 0 */
+    t->win.syscalls = t->win.irqs = t->win.migrations = 0;
+    feckless_umode_ctx_init(&t->win.ctx, fn, (uint32_t)t->stack,
+                            (uint32_t)(t->stack + stack_bytes - 16u), arg);
+    t->win.ctx.x[1] = (uint32_t)a->exit_stub;  /* ra: returning ends the thread */
+    t->win.ctx.x[4] = (uint32_t)t->tls;        /* tp */
+    if (prio < 1) prio = 1;
+    if (prio > configMAX_PRIORITIES - 2) prio = configMAX_PRIORITIES - 2;
+    char name[configMAX_TASK_NAME_LEN];
+    snprintf(name, sizeof name, "box_t%d", (int)(t - a->th) + 1);
+    t->running = true;
+    if (xTaskCreatePinnedToCore(thread_main, name, HOST_STACK, t, (UBaseType_t)prio, &t->task,
+                                core == tskNO_AFFINITY ? tskNO_AFFINITY : (BaseType_t)core) != pdPASS) {
+        t->running = false;
+        t->task = NULL;
+        goto undo;
+    }
+    if (id) {
+        *id = (uint32_t)(t - a->th) + 1;
+    }
+    ESP_LOGI(TAG, "thread %d: %u bytes of stack in the box, priority %d, core %d",
+             (int)(t - a->th) + 1, (unsigned)stack_bytes, prio, core == tskNO_AFFINITY ? -1 : core);
+    err = ESP_OK;
+    goto out;
+undo:
+    feckless_box_free(&a->box, t->stack);
+    feckless_box_free(&a->box, t->tls);
+    t->stack = t->tls = 0;
+out:
+    xSemaphoreGiveRecursive(a->lock);
+    return err;
+}
+
+static bool any_running(const feckless_umode_app_t *a)
+{
+    for (int i = 0; i < FECKLESS_UMODE_MAX_THREADS; i++) {
+        if (a->th[i].running) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* After app_main (or a constructor) has ended: wait for the threads. */
+static feckless_umode_end_t finish(feckless_umode_app_t *a, feckless_umode_end_t end)
+{
+    note_end(a, &end);
+    while (any_running(a)) {
+        const TickType_t wait = a->stopping ? pdMS_TO_TICKS(FECKLESS_UMODE_STOP_WAIT_MS) : portMAX_DELAY;
+        if (xSemaphoreTake(a->ended, wait) != pdTRUE) {
+            a->stuck = true;
+            ESP_LOGE(TAG, "a thread of the app made no host call in %d ms and cannot be stopped",
+                     FECKLESS_UMODE_STOP_WAIT_MS);
+            break;
+        }
+    }
+    return a->have_bad ? a->bad : end;
+}
+
 static void free_app(feckless_umode_app_t *a)
 {
     if (a->relocated) {
@@ -138,6 +316,8 @@ static void free_app(feckless_umode_app_t *a)
         esp_elf_deinit(&a->elf);
         s_loading = NULL;
     }
+    if (a->lock) vSemaphoreDelete(a->lock);
+    if (a->ended) vSemaphoreDelete(a->ended);
     heap_caps_free(a->syms);
     heap_caps_free(a->block);
     heap_caps_free(a);
@@ -158,6 +338,12 @@ esp_err_t feckless_umode_load(const uint8_t *image, size_t size,
     /* The app's bookkeeping is host memory, internal RAM: never the box. */
     feckless_umode_app_t *a = heap_caps_calloc(1, sizeof *a, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     if (!a) {
+        return ESP_ERR_NO_MEM;
+    }
+    a->lock = xSemaphoreCreateRecursiveMutex();
+    a->ended = xSemaphoreCreateCounting(FECKLESS_UMODE_MAX_THREADS, 0);
+    if (!a->lock || !a->ended) {
+        free_app(a);
         return ESP_ERR_NO_MEM;
     }
     esp_err_t err = ESP_ERR_NO_MEM;
@@ -224,12 +410,20 @@ esp_err_t feckless_umode_load(const uint8_t *image, size_t size,
         goto fail;
     }
 
+    /* app_main's errno block: the box's, so the program reaches it by tp */
+    a->tls_main = feckless_box_alloc(&a->box, TLS_BYTES);
+    if (!a->tls_main) {
+        err = ESP_ERR_NO_MEM;
+        goto fail;
+    }
+    memset((void *)a->tls_main, 0, TLS_BYTES);
+
     a->calls.calls = calls;
     a->calls.n = n;
     a->calls.box = &a->box;
     a->win.lo = a->box.base;
     a->win.hi = a->box.base + a->box.size;
-    a->win.ext = feckless_umode_calls_ext;
+    a->win.ext = app_ext;
     a->win.ext_arg = &a->calls;
     s_loaded = a;
     *out = a;
@@ -250,6 +444,7 @@ static feckless_umode_end_t run_one(feckless_umode_app_t *a, uintptr_t fn)
     feckless_box_stack(&a->box, &lo, &hi);
     feckless_umode_ctx_init(&a->win.ctx, (uint32_t)fn, lo, hi, 0);
     a->win.ctx.x[1] = (uint32_t)a->exit_stub;   /* ra */
+    a->win.ctx.x[4] = (uint32_t)a->tls_main;    /* tp: errno (feckless_box_libc), u-feckless-0023 */
     return feckless_umode_run_default(&a->win);
 }
 
@@ -281,10 +476,10 @@ feckless_umode_end_t feckless_umode_app_run(feckless_umode_app_t *a)
     for (uint32_t i = 0; i < nc; i++) {
         end = run_one(a, ctors[i]);
         if (end.reason != FECKLESS_UMODE_END_EXIT) {
-            return end;
+            return finish(a, end);
         }
     }
-    return run_one(a, (uintptr_t)a->elf.entry);
+    return finish(a, run_one(a, (uintptr_t)a->elf.entry));
 }
 
 feckless_umode_app_t *feckless_umode_app_loaded(void)
@@ -334,6 +529,12 @@ feckless_umode_window_t *feckless_umode_app_window(feckless_umode_app_t *a)
 void feckless_umode_unload(feckless_umode_app_t *a)
 {
     if (!a || a != s_loaded) {
+        return;
+    }
+    if (a->stuck || any_running(a)) {
+        /* Its PMP grant cannot be taken back (the IPC would wait on a core
+         * whose window holds interrupts off) and its box is in use. */
+        ESP_LOGE(TAG, "not unloaded: a thread of the app is still running; reset to recover");
         return;
     }
     feckless_umode_pmp_apply(NULL, 0);          /* U-mode is granted nothing again */

@@ -5,6 +5,7 @@
 #include "esp_err.h"
 esp_err_t uac_init(void);
 bool uac_present(void);
+uint32_t uac_generation(void);
 esp_err_t uac_stream_start(uint32_t rate, uint8_t channels);
 void uac_stream_stop(void);
 esp_err_t uac_write(const void *data, size_t len, uint32_t timeout_ms);

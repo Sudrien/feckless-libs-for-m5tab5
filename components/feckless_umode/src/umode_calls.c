@@ -65,10 +65,10 @@ static bool c_free(feckless_umode_window_t *w, const uint32_t a[7], uint32_t *re
 }
 
 const feckless_umode_call_t feckless_umode_heap_calls[] = {
-    { "malloc", c_malloc, NULL, 0 },
-    { "calloc", c_calloc, NULL, 0 },
-    { "realloc", c_realloc, NULL, 0 },
-    { "free", c_free, NULL, 0 },
-    { "heap_caps_malloc", c_heap_caps_malloc, NULL, 0 },
+    { "malloc", c_malloc, NULL, 0, 0 },
+    { "calloc", c_calloc, NULL, 0, 0 },
+    { "realloc", c_realloc, NULL, 0, 0 },
+    { "free", c_free, NULL, 0, 0 },
+    { "heap_caps_malloc", c_heap_caps_malloc, NULL, 0, 0 },
 };
 const uint32_t feckless_umode_heap_calls_n = sizeof feckless_umode_heap_calls / sizeof feckless_umode_heap_calls[0];

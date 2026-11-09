@@ -64,6 +64,10 @@ it (`cmake/boxcheck.cmake`):
 - **`heap_caps_malloc`, `_calloc`, `_realloc`, `_free`** (u-feckless-0020,
   `src/box_heap.c`): the box's own heap, whatever the caps say.
 
+- **`vTaskDelete(NULL)`** (u-feckless-0023, `src/box_task.c`): ends the
+  calling thread. `errno` is per thread from 0023: the word at `tp`, which
+  feckless_umode points at a block of each thread's own.
+
 Not here, so not usable in a box yet: `sscanf`, `strtod`, `strtof`, `atof`,
 `strftime`, `rand` (picolibc's are not position-independent).
 

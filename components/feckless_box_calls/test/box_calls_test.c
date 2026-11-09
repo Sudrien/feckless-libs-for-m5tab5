@@ -327,6 +327,49 @@ static void test_fb(void)
     fake_fb = keep;
 }
 
+/* u-feckless-0023 */
+extern uint32_t s_fn, s_arg, s_stack, s_calls;
+extern int s_prio, s_core;
+extern esp_err_t s_result;
+
+static uint32_t flags_of(const char *name)
+{
+    for (uint32_t i = 0; i < ncalls; i++)
+        if (!strcmp(calls_tab[i].name, name)) return calls_tab[i].flags;
+    return 0xffffffffu;
+}
+
+static void test_threads(void)
+{
+    uint32_t *h = (uint32_t *)(uintptr_t)feckless_box_alloc(&box, 4);
+    *h = 0;
+    const uint32_t fn = P(mem) + 0x100;
+    CHECK(call("xTaskCreatePinnedToCore", fn, 0, 6144, 0x1234, 5, P(h), 1, 0) == 1);   /* pdPASS */
+    CHECK(s_fn == fn && s_arg == 0x1234 && s_stack == 6144 && s_prio == 5 && s_core == 1);
+    CHECK(*h == 3);
+    CHECK(call("xTaskCreatePinnedToCore", fn, 0, 6144, 0, 5, 0, 0x7fffffff, 0) == 1);   /* no handle, any core */
+    CHECK(s_core == 0x7fffffff);
+    const uint32_t before = s_calls;
+    CHECK(call("xTaskCreatePinnedToCore", fn, 0, 6144, 0, 5, 0x1000, 0, 0) == (uint32_t)-1);
+    CHECK(s_calls == before);                                       /* a host handle pointer: not asked */
+    s_result = ESP_ERR_NO_MEM;
+    *h = 0;
+    CHECK(call("xTaskCreatePinnedToCore", fn, 0, 6144, 0, 5, P(h), 0, 0) == (uint32_t)-1 && *h == 0);
+    s_result = ESP_OK;
+    CHECK(C0("uac_generation") == 7);
+
+    /* the calls that wait, or only read, go without the app's lock */
+    const char *unlocked[] = { "vTaskDelay", "esp_timer_get_time", "audio_out_capture_read",
+                               "uac_mic_read", "uac_write", "audio_out_monitor_write",
+                               "uac_mic_gone", "__divdi3", "feckless_box_log" };
+    for (unsigned i = 0; i < sizeof unlocked / sizeof *unlocked; i++)
+        CHECK(flags_of(unlocked[i]) == FECKLESS_UMODE_CALL_UNLOCKED);
+    const char *locked[] = { "malloc", "free", "f_read", "fopen", "gfx_blit", "uac_mic_open_bits",
+                             "uac_mic_close", "xTaskCreatePinnedToCore", "audio_out_capture_begin" };
+    for (unsigned i = 0; i < sizeof locked / sizeof *locked; i++)
+        CHECK(flags_of(locked[i]) == 0);
+}
+
 int main(void)
 {
     mem = mmap(NULL, MEM, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT, -1, 0);
@@ -347,6 +390,7 @@ int main(void)
     test_gfx();
     test_audio();
     test_fb();
+    test_threads();
     printf(failed ? "%d FAILED\n" : "box_calls: all passed (%u calls)\n", failed ? failed : (int)ncalls);
     return failed != 0;
 }

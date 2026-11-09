@@ -189,6 +189,31 @@ H(c_feckless_box_log)
     return true;
 }
 
+/* u-feckless-0023: a thread. (fn, name, stack bytes, param, prio, handle *,
+ * core), as IDF's; the name is the host's own ("box_tN"), and the handle a
+ * number, 1 + the slot -- which nothing takes back yet (vTaskDelete(NULL)
+ * is feckless_box_libc's, and ends the calling thread). */
+H(c_xTaskCreatePinnedToCore)
+{
+    if (a[5] && !ok_ptr(w, a[5], 4)) {
+        *ret = (uint32_t)-1;                    /* errCOULD_NOT_ALLOCATE_REQUIRED_MEMORY */
+        return true;
+    }
+    uint32_t id = 0;
+    const esp_err_t e = feckless_umode_app_spawn(feckless_umode_app_loaded(), a[0], a[3], a[2],
+                                                 (int)a[4], (int)a[6], &id);
+    if (e != ESP_OK) {
+        ESP_LOGE("box", "xTaskCreatePinnedToCore: %s", esp_err_to_name(e));
+        *ret = (uint32_t)-1;
+        return true;
+    }
+    if (a[5]) {
+        memcpy((void *)(uintptr_t)a[5], &id, 4);
+    }
+    *ret = 1;                                   /* pdPASS */
+    return true;
+}
+
 /* ---- the app gives up -------------------------------------------------
  * ESP_ERROR_CHECK(), abort() and assert() end the app, not the launcher: the
  * reason is logged (strings checked and copied) and the handler returns
@@ -386,22 +411,23 @@ H(c_gfx_draw_para)
 static const uint32_t s_abi_v1 = FECKLESS_ABI_VERSION;
 static const uint32_t s_box_v1 = 1;
 
-#define FNG(n) { "__" #n, c_##n, NULL, 0 }
+#define FNG(n) { "__" #n, c_##n, NULL, 0, FECKLESS_UMODE_CALL_UNLOCKED }   /* values only */
 /* u-feckless-0021: Ark12's tables, which ark12.h's inline ark12_glyph()
  * reads in place. Copied into the box only if the app imports them
  * (feckless_umode's resolver copies a data entry on first use): about
  * 380 KB, for an app that draws its own text. */
-#define DATA(n, len) { #n, NULL, n, (uint32_t)(len) }
+#define DATA(n, len) { #n, NULL, n, (uint32_t)(len), 0 }
 
 static const feckless_umode_call_t s_own[] = {
-    { FECKLESS_ABI_NAME, NULL, &s_abi_v1, sizeof s_abi_v1 },
-    { "feckless_abi_box_v1", NULL, &s_box_v1, sizeof s_box_v1 },
+    { FECKLESS_ABI_NAME, NULL, &s_abi_v1, sizeof s_abi_v1, 0 },
+    { "feckless_abi_box_v1", NULL, &s_box_v1, sizeof s_box_v1, 0 },
     FNG(adddf3), FNG(subdf3), FNG(muldf3), FNG(divdf3),
     FNG(divdi3), FNG(moddi3), FNG(udivdi3), FNG(umoddi3),
     FNG(floatsidf), FNG(floatunsidf), FNG(floatdidf), FNG(floatundidf),
     FNG(clzsi2), FNG(ctzsi2), FNG(clzdi2),
-    FN(putchar), FN(puts), FN(vTaskDelay), FN(esp_timer_get_time), FN(esp_log_timestamp),
-    FN(esp_rom_delay_us), FN(time), FN(gettimeofday), FN(feckless_box_log),
+    FN(putchar), FN(puts), FNU(vTaskDelay), FNU(esp_timer_get_time), FNU(esp_log_timestamp),
+    FNU(esp_rom_delay_us), FNU(time), FNU(gettimeofday), FNU(feckless_box_log),
+    FN(xTaskCreatePinnedToCore),
     FN(_esp_error_check_failed), FN(abort), FN(__assert_func), FN(esp_log_level_get),
     FN(esp_log_level_set),
     FN(tab5io_init), FN(tab5io_bus), FN(lcd_init), FN(gfx_init), FN(touch_init),

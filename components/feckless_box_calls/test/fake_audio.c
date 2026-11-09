@@ -109,3 +109,18 @@ esp_err_t feckless_umode_app_grant(feckless_umode_app_t *a, uint32_t lo, uint32_
     return g_result;
 }
 const char *esp_err_to_name(esp_err_t e) { return e == ESP_OK ? "ESP_OK" : "an error"; }
+
+/* u-feckless-0023: threads, as feckless_umode's spawn would see them. */
+uint32_t uac_generation(void) { return 7; }
+uint32_t s_fn, s_arg, s_stack, s_calls;
+int s_prio, s_core;
+esp_err_t s_result = ESP_OK;
+esp_err_t feckless_umode_app_spawn(feckless_umode_app_t *a, uint32_t fn, uint32_t arg,
+                                   uint32_t stack_bytes, int prio, int core, uint32_t *id)
+{
+    s_calls++;
+    if (a != (feckless_umode_app_t *)&app_obj) return ESP_ERR_INVALID_STATE;
+    s_fn = fn; s_arg = arg; s_stack = stack_bytes; s_prio = prio; s_core = core;
+    if (s_result == ESP_OK && id) *id = 3;
+    return s_result;
+}

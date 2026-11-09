@@ -120,6 +120,7 @@ H(c_usbhost_start) { (void)w; (void)a; usbhost_start(); *ret = 0; return true; }
 
 H(c_uac_init) { (void)w; (void)a; *ret = (uint32_t)uac_init(); return true; }
 H(c_uac_present) { (void)w; (void)a; *ret = uac_present(); return true; }
+H(c_uac_generation) { (void)w; (void)a; *ret = uac_generation(); return true; }   /* u-feckless-0023 */
 H(c_uac_stream_start)
 {
     (void)w;
@@ -185,14 +186,18 @@ H(c_uac_mic_close)
 }
 H(c_uac_mic_product) { (void)a; *ret = to_box(w, &s_mic_product, uac_mic_product()); return true; }
 
+/* u-feckless-0023: the reads and writes that wait, and the queries that
+ * only read a driver's flag, are UNLOCKED (FNU): a capture thread waiting for
+ * samples must not hold up the drawing thread's calls. They touch nothing of
+ * this file's but s_mic_open/s_mic_ch, which a read only looks at. */
 const feckless_umode_call_t box_audio_calls[] = {
-    FN(audio_out_init), FN(audio_out_set_volume), FN(audio_out_headphones),
-    FN(audio_out_capture_begin), FN(audio_out_capture_read), FN(audio_out_capture_end),
-    FN(audio_out_monitor_write),
+    FN(audio_out_init), FN(audio_out_set_volume), FNU(audio_out_headphones),
+    FN(audio_out_capture_begin), FNU(audio_out_capture_read), FN(audio_out_capture_end),
+    FNU(audio_out_monitor_write),
     FN(usbhost_init), FN(usbhost_start),
-    FN(uac_init), FN(uac_present), FN(uac_stream_start), FN(uac_stream_stop), FN(uac_write),
-    FN(uac_product), FN(uac_mic_announced), FN(uac_mic_open_bits), FN(uac_mic_read),
-    FN(uac_mic_gone), FN(uac_mic_close), FN(uac_mic_product),
+    FN(uac_init), FNU(uac_present), FNU(uac_generation), FN(uac_stream_start), FN(uac_stream_stop),
+    FNU(uac_write), FN(uac_product), FNU(uac_mic_announced), FN(uac_mic_open_bits),
+    FNU(uac_mic_read), FNU(uac_mic_gone), FN(uac_mic_close), FN(uac_mic_product),
 };
 const uint32_t box_audio_calls_n = sizeof box_audio_calls / sizeof box_audio_calls[0];
 

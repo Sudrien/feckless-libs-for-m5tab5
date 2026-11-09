@@ -9,7 +9,10 @@
 
 typedef feckless_umode_window_t win_t;
 #define H(name) static bool name(win_t *w, const uint32_t a[7], uint32_t *ret)
-#define FN(n) { #n, c_##n, NULL, 0 }
+#define FN(n) { #n, c_##n, NULL, 0, 0 }
+/* u-feckless-0023: shares no state between the app's threads, may block:
+ * called without the app's lock (FECKLESS_UMODE_CALL_UNLOCKED). */
+#define FNU(n) { #n, c_##n, NULL, 0, FECKLESS_UMODE_CALL_UNLOCKED }
 
 static inline bool ok_ptr(const win_t *w, uint32_t p, uint32_t len)
 {

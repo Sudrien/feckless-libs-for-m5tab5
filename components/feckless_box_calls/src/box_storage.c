@@ -512,7 +512,7 @@ H(c_storage_hold)
 static const uint32_t s_storage_v2 = 2;
 
 const feckless_umode_call_t box_storage_calls[] = {
-    { "feckless_abi_storage_v2", NULL, &s_storage_v2, sizeof s_storage_v2 },
+    { "feckless_abi_storage_v2", NULL, &s_storage_v2, sizeof s_storage_v2, 0 },
     FN(f_open), FN(f_read), FN(f_lseek), FN(f_close),
     FN(fopen), FN(fread), FN(fgets), FN(fseek), FN(ftell), FN(fclose),
     FN(opendir), FN(readdir), FN(closedir),
