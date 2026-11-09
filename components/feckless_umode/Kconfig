@@ -12,4 +12,23 @@ menu "feckless_umode"
             this stopped the tick on CPU0 and tripped the interrupt watchdog;
             leave it off unless investigating that.
 
+    config FECKLESS_UMODE_CALL_STATS
+        bool "Log what a boxed app's host calls cost (diagnostic)"
+        default n
+        help
+            u-feckless-0029. Every CONFIG_FECKLESS_UMODE_CALL_STATS_SECONDS
+            the loaded app's busiest host calls are logged: how many a
+            second, the microseconds each took in the host, and the share
+            of a second that is -- and, per thread, how many calls it made
+            and how long it spent in them. A host call is a trap each way,
+            so an app that makes tens of thousands a second (soft-float
+            doubles are one each) shows here. Costs two timer reads and two
+            atomic adds a call.
+
+    config FECKLESS_UMODE_CALL_STATS_SECONDS
+        int "Seconds between call-stat lines"
+        depends on FECKLESS_UMODE_CALL_STATS
+        default 5
+        range 1 60
+
 endmenu

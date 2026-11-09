@@ -24,6 +24,8 @@
 #include "esp_elf.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "esp_timer.h"
+#include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -173,6 +175,104 @@ static void note_end(feckless_umode_app_t *a, const feckless_umode_end_t *e)
     xSemaphoreGiveRecursive(a->lock);
 }
 
+/* ---- u-feckless-0029: what the host calls cost ---------------------------- */
+#if CONFIG_FECKLESS_UMODE_CALL_STATS
+#define STAT_TOP 12
+#define STAT_THREADS (FECKLESS_UMODE_MAX_THREADS + 1)   /* [0] is app_main */
+static uint32_t s_st_n[FECKLESS_BOX_MAX_STUBS], s_st_us[FECKLESS_BOX_MAX_STUBS];
+static uint32_t s_st_last_n[FECKLESS_BOX_MAX_STUBS], s_st_last_us[FECKLESS_BOX_MAX_STUBS];
+static uint32_t s_th_n[STAT_THREADS], s_th_us[STAT_THREADS], s_th_last_n[STAT_THREADS], s_th_last_us[STAT_THREADS];
+static esp_timer_handle_t s_st_timer;
+static int64_t s_st_last_t;
+
+static int thread_of(const feckless_umode_app_t *a, const feckless_umode_window_t *w)
+{
+    if (w == &a->win) return 0;
+    for (int i = 0; i < FECKLESS_UMODE_MAX_THREADS; i++)
+        if (w == &a->th[i].win) return i + 1;
+    return 0;
+}
+
+static void stats_tick(void *arg)
+{
+    const feckless_umode_app_t *a = arg;
+    const int64_t now = esp_timer_get_time();
+    const float secs = (float)(now - s_st_last_t) * 1e-6f;
+    s_st_last_t = now;
+    if (secs <= 0.0f || !a) return;
+    /* the deltas since the last line; unsigned, so a wrap is still right */
+    static uint32_t dn[FECKLESS_BOX_MAX_STUBS], dus[FECKLESS_BOX_MAX_STUBS];
+    uint32_t total_n = 0, total_us = 0;
+    for (uint32_t i = 0; i < a->calls.n; i++) {
+        const uint32_t n = __atomic_load_n(&s_st_n[i], __ATOMIC_RELAXED);
+        const uint32_t us = __atomic_load_n(&s_st_us[i], __ATOMIC_RELAXED);
+        dn[i] = n - s_st_last_n[i];
+        dus[i] = us - s_st_last_us[i];
+        s_st_last_n[i] = n;
+        s_st_last_us[i] = us;
+        total_n += dn[i];
+        total_us += dus[i];
+    }
+    ESP_LOGI(TAG, "host calls, last %.1f s: %.0f/s, %.1f ms/s in the host", (double)secs,
+             (double)(total_n / secs), (double)(total_us / secs / 1000.0f));
+    for (int k = 0; k < STAT_TOP; k++) {            /* the busiest by time, a selection at a time */
+        uint32_t best = UINT32_MAX, best_us = 0;
+        for (uint32_t i = 0; i < a->calls.n; i++)
+            if (dn[i] && dus[i] >= best_us) { best = i; best_us = dus[i]; }
+        if (best == UINT32_MAX) break;
+        ESP_LOGI(TAG, "  %-28s %8.0f/s %7.2f us each %6.1f ms/s", a->calls.calls[best].name,
+                 (double)(dn[best] / secs), (double)((float)dus[best] / (float)dn[best]),
+                 (double)(dus[best] / secs / 1000.0f));
+        dn[best] = 0;
+    }
+    for (int t = 0; t < STAT_THREADS; t++) {
+        const uint32_t n = __atomic_load_n(&s_th_n[t], __ATOMIC_RELAXED);
+        const uint32_t us = __atomic_load_n(&s_th_us[t], __ATOMIC_RELAXED);
+        const uint32_t d = n - s_th_last_n[t], du = us - s_th_last_us[t];
+        s_th_last_n[t] = n;
+        s_th_last_us[t] = us;
+        if (d) {
+            ESP_LOGI(TAG, "  %s: %.0f calls/s, %.1f ms/s in them", t ? "thread" : "app_main",
+                     (double)(d / secs), (double)(du / secs / 1000.0f));
+        }
+    }
+}
+
+static void stats_start(feckless_umode_app_t *a)
+{
+    memset(s_st_n, 0, sizeof s_st_n); memset(s_st_us, 0, sizeof s_st_us);
+    memset(s_st_last_n, 0, sizeof s_st_last_n); memset(s_st_last_us, 0, sizeof s_st_last_us);
+    memset(s_th_n, 0, sizeof s_th_n); memset(s_th_us, 0, sizeof s_th_us);
+    memset(s_th_last_n, 0, sizeof s_th_last_n); memset(s_th_last_us, 0, sizeof s_th_last_us);
+    const esp_timer_create_args_t args = { .callback = stats_tick, .arg = a, .name = "box_stats" };
+    if (esp_timer_create(&args, &s_st_timer) == ESP_OK) {
+        s_st_last_t = esp_timer_get_time();
+        esp_timer_start_periodic(s_st_timer, (uint64_t)CONFIG_FECKLESS_UMODE_CALL_STATS_SECONDS * 1000000u);
+    }
+}
+
+static void stats_stop(void)
+{
+    if (s_st_timer) {
+        esp_timer_stop(s_st_timer);
+        esp_timer_delete(s_st_timer);
+        s_st_timer = NULL;
+    }
+}
+
+static void stats_add(const feckless_umode_app_t *a, const feckless_umode_window_t *w, uint32_t i, int64_t t0)
+{
+    const uint32_t us = (uint32_t)(esp_timer_get_time() - t0);
+    if (i < FECKLESS_BOX_MAX_STUBS) {
+        __atomic_fetch_add(&s_st_n[i], 1u, __ATOMIC_RELAXED);
+        __atomic_fetch_add(&s_st_us[i], us, __ATOMIC_RELAXED);
+    }
+    const int t = thread_of(a, w);
+    __atomic_fetch_add(&s_th_n[t], 1u, __ATOMIC_RELAXED);
+    __atomic_fetch_add(&s_th_us[t], us, __ATOMIC_RELAXED);
+}
+#endif
+
 /* Every window's ext hook: the app's lock around the call, unless the call
  * says it needs none; and once the app is stopping, the end of the thread. */
 static bool app_ext(feckless_umode_window_t *w, uint32_t nr, const uint32_t args[7], uint32_t *ret)
@@ -186,12 +286,20 @@ static bool app_ext(feckless_umode_window_t *w, uint32_t nr, const uint32_t args
     const uint32_t i = nr - FECKLESS_SYS_EXT_BASE;
     const bool unlocked = t && nr >= FECKLESS_SYS_EXT_BASE && i < t->n &&
                           (t->calls[i].flags & FECKLESS_UMODE_CALL_UNLOCKED);
+#if CONFIG_FECKLESS_UMODE_CALL_STATS
+    const int64_t t0 = esp_timer_get_time();    /* the lock's wait counts: it is the call's cost */
+#endif
+    bool go_on;
     if (unlocked) {
-        return feckless_umode_calls_ext(w, nr, args, ret);
+        go_on = feckless_umode_calls_ext(w, nr, args, ret);
+    } else {
+        xSemaphoreTakeRecursive(a->lock, portMAX_DELAY);
+        go_on = feckless_umode_calls_ext(w, nr, args, ret);
+        xSemaphoreGiveRecursive(a->lock);
     }
-    xSemaphoreTakeRecursive(a->lock, portMAX_DELAY);
-    const bool go_on = feckless_umode_calls_ext(w, nr, args, ret);
-    xSemaphoreGiveRecursive(a->lock);
+#if CONFIG_FECKLESS_UMODE_CALL_STATS
+    stats_add(a, w, i, t0);
+#endif
     return go_on;
 }
 
@@ -427,6 +535,9 @@ esp_err_t feckless_umode_load(const uint8_t *image, size_t size,
     a->win.ext_arg = &a->calls;
     s_loaded = a;
     *out = a;
+#if CONFIG_FECKLESS_UMODE_CALL_STATS
+    stats_start(a);
+#endif
     ESP_LOGI(TAG, "app in its box at %p, %u KB, %u calls; %u KB used by the load",
              a->block, (unsigned)(box_size >> 10), (unsigned)n,
              (unsigned)((a->box.n ? a->box.a[a->box.n - 1].off + a->box.a[a->box.n - 1].len : 0) >> 10));
@@ -537,6 +648,9 @@ void feckless_umode_unload(feckless_umode_app_t *a)
         ESP_LOGE(TAG, "not unloaded: a thread of the app is still running; reset to recover");
         return;
     }
+#if CONFIG_FECKLESS_UMODE_CALL_STATS
+    stats_stop();
+#endif
     feckless_umode_pmp_apply(NULL, 0);          /* U-mode is granted nothing again */
     s_loaded = NULL;
     free_app(a);

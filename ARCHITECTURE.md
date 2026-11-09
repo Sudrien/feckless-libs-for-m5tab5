@@ -2798,3 +2798,34 @@ fault, and that a fifth fault in a row with it off is a fault.
 the FPU on an M-mode illegal instruction, as described above. If it
 doesn't, `fpu_on` would panic the host task on its first window, with
 an illegal instruction at `op_fpu_on`.
+
+### u-feckless-0029 -- what a box's host calls cost (diagnostic)
+
+In the box, Lothesome draws at about 28 FPS against about 40 before:
+`draw 29 ms (bars 17, blit 12)`. Code inside the box runs at full
+speed, so the cost is most likely in host calls. Each is a trap there
+and back, plus the lock. Soft-float doubles stand out: outside a box
+`__muldf3` is a local libgcc call, inside one it is a host call per
+operation, and Lothesome's meter and weighting are double.
+
+`CONFIG_FECKLESS_UMODE_CALL_STATS` (new, default n, with
+`_SECONDS`, default 5) makes the loaded app log, every period:
+- calls per second in total, and milliseconds per second spent in the
+  host;
+- the 12 busiest calls by time: name, calls/s, µs each, ms/s;
+- per thread (`app_main`, then each spawned thread): calls/s and
+  ms/s.
+
+The timing is taken in `app_ext()`, around the call and any wait for
+the app's lock, so a call blocked behind another thread shows that
+wait. The counters are 32-bit atomics, read as deltas, so a wrap does
+no harm. They are static, about 32 KB of internal RAM while the option
+is on, and are reset when an app loads. The log comes from an
+`esp_timer`, started at load and deleted at unload. Cost per call: two
+`esp_timer_get_time()` reads and four atomic adds.
+
+`esp_timer` joins `feckless_umode`'s PRIV_REQUIRES. With the option
+off, nothing is compiled in.
+
+Not host-tested: it lives in `umode_load.c`, which runs only under
+ESP-IDF.
