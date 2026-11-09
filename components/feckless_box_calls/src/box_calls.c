@@ -49,7 +49,7 @@
  * of integer registers, low word first; nothing here is a pointer. The ones
  * that take or return a float (__extendsfdf2, __fixsfdi, __fixunssfdi,
  * __floatdisf, __floatundisf) pass it in fa0, which the trap does not save:
- * they are not here, so an app that needs one fails the load by name. */
+ * they are not here, but in the app (feckless_box_libc, u-feckless-0027). */
 
 static double d_of(uint32_t lo, uint32_t hi)
 {

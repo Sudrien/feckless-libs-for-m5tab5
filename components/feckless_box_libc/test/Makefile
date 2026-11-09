@@ -27,11 +27,16 @@ printf_test: printf_test.c ../vendor/printf/printf.c
 math_test: math_test.c ../src/box_math.c
 	$(CC) $(CFLAGS) -ffp-contract=off -fno-builtin -D'BOX_NAME(n)=box_##n' -o $@ math_test.c ../src/box_math.c -lm $(LDFLAGS)
 
-run: strto_test printf_test math_test
+# u-feckless-0027
+fpconv_test: fpconv_test.c ../src/box_fpconv.c
+	$(CC) $(CFLAGS) -D'BOX_NAME(n)=box_##n' -o $@ fpconv_test.c ../src/box_fpconv.c $(LDFLAGS)
+
+run: strto_test printf_test math_test fpconv_test
 	./strto_test
 	./printf_test
 	./math_test
+	./fpconv_test
 
 clean:
-	rm -f strto_test printf_test math_test
+	rm -f strto_test printf_test math_test fpconv_test
 .PHONY: all run clean

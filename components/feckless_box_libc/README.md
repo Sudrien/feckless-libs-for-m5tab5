@@ -71,6 +71,11 @@ it (`cmake/boxcheck.cmake`):
   calling thread. `errno` is per thread from 0023: the word at `tp`, which
   feckless_umode points at a block of each thread's own.
 
+- **libgcc's float conversions** (u-feckless-0027, `src/box_fpconv.c`):
+  `__extendsfdf2`, `__floatdisf`, `__floatundisf`, `__fixsfdi`,
+  `__fixunssfdi`, written on the bits (their float travels in `fa0`, which
+  no host call carries), and `__issignalingf`.
+
 Not here, so not usable in a box yet: `sscanf`, `strtod`, `strtof`, `atof`,
 `strftime`, `rand` (picolibc's are not position-independent).
 
@@ -79,5 +84,6 @@ Not here, so not usable in a box yet: `sscanf`, `strtod`, `strtof`, `atof`,
     make -C components/feckless_box_libc/test
 
 `strto*` against the host's libc (800 000 comparisons), the vendored printf
-against the host's `snprintf`, the maths against the host's libm (the worst
+against the host's `snprintf`, the float conversions bit for bit against
+the host's (9 million), the maths against the host's libm (the worst
 error of each function over a sweep, and the special values).

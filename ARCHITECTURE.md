@@ -2697,3 +2697,52 @@ Exercised with a stand-in readelf:
 `box_calls_test` also checks the copy: it is in the box, holds the
 right text, is a separate buffer per code, and the same buffer comes
 back for the same code.
+
+### u-feckless-0027 -- libgcc's float conversions in the app
+
+0026's boxcheck did its job on Lothesome's next build. Instead of a
+load failure on the board, the build failed and listed all three
+names:
+
+```
+imports names the box does not answer ...:
+  __issignalingf
+  __extendsfdf2
+  __floatdisf
+```
+
+`__extendsfdf2` (float to double) and `__floatdisf` (int64 to float)
+are libgcc helpers that take or return a float in `fa0`. The trap
+saves only the integer registers, so they can't be host calls; 0006
+already noted this. They also can't be copied out of `libgcc.a`,
+because they aren't position-independent.
+
+So `feckless_box_libc` gets its own `src/box_fpconv.c`, covering the
+five conversions of that kind: `__extendsfdf2`, `__floatdisf`,
+`__floatundisf`, `__fixsfdi` and `__fixunssfdi`.
+- They work on the bits, with no float arithmetic the compiler could
+  turn back into a call to one of them.
+- Leading zeros are counted by hand. `__clzdi2` is a host call, and
+  `__builtin_clzll` would reach for it.
+- int-to-float rounds to nearest, ties to even, as the FPU does.
+  float-to-int truncates and saturates as RISC-V's `fcvt` does, with
+  NaN going to the largest value.
+- `__extendsfdf2` keeps a NaN's payload and sets its quiet bit.
+
+The same file has `__issignalingf`: newlib's float NaN classifier,
+which the toolchain's headers reach.
+
+Compiled for the P4 with `-fPIC`, `box_fpconv.o` imports nothing at
+-O2 or -O0, and at -Os only `__ashldi3`/`__lshrdi3`, which the app
+already links from libgcc's subset. All six names are added to
+`inapp.txt`.
+
+`test/fpconv_test.c` compares them bit for bit with the host's own
+conversions, about 9 million cases:
+- every float whose top 16 bits vary, with random low bits, through
+  `__extendsfdf2` and both fix functions (the fix functions within
+  range);
+- 8 million random 64-bit integers through both float conversions;
+- the rounding edges (2^24 + 1, a halfway carry, the INT64 extremes),
+  the saturation cases, and `__issignalingf` on a signalling NaN, a
+  quiet one and a number.

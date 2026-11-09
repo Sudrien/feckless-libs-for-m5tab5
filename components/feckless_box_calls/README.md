@@ -20,7 +20,8 @@ feckless_umode_load(image, size, calls, n, 4 << 20, 64 << 10, &app);
   and `INT64_MIN / -1`), int-to-double conversions, `clz`/`ctz`. The ones
   that pass a `float` in `fa0` are not here (the trap does not save `fa0`):
   `__extendsfdf2`, `__fixsfdi`, `__fixunssfdi`, `__floatdisf`,
-  `__floatundisf`. An app needing one fails the load by name.
+  `__floatundisf`; `feckless_box_libc` links them into the app
+  (u-feckless-0027).
 - **Console and time**: `putchar`, `puts`, `vTaskDelay`,
   `esp_timer_get_time`, `esp_log_timestamp`, `esp_rom_delay_us` (capped at
   100 ms a call), `time`, `gettimeofday`.
