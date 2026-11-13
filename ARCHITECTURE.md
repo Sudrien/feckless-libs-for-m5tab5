@@ -3076,3 +3076,36 @@ user mode by enabling it, and the panel's line (cause, pc, value) says
 which instruction. `PIE ran in a box and FAILED its self-test` would mean
 it executes and computes wrongly, which would be this patch's clearing or
 a register it does not know of.
+
+### u-feckless-0035 -- 0034 on a board: PIE runs in a window
+
+Documentation only. Avoidant's `umode` branch (de52693) rebuilt against
+30a47bf, on a Tab5 (ESP32-P4 v1.3), with Defeatist's
+`defeatist_boxwin.app.elf` unchanged from the runs that had ended at this
+point three times:
+
+    boxwin: the PIE self-tests next. ...
+    boxwin: PIE works in a box; the PIE kernels
+    boxwin: .../52 ape-insane.ape: ape 5000 PIE 44100 Hz x2, 30000 ms of audio in 16350 ms (1.83x); 1340 windows, longest 14.7 ms ...
+    boxwin: === boxwin: done ===
+
+What 0034 left open is answered: **a PIE instruction executes in user
+mode once `CSR_PIE_STATE_REG` is set**; the enable is not per privilege
+level. `ape.h`'s and `dsd.h`'s self-tests, which run the vector kernel
+against the C one on random data, both pass in the box, so the registers
+`pie_clear()` zeroes are not ones the kernels needed kept, and the unit
+computes there as it does in M-mode. Fifteen files then decoded on the
+PIE kernels across some 22,600 windows with the unit switched on
+before each; the app ended by returning. The C kernels' figures before the
+self-test were the same as in the runs without this patch, so a program
+that has not yet used the unit is not slowed.
+
+APE "insane" went from 0.36x of real time to 1.83x and its longest window
+from 75 ms to 14.7 ms; DSD256 from 2.06x to 2.90x (u-defeatist-0008 has
+the table).
+
+*Not exercised by that run:* a second thread using the unit; an app after
+one that used it (the clear on first use); `CONFIG_FECKLESS_UMODE_PREEMPTIBLE`;
+a task switch taking the unit between `pie_on()` and the window, which the
+retry is for and the host test scripts. The FPU's first-use hole (0034) is
+as it was.
