@@ -28,10 +28,17 @@ typedef struct {
 static const step_t *script;
 static int script_len, script_pos, cur_core;
 
+/* u-feckless-0034: the PIE unit as the stand-in sees it. script_pie_off_at
+ * is a step before which it is switched off, as a task switch between
+ * pie_on and the window would; -1 for never. */
+static bool pie_is_off;
+static int script_pie_off_at = -1;
+
 static uint32_t fake_enter(feckless_umode_ctx_t *ctx)
 {
     CHECK(script_pos < script_len);
     if (script_pos >= script_len) return FUMODE_EXC_ILLEGAL_INSN;      /* do not loop forever */
+    if (script_pos == script_pie_off_at) pie_is_off = true;
     const step_t *s = &script[script_pos++];
     ctx->x[17] = s->nr;
     ctx->x[10] = s->a0;
@@ -340,6 +347,98 @@ static void test_fpu(void)
     CHECK(e.reason == FECKLESS_UMODE_END_FAULT && script_pos == 5);
 }
 
+/* u-feckless-0034: the PIE unit, on only for a program that uses it. An
+ * illegal instruction while it is off turns it on and retries; the first
+ * time the registers are cleared; from then on it is switched on before
+ * every window. One while it is on, and one past the retries, a fault. */
+static int pie_ons, pie_off_answers, pie_clears;
+static bool pie_stays_off;
+static void fake_pie_on(void) { pie_ons++; if (!pie_stays_off) pie_is_off = false; }
+static bool fake_pie_off(void) { pie_off_answers++; return pie_is_off; }
+static void fake_pie_clear(void) { pie_clears++; CHECK(pie_stays_off || !pie_is_off); }   /* after pie_on */
+
+static void test_pie(void)
+{
+    feckless_umode_ops_t pops = ops;
+    pops.pie_on = fake_pie_on;
+    pops.pie_off = fake_pie_off;
+    pops.pie_clear = fake_pie_clear;
+    feckless_umode_window_t w;
+
+    /* A program that never executes a PIE instruction: the unit is left alone. */
+    static const step_t plain[] = {
+        { ECALL, FECKLESS_SYS_NOP }, { ECALL, FECKLESS_SYS_NOP }, { ECALL, FECKLESS_SYS_EXIT },
+    };
+    new_window(&w);
+    run_script(plain, 3);
+    pie_ons = pie_off_answers = pie_clears = 0;
+    pie_is_off = true;
+    pie_stays_off = false;
+    feckless_umode_end_t e = feckless_umode_run(&w, &pops);
+    CHECK(e.reason == FECKLESS_UMODE_END_EXIT);
+    CHECK(pie_ons == 0 && pie_off_answers == 0 && pie_clears == 0 && !w.pie);
+
+    /* Its first PIE instruction: on, cleared once, the same pc again; then on
+     * before every window. Switched off under it later: on again, not cleared. */
+    static const step_t s[] = {
+        { ECALL, FECKLESS_SYS_NOP },
+        { FUMODE_EXC_ILLEGAL_INSN },            /* the first PIE instruction */
+        { ECALL, FECKLESS_SYS_NOP },
+        { FUMODE_EXC_ILLEGAL_INSN },            /* the unit was taken by a task switch */
+        { ECALL, FECKLESS_SYS_EXIT },
+    };
+    new_window(&w);
+    run_script(s, 5);
+    pie_ons = pie_off_answers = pie_clears = 0;
+    pie_is_off = true;
+    feckless_umode_run(&w, &pops);              /* runs to the second fault: see below */
+    CHECK(w.pie && pie_clears == 1);
+    /* Windows: NOP, fault, [retry] NOP, fault(on: the program's) -- the fake
+     * left the unit on, so the second illegal instruction is a fault. */
+    CHECK(script_pos == 4 && pie_off_answers == 2);
+    CHECK(pie_ons == 1 + 2);                    /* at the fault, then before each of two windows */
+
+    new_window(&w);
+    run_script(s, 5);
+    pie_ons = pie_off_answers = pie_clears = 0;
+    pie_is_off = true;
+    script_pie_off_at = 3;                      /* the stand-in turns it off before that window */
+    e = feckless_umode_run(&w, &pops);
+    script_pie_off_at = -1;
+    CHECK(e.reason == FECKLESS_UMODE_END_EXIT && w.pie);
+    CHECK(pie_clears == 1 && pie_off_answers == 2);
+    CHECK(w.ctx.pc == 0x1100 + 8);              /* two NOPs stepped it; the retries did not */
+
+    /* On, and an illegal instruction: the program's own. */
+    static const step_t bad[] = { { FUMODE_EXC_ILLEGAL_INSN }, { ECALL, FECKLESS_SYS_EXIT } };
+    new_window(&w);
+    run_script(bad, 2);
+    pie_ons = pie_clears = 0;
+    pie_is_off = false;
+    e = feckless_umode_run(&w, &pops);
+    CHECK(e.reason == FECKLESS_UMODE_END_FAULT && script_pos == 1 && pie_ons == 0 && !w.pie);
+
+    /* Off and staying off (the unit cannot be had): give up after 4. */
+    static const step_t many[] = {
+        { FUMODE_EXC_ILLEGAL_INSN }, { FUMODE_EXC_ILLEGAL_INSN }, { FUMODE_EXC_ILLEGAL_INSN },
+        { FUMODE_EXC_ILLEGAL_INSN }, { FUMODE_EXC_ILLEGAL_INSN }, { ECALL, FECKLESS_SYS_EXIT },
+    };
+    new_window(&w);
+    run_script(many, 6);
+    pie_is_off = true;
+    pie_stays_off = true;
+    pie_clears = 0;
+    e = feckless_umode_run(&w, &pops);
+    pie_stays_off = false;
+    CHECK(e.reason == FECKLESS_UMODE_END_FAULT && script_pos == 5 && pie_clears == 1);
+
+    /* No PIE ops (a chip without the unit): an illegal instruction is a fault, as before. */
+    new_window(&w);
+    run_script(bad, 2);
+    e = feckless_umode_run(&w, &ops);
+    CHECK(e.reason == FECKLESS_UMODE_END_FAULT && script_pos == 1 && !w.pie);
+}
+
 int main(void)
 {
     test_range();
@@ -353,6 +452,7 @@ int main(void)
     test_stack_verdict_first();
     test_refused();
     test_fpu();
+    test_pie();
     printf(failed ? "%d FAILED\n" : "umode_run: all passed\n", failed);
     return failed != 0;
 }

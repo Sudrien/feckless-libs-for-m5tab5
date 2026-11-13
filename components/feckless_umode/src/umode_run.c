@@ -130,9 +130,13 @@ feckless_umode_end_t feckless_umode_run(feckless_umode_window_t *w, const feckle
 
     w->core = ops->core_id ? (int)ops->core_id() : 0;
     int fpu_retries = 0;
+    int pie_retries = 0;
     for (;;) {
         if (ops->fpu_on) {
             ops->fpu_on();
+        }
+        if (w->pie && ops->pie_on) {
+            ops->pie_on();
         }
         const uint32_t cause = ops->enter(&w->ctx);
 
@@ -163,6 +167,7 @@ feckless_umode_end_t feckless_umode_run(feckless_umode_window_t *w, const feckle
         }
         if ((cause & FUMODE_MCAUSE_EXCCODE_MASK) == FUMODE_EXC_ECALL_U) {
             fpu_retries = 0;
+            pie_retries = 0;
             w->syscalls++;
             if (!dispatch(w, ops, &end)) {
                 return end;
@@ -172,6 +177,24 @@ feckless_umode_end_t feckless_umode_run(feckless_umode_window_t *w, const feckle
         if ((cause & FUMODE_MCAUSE_EXCCODE_MASK) == FUMODE_EXC_ILLEGAL_INSN && ops->fpu_off &&
             fpu_retries < 4 && ops->fpu_off()) {
             fpu_retries++;                      /* the FPU was off: on, and the same pc again */
+            continue;
+        }
+        /* u-feckless-0034: after the FPU, which is on unless a task switch
+         * just took it. The PIE unit off: the program's first PIE
+         * instruction, or the unit taken the same way. On, and the same pc
+         * again; a program that had not used it starts from zeroed
+         * registers. An instruction that is still illegal with the unit on
+         * is the program's fault, below. */
+        if ((cause & FUMODE_MCAUSE_EXCCODE_MASK) == FUMODE_EXC_ILLEGAL_INSN && ops->pie_on &&
+            ops->pie_off && pie_retries < 4 && ops->pie_off()) {
+            ops->pie_on();
+            if (!w->pie) {
+                w->pie = true;
+                if (ops->pie_clear) {
+                    ops->pie_clear();
+                }
+            }
+            pie_retries++;
             continue;
         }
         end.reason = FECKLESS_UMODE_END_FAULT;

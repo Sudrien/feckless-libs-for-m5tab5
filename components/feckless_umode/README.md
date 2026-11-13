@@ -46,6 +46,13 @@ caller gives instead of a fixed one.
   that overlaps its own range.
 - **`feckless_umode_run_default()`** is that loop on FreeRTOS (vTaskDelay,
   taskYIELD, the core id, stdout).
+- **The FPU and the PIE unit.** ESP-IDF turns each on for a task at its
+  first use, from the illegal-instruction trap, which in user mode is the
+  program's own fault. The FPU is switched on before every window
+  (u-feckless-0028). The PIE unit is switched on when a program first
+  executes a PIE instruction, its registers zeroed, and from then on before
+  every window of that program (u-feckless-0034). PIE registers are not
+  kept across a host call.
 
 ## An app in a box (u-feckless-0004)
 

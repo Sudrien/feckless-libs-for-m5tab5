@@ -2982,3 +2982,97 @@ read of the touch controller, which takes about 1.2 ms in the bars view.
 That points at the I2C transfer itself waiting in the waterfall, not at
 the box. The next step there is timing inside `touch_get` (read versus
 get_data), not more box stats.
+
+### u-feckless-0034 -- the PIE unit, for a program that uses it
+
+Defeatist's `boxwin` (u-defeatist-0002 to 0007) runs the player's own
+decoders in a box to see how long they compute between host calls. On the
+C kernels every format fitted except APE "insane", which decoded at a
+third of real time; with the P4's PIE kernels it is playable, and the
+first PIE instruction ended the app, three runs out of three:
+
+    boxwin: the PIE self-tests next. If the app ends here on an illegal instruction, ...
+    avoidant: defeatist_boxwin.app.elf: ended (reason 1), 824057 calls, 0 interrupts, 0 core changes
+
+Reason 1 is a fault. The cause was on the panel and was not sent, so that
+it was an illegal instruction is what 0028 leads one to expect, not what
+was read.
+
+**Why.** The PIE unit is the third thing ESP-IDF's RISC-V port enables
+per task and lazily, with the FPU and the hardware loops: a PIE
+instruction while `CSR_PIE_STATE_REG` (0x7F2) is 0 raises an illegal
+instruction, and `vectors.S` sends it to `rtos_save_pie_coproc`, which
+saves the unit's last owner, enables it, makes the task its owner and
+pins the task to its core. From a window that trap goes to this
+component's vector instead, and came back as the program's fault. 0028
+solved the same thing for the FPU by touching it in the host task before
+every window.
+
+**What this does.** Three new ops, and one flag in the window:
+
+- `pie_off()` says whether the unit is off (the state register's low two
+  bits, as `portasm.S`'s `pie_disable` reads them).
+- On an illegal instruction with the unit off, the loop calls `pie_on()`
+  and re-enters at the same pc, up to four times between host calls.
+  `pie_on()` executes `esp.movx.r.sar a1` in the host task: a PIE
+  instruction, so the RTOS's own trap serves it there, in M-mode, and one
+  that changes no PIE register. It is what `pie_save_regs` itself uses.
+- The first time for a window, `pie_clear()` then zeroes q0 to q7, QACC,
+  XACC, the unaligned-load state, SAR, SAR_BYTES and the FFT bit width. A
+  task's first use restores nothing, so the program would otherwise read
+  what the unit's last owner left: the launcher's vector code, or the app
+  before it.
+- From then on (`w->pie`) `pie_on()` runs before every window, as
+  `fpu_on()` does, since a task switch during a host call leaves the unit
+  off. A thread starts with the flag clear: the unit is its host task's.
+
+An instruction that is still illegal with the unit on is the program's
+fault, as before. A chip without the unit has no ops and nothing changes.
+
+**Unlike the FPU, only on request.** Owning the unit pins the host task
+to its core and, when another task next takes it, puts a save area of
+about 220 bytes on the host task's stack. Spurious and Lothesome execute
+no PIE instruction and are not touched. The price is one extra trap at a
+program's first PIE instruction.
+
+**PIE registers are not kept across a host call.** A host function that
+uses the unit leaves its values in them. The kernels that prompted this
+are leaf loops that load what they use.
+
+**The FPU's first use has the same hole** as the one `pie_clear()` closes:
+0028 enables it and zeroes nothing, so a program's first float read sees
+the last owner's registers. Not changed here.
+
+*Checked, on a host:* `make -C components/feckless_umode/test`: the run
+loop with scripted ops -- a program that never traps leaves the unit alone;
+a first trap turns it on, clears once and retries the same pc; on before
+every later window; taken by a "task switch" and given back without a
+second clear; illegal with the unit on is a fault; off and staying off
+gives up after four; no ops, a fault as before. Five breaks of the loop
+(on for every program, retry without asking, clear every time, no retry
+count, flag never set) each fail it. The three ops compiled alone with
+riscv32-esp-elf-gcc esp-15.2.0_20251204, the toolchain of the board build,
+at `-march=..._xesploop_xespv2p1` (a P4 before revision 3, as the Tab5's
+v1.3 is) and `..._xespv`, -Wall -Wextra -Werror: all fifteen PIE
+instructions assemble, with different encodings for the two.
+
+*Not checked:* an ESP-IDF build of this component; a board. **Whether a
+PIE instruction executes in user mode at all once the unit is enabled** --
+nothing read says the enable is per privilege level, and nothing says it
+is not. The `EXT_ILL` CSR (0x7F0), which `vectors.S` reads and clears to
+tell a coprocessor trap from a real one, is left as the window's trap set
+it; the next M-mode coprocessor trap reads it, which at worst is one
+spurious enable. With `CONFIG_FECKLESS_UMODE_PREEMPTIBLE`, an interrupt in
+a window goes through `rtos_int_enter`, which turns the unit off for the
+ISR; on a task switch it comes back off and the retry gives it back. Not
+run.
+
+*What to look for on a Tab5*, with the launcher rebuilt against this and
+`defeatist_boxwin.app.elf` as it is: after `the PIE self-tests next`,
+`boxwin: PIE works in a box; the PIE kernels` and a second table whose
+lines have `PIE` after the format. `52 ape-insane.ape` above 1.00x is the
+point. If it still ends with reason 1 there, the unit is not usable from
+user mode by enabling it, and the panel's line (cause, pc, value) says
+which instruction. `PIE ran in a box and FAILED its self-test` would mean
+it executes and computes wrongly, which would be this patch's clearing or
+a register it does not know of.

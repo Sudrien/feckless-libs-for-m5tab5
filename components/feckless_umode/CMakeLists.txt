@@ -24,6 +24,7 @@ idf_component_register(
     # elf_loader (u-feckless-0004): the loader, named as feckless_abi names it.
     PRIV_REQUIRES esp_system esp_hw_support soc freertos log heap elf_loader
                   esp_timer   # u-feckless-0029: the call stats
+                  riscv       # u-feckless-0034: riscv/csr_pie.h, the PIE unit's state register
 )
 
 # u-feckless-0004: esp_elf's allocations go into the box while one is being

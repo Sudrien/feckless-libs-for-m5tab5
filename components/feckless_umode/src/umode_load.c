@@ -371,6 +371,7 @@ esp_err_t feckless_umode_app_spawn(feckless_umode_app_t *a, uint32_t fn, uint32_
     t->app = a;
     t->win = a->win;                            /* the box's range and calls; counters from 0 */
     t->win.syscalls = t->win.irqs = t->win.migrations = 0;
+    t->win.pie = false;                         /* u-feckless-0034: the unit is per host task */
     feckless_umode_ctx_init(&t->win.ctx, fn, (uint32_t)t->stack,
                             (uint32_t)(t->stack + stack_bytes - 16u), arg);
     t->win.ctx.x[1] = (uint32_t)a->exit_stub;  /* ra: returning ends the thread */

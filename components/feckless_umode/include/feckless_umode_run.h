@@ -48,6 +48,7 @@ struct feckless_umode_window {
     uint32_t irqs;                  /* interrupts taken inside the window  */
     uint32_t migrations;            /* times the host task moved core between windows */
     int core;
+    bool pie;                       /* u-feckless-0034: the program has used the PIE unit */
 };
 
 /* What the host needs from the RTOS and the console. A NULL op makes its
@@ -68,6 +69,28 @@ typedef struct {
      * window, so the window is retried (a few times) rather than ended. */
     void (*fpu_on)(void);
     bool (*fpu_off)(void);
+    /* u-feckless-0034: the PIE unit (the ESP32-P4's vector extension), which
+     * the RTOS enables per task as it does the FPU: a PIE instruction with
+     * the unit off traps, and in U-mode that is the program's illegal
+     * instruction. Unlike the FPU it is not turned on for every program,
+     * only for one that asks: making a task the unit's owner pins it to its
+     * core and puts a save area on its stack, and few programs use it.
+     *
+     * pie_off, if set, says the unit is off now. After an illegal
+     * instruction that means the program's first PIE instruction, or that
+     * the unit was switched off under it: pie_on is called and the same pc
+     * retried (a few times). The first time, pie_clear, if set, is called
+     * after pie_on, so the program starts from zeroed PIE registers and not
+     * from whatever the unit's last owner left in them. From then on
+     * pie_on is called before every window, like fpu_on. All three run in
+     * the host task, in M-mode; pie_on and pie_clear execute PIE
+     * instructions there, where the RTOS's own trap serves them.
+     *
+     * The PIE registers are not saved across a host call: a host function
+     * that uses the unit itself leaves its own values in them. */
+    void (*pie_on)(void);
+    bool (*pie_off)(void);
+    void (*pie_clear)(void);
 } feckless_umode_ops_t;
 
 typedef enum {
