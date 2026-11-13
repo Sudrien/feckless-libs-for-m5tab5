@@ -105,6 +105,21 @@ __floatundisf
 __fixsfdi
 __fixunssfdi
 __issignalingf
+# ---- u-feckless-0036: double arithmetic, the conversions from an integer
+# and the bit counts (src/box_softdouble.c). libgcc's are not
+# position-independent and were host calls, a trap an operation; the box's
+# table still answers them, for an ELF built before this
+__adddf3
+__subdf3
+__muldf3
+__divdf3
+__floatsidf
+__floatunsidf
+__floatdidf
+__floatundidf
+__clzsi2
+__ctzsi2
+__clzdi2
 # ---- from the toolchain's libgcc.a (libgcc_names.txt)
 __ashldi3
 __ashrdi3

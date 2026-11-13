@@ -76,6 +76,15 @@ it (`cmake/boxcheck.cmake`):
   `__fixunssfdi`, written on the bits (their float travels in `fa0`, which
   no host call carries), and `__issignalingf`.
 
+- **Double arithmetic** (u-feckless-0036, `src/box_softdouble.c`):
+  `__adddf3`, `__subdf3`, `__muldf3`, `__divdf3`, the conversions from an
+  integer (`__floatsidf`, `__floatunsidf`, `__floatdidf`, `__floatundidf`)
+  and the bit counts (`__clzsi2`, `__ctzsi2`, `__clzdi2`). The P4's FPU is
+  single precision, so each double operation is a call; these were host
+  calls, a trap an operation, and are now in the app. IEEE 754, round to
+  nearest even, the canonical NaN. The double libm names (`sqrt`, `sin`,
+  `exp`, ...) and the four 64-bit divisions are still host calls.
+
 Not here, so not usable in a box yet: `sscanf`, `strtod`, `strtof`, `atof`,
 `strftime`, `rand` (picolibc's are not position-independent).
 
@@ -86,4 +95,6 @@ Not here, so not usable in a box yet: `sscanf`, `strtod`, `strtof`, `atof`,
 `strto*` against the host's libc (800 000 comparisons), the vendored printf
 against the host's `snprintf`, the float conversions bit for bit against
 the host's (9 million), the maths against the host's libm (the worst
-error of each function over a sweep, and the special values).
+error of each function over a sweep, and the special values), the double
+arithmetic bit for bit against the host's FPU (190 million, about a
+quarter of a minute).

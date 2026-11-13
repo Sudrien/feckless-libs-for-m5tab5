@@ -1,5 +1,6 @@
 # Host tests for feckless_box_libc: strto* and the vendored printf against
-# the host's libc, and the maths (u-feckless-0020) against its libm.
+# the host's libc, the maths (u-feckless-0020) against its libm, and the
+# double arithmetic (u-feckless-0036) against its FPU.
 #
 #   make -C components/feckless_box_libc/test
 #
@@ -31,12 +32,22 @@ math_test: math_test.c ../src/box_math.c
 fpconv_test: fpconv_test.c ../src/box_fpconv.c
 	$(CC) $(CFLAGS) -D'BOX_NAME(n)=box_##n' -o $@ fpconv_test.c ../src/box_fpconv.c $(LDFLAGS)
 
-run: strto_test printf_test math_test fpconv_test
+# u-feckless-0036. Against the host's doubles, bit for bit, so the host must
+# round each operation once: no fused multiply-add, and no builtin that
+# would fold the test's own arithmetic. -O2 and no sanitizers: it is 190
+# million checks, and the file under test is integer arithmetic on values,
+# with no pointer in it.
+softdouble_test: softdouble_test.c ../src/box_softdouble.c
+	$(CC) -std=gnu11 -O2 -Wall -Wextra -Werror -ffp-contract=off -fno-builtin \
+	      -D'BOX_NAME(n)=box_##n' -o $@ softdouble_test.c ../src/box_softdouble.c
+
+run: strto_test printf_test math_test fpconv_test softdouble_test
 	./strto_test
 	./printf_test
 	./math_test
 	./fpconv_test
+	./softdouble_test
 
 clean:
-	rm -f strto_test printf_test math_test fpconv_test
+	rm -f strto_test printf_test math_test fpconv_test softdouble_test
 .PHONY: all run clean

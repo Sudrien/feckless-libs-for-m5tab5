@@ -3109,3 +3109,96 @@ one that used it (the clear on first use); `CONFIG_FECKLESS_UMODE_PREEMPTIBLE`;
 a task switch taking the unit between `pie_on()` and the window, which the
 retry is for and the host test scripts. The FPU's first-use hole (0034) is
 as it was.
+
+### u-feckless-0036 -- double arithmetic in the app
+
+**What it cost as a host call.** The P4's FPU is single precision, so
+`a + b` on doubles is `__adddf3(a, b)`. libgcc's double routines would not
+link into a boxed app (0005), so the box answered them (0025): a trap
+into the launcher and back for each operation. Lothesome's level meter
+lost a third of its frame rate to it (0029). Defeatist's DSD filter
+design, which is a Kaiser window and a Bessel series in double, took 215,
+402 and 590 ms in a box for DSD64, 128 and 256 (u-defeatist-0007), a pause
+at the start of every such track.
+
+**Why libgcc's could not be used**, checked again with riscv32-esp-elf
+esp-15.2.0_20251204 at rv32imafc/ilp32f: `adddf3.o`, `subdf3.o`,
+`muldf3.o`, `floatsidf.o` and `floatunsidf.o` are undefined only in
+`__clzsi2`, which reaches `__clz_tab` absolutely; given a table-free
+`__clzsi2` they link. `divdf3.o` does not: `relocation R_RISCV_HI20
+against a local symbol can not be used when making a shared object`, and
+the linker then dies on signal 11. It has a table of its own. So one of
+the four would have stayed a host call, and the series that prompted this
+divides once a term.
+
+**What this adds.** `src/box_softdouble.c`, this component's own, compiled
+with the app: `__adddf3`, `__subdf3`, `__muldf3`, `__divdf3`,
+`__floatsidf`, `__floatunsidf`, `__floatdidf`, `__floatundidf`, and the
+three bit counts `__clzsi2`, `__ctzsi2`, `__clzdi2` that the box also
+answered. The eleven names are in `inapp.txt`, so a boxed ELF that still
+imports one fails `boxcheck`. `feckless_box_calls`' table keeps all of
+them, for an ELF built before this.
+
+- IEEE 754 binary64, round to nearest, ties to even. No exception flags
+  and no other rounding mode; libgcc's have neither on this target.
+- A NaN result is `0x7ff8000000000000` whatever the operands' payloads:
+  RISC-V's canonical NaN, which is what libgcc returns there.
+- The doubles are handled as their bits throughout. The file uses no
+  double operator, no 64-bit divide and no bit-count builtin, each of
+  which would be a call to itself or to a host call. The quotient is 55
+  bits by subtraction, one a step.
+- Add, subtract and multiply are a few dozen instructions. Divide is 54
+  steps of a 64-bit shift, compare and subtract, perhaps a couple of
+  microseconds: slower than libgcc's, and not measured against the trap it
+  replaces.
+
+**Not in this patch.** The double libm names (`sqrt`, `sin`, `exp`, ...,
+0025) and the four 64-bit divisions (`__udivdi3` and its kin) are still
+host calls. The comparisons and the conversions to an integer were
+already in the app, from libgcc (0005).
+
+*Checked, on a host:* `make -C components/feckless_box_libc/test`.
+`softdouble_test` runs each function against the host's own double
+arithmetic and requires the same 64 bits (any NaN for a NaN): every pair
+of 92 edge values -- the zeros, both ends of the subnormal and normal
+ranges, one and its neighbours, ties, the infinities, quiet and signalling
+NaNs -- then random pairs, exponents close together for cancellation, few
+significant bits for ties and exact results, and operands and results in
+and across the subnormal range; the conversions over 26 edge integers and
+four million random ones; the bit counts against the compiler's.
+190,034,155 checks, none differing, the same again under ASan and UBSan.
+Eight breaks of the file were tried. Seven fail it, by between 462 and
+33 million checks: no tie to even; the shift's jam bit; the jam when a sum
+carries; the quotient's remainder; the product's low half; the sign of an
+exact zero difference; one division step short. The eighth, taking the
+rounding increment out of the overflow test, changes nothing: at the
+largest exponent a significand that rounds up carries into the exponent
+field and makes the infinity by itself, so that half of the test is
+redundant. Left in.
+
+*Checked, with the board build's toolchain:* the file compiled at -O0,
+-Og, -Os, -O2 and -O3, with and without -fPIC, for
+`rv32imafc_zicsr_zifencei_zaamo_zalrsc_xesploop_xespv2p1`, -Wall -Wextra
+-Werror. Its only undefined symbols are `__ashldi3` and `__lshrdi3`
+(variable 64-bit shifts, from -Os up), both already in the app from libgcc
+(`libgcc_names.txt`). A position-independent object using every one of the
+eleven, linked `-shared -z text --no-undefined` with this file and those
+two libgcc members: links, nothing left undefined, no text relocation.
+
+*Not checked:* an ESP-IDF build; `boxcheck` on a real ELF; a board.
+**Nothing was executed on RISC-V**: the arithmetic was verified as C on a
+64-bit host and the RISC-V object only compiled and linked. That a double
+travels in a pair of integer registers as a 64-bit integer does on ilp32f
+is how the box's table already passes them (0005), and the functions here
+are declared with `double`, so the compiler, not this file, decides.
+
+*What to look for on a Tab5:* an app has to be rebuilt against this; the
+launcher need not be. Rebuild Defeatist's boxwin and its DSD lines should
+say `set-up` of far less than 215, 402 and 590 ms, with the same decode
+speeds and both PIE self-tests still passing (they compare against the C
+kernels, whose tables this arithmetic now builds). Avoidant's
+`ended ... N calls` for that run should fall from about 824,000 by the
+operations that are no longer calls. Lothesome rebuilt should show its
+frame rate back toward 40. A wrong result would most likely show as
+boxwin's `PIE ran in a box and FAILED its self-test` or as audibly wrong
+DSD, since the filter is the heaviest user.

@@ -7,6 +7,7 @@ idf_component_register(
          "src/box_math.c" "src/box_heap.c"   # u-feckless-0020
          "src/box_task.c"                    # u-feckless-0023
          "src/box_fpconv.c"                  # u-feckless-0027
+         "src/box_softdouble.c"              # u-feckless-0036
     INCLUDE_DIRS "include"
     # printf.c includes <printf/printf.h>
     PRIV_INCLUDE_DIRS "vendor"
