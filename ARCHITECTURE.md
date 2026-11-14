@@ -3202,3 +3202,29 @@ operations that are no longer calls. Lothesome rebuilt should show its
 frame rate back toward 40. A wrong result would most likely show as
 boxwin's `PIE ran in a box and FAILED its self-test` or as audibly wrong
 DSD, since the filter is the heaviest user.
+
+### u-feckless-0037 -- 0036 on a board
+
+Documentation only. Defeatist's `defeatist_boxwin.app.elf` rebuilt
+against fbca1cf and run from Avoidant's `umode` branch on a Tab5; the
+launcher was not rebuilt, as 0036 said it need not be.
+
+- **It links and loads.** `boxcheck` passed with the eleven names in
+  `inapp.txt`, and the ELF ran to its end: `ended (reason 0), 138241
+  calls, 0 interrupts, 0 core changes`.
+- **The cost it was written against is gone.** The same program's DSD
+  filter design, a Kaiser window and a Bessel series in double, took 220,
+  410 and 600 ms for DSD64, 128 and 256 as host calls and takes 57, 104
+  and 152 ms now: 3.8 times faster. The run before made 824,057 host calls
+  in its first pass alone; this one made 138,241 in both.
+- **Nothing else moved.** Every decode speed, longest window and window
+  count in both of its tables is what it was (u-defeatist-0009).
+
+*Still not shown on RISC-V:* that the results are the right bits. That
+program times its decoders and does not check their output, so what
+stands behind the arithmetic is 0036's host test. Division's 54 steps
+were not timed apart from the rest; the remaining set-up time includes
+them and the double libm calls, which are still host calls.
+
+Lothesome, whose meter was the other cost named in 0036, has not been
+rebuilt against this.
