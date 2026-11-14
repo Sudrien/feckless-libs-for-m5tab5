@@ -83,8 +83,15 @@ it (`cmake/boxcheck.cmake`):
   single precision, so each double operation is a call; these were host
   calls, a trap an operation, and are now in the app. IEEE 754, round to
   nearest even, the canonical NaN. Division is by a reciprocal and an
-  exact remainder (u-feckless-0039). The double libm names (`sqrt`, `sin`,
-  `exp`, ...) are still host calls.
+  exact remainder (u-feckless-0039).
+
+- **Double maths** (u-feckless-0041, `newlib_math/`): `sqrt`, `sin`,
+  `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`, `asinh`, `exp`, `log`,
+  `log10`, `floor`, `ceil`, `round`, `fabs`, `atan2`, `pow`, `fmod`,
+  `ldexp`, `lround`, and `copysign`, `expm1`, `log1p`, `scalbn`, `finite`,
+  `nan`. Espressif's newlib sources, unchanged, compiled into the app: the
+  same code the launcher answered them with as host calls, now without the
+  trap, and the same bits.
 
 - **64-bit integer division** (u-feckless-0038, `src/box_div64.c`):
   `__udivdi3`, `__umoddi3`, `__divdi3`, `__moddi3`, which is `/` and `%` on
@@ -104,4 +111,5 @@ the host's (9 million), the maths against the host's libm (the worst
 error of each function over a sweep, and the special values), the double
 arithmetic bit for bit against the host's FPU (190 million, about a
 quarter of a minute), the 64-bit division against the host's (237 million,
-a few seconds).
+a few seconds), the double maths against the toolchain's libm.a (4.4
+million calls, by hashes taken from it under qemu-riscv32).

@@ -3392,3 +3392,70 @@ divides once a term, now takes 42, 78 and 114 ms in a box: it took 220,
 
 What is left of those set-up times is mostly the double libm functions
 (`sin`, `sqrt`, ...), which are still host calls (0025).
+
+### u-feckless-0041 -- double maths in the app: newlib's own, unchanged
+
+With 0036, 0038 and 0039 the arithmetic is in the app. What still trapped
+were the 21 double libm names 0025 made host calls: `sqrt`, `sin`, `cos`,
+`tan`, `asin`, `acos`, `atan`, `sinh`, `asinh`, `exp`, `log`, `log10`,
+`floor`, `ceil`, `round`, `fabs`, `atan2`, `pow`, `fmod`, `ldexp`,
+`lround`. Defeatist's DSD filter design, once its arithmetic was in the
+app, spent most of its remaining 42 to 114 ms in them (u-defeatist-0012).
+
+**Not a new implementation.** The toolchain's `libm.a` (newlib) has all
+21, and the launcher answered them with it. They could not be linked into
+an app for the reason libgcc could not: built without `-fPIC`, they reach
+their constant tables by absolute address. Linking them into a shared
+object fails with 32 `R_RISCV_HI20 against a local symbol`, and with
+`R_RISCV_JAL` against `nan`, `expm1`, `log1p` and `__kernel_rem_pio2`.
+
+So `newlib_math/` holds their sources, copied unchanged from Espressif's
+newlib (`espressif/newlib-esp32`, esp-4.5.0, 37f7f7d), compiled with the
+app. The set is exactly what the toolchain's archive pulls in for those 21
+names: 42 members, and `s_copysign.c` besides. The P4 has no double FPU,
+so newlib's `ieeefp.h` picks the old fdlibm code for doubles and the
+RISC-V overrides fall back to the generic files; these are those files.
+Their notices are kept: Sun's fdlibm notice on 41, Arm's BSD-3-Clause on
+`math_err.c`, and newlib's `COPYING.NEWLIB`, copied alongside, for
+`s_nan.c`, which has no notice of its own. `newlib_math/README.md` says
+where each came from.
+
+The 21, and `copysign`, `expm1`, `log1p`, `scalbn`, `finite` and `nan`,
+which were in neither the app nor the box's table, are in `inapp.txt`.
+`errno` is set as newlib sets it, into the app's own (`box_errno.c`); as
+host calls it had been set in the launcher's, where the app could not see
+it. `feckless_box_calls` keeps the 21 for an ELF built before this.
+
+*Checked, under qemu-riscv32:* the 43 files compiled with the board
+build's compiler, `-fPIC`, and the toolchain's `libm.a` itself, each linked
+into the same harness: 200,000 inputs a function -- any bit patterns, the
+middle of the range, near zero, the small integers, large, and the edges
+-- and `errno` across `log`, `pow`, `sqrt` and `exp`. Every one of the 22
+hashes is the same, NaN bits included. So the app gets what the launcher
+gave it, to the bit.
+
+*Checked, on a host:* `newlib_math_test` builds the same files for the host
+and holds each function's hash to the constant the toolchain's `libm.a`
+gave under qemu. fdlibm is double arithmetic and integer bit operations,
+so with each operation rounded once x86-64 gives RV32's bits (a NaN hashed
+as one pattern: which NaN is the machine's). It passes under gcc at -O0,
+-O2 and -O3 -march=native, under clang, and as 32-bit code with SSE.
+Five breaks of the copied files each fail it and name the right functions:
+a constant of `__kernel_sin` (sin, cos), of `__ieee754_exp` (exp, sinh),
+of `__ieee754_rem_pio2` (sin, cos, tan), `round`'s small-number branch
+(round), `floor`'s branch for large values (floor, and sin, cos and tan,
+whose reduction uses it). Two earlier breaks that changed only a
+constant's 21st digit changed no bit, and the test rightly passed them.
+
+*Checked, with the board build's toolchain:* the 43 files and this
+component's `box_softdouble.c`, with `__errno` and libgcc's compare and
+conversion members, linked into a position-independent object with
+`-z text --no-undefined`: nothing left undefined, no text relocation.
+
+*Not checked:* an ESP-IDF build of the component (the CMake loop that adds
+the files is unrun); `boxcheck`; a board; how much faster.
+
+*What to look for:* Defeatist's boxwin from u-defeatist-0013 on prints a
+third arithmetic line, a hash of these functions that must be the
+toolchain's, and their times. Built against 0040 they are host calls',
+built against this the routines', and the hash is the same either way.

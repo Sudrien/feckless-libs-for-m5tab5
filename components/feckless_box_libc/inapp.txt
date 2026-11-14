@@ -126,6 +126,36 @@ __udivdi3
 __umoddi3
 __divdi3
 __moddi3
+# ---- u-feckless-0041: double libm, newlib's own compiled into the app
+# (newlib_math/). The box's table still answers the 21 for an ELF built
+# before; the six after them were in neither, and now work
+sqrt
+sin
+cos
+tan
+asin
+acos
+atan
+sinh
+asinh
+exp
+log
+log10
+floor
+ceil
+round
+fabs
+atan2
+pow
+fmod
+ldexp
+lround
+copysign
+expm1
+log1p
+scalbn
+finite
+nan
 # ---- from the toolchain's libgcc.a (libgcc_names.txt)
 __ashldi3
 __ashrdi3

@@ -53,8 +53,9 @@
  *
  * Since u-feckless-0036 an app built against feckless_box_libc has its own
  * double arithmetic, integer conversions and bit counts, and imports none
- * of those, and since u-feckless-0038 none of the four 64-bit divisions.
- * They all stay in this table for an ELF built before that. */
+ * of those, since u-feckless-0038 none of the four 64-bit divisions, and
+ * since u-feckless-0041 none of the double libm names. They all stay in
+ * this table for an ELF built before that. */
 
 static double d_of(uint32_t lo, uint32_t hi)
 {

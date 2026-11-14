@@ -1,7 +1,8 @@
 # Host tests for feckless_box_libc: strto* and the vendored printf against
 # the host's libc, the maths (u-feckless-0020) against its libm, and the
-# double arithmetic (u-feckless-0036) against its FPU, and the 64-bit
-# division (u-feckless-0038) against its own.
+# double arithmetic (u-feckless-0036) against its FPU, the 64-bit
+# division (u-feckless-0038) against its own, and the double libm
+# (u-feckless-0041) against the toolchain's.
 #
 #   make -C components/feckless_box_libc/test
 #
@@ -49,14 +50,23 @@ div64_test: div64_test.c ../src/box_div64.c
 	$(CC) -std=gnu11 -O2 -Wall -Wextra -Werror -D'BOX_NAME(n)=box_##n' \
 	      -o $@ div64_test.c ../src/box_div64.c
 
-run: strto_test printf_test math_test fpconv_test softdouble_test div64_test
+# u-feckless-0041. newlib's own sources, built for the host, against the
+# toolchain's libm.a: see newlib_math_test.c for why that can be done here.
+NEWLIB_MATH := ../newlib_math
+NEWLIB_MATH_SRCS := $(wildcard $(NEWLIB_MATH)/math/*.c $(NEWLIB_MATH)/common/*.c)
+newlib_math_test: newlib_math_test.c $(NEWLIB_MATH_SRCS) newlib_shim/machine/ieeefp.h
+	$(CC) -std=gnu11 -O2 -w -ffp-contract=off -fno-builtin -Inewlib_shim -I$(NEWLIB_MATH)/common \
+	      -o $@ newlib_math_test.c $(NEWLIB_MATH_SRCS)
+
+run: strto_test printf_test math_test fpconv_test softdouble_test div64_test newlib_math_test
 	./strto_test
 	./printf_test
 	./math_test
 	./fpconv_test
 	./softdouble_test
 	./div64_test
+	./newlib_math_test
 
 clean:
-	rm -f strto_test printf_test math_test fpconv_test softdouble_test div64_test
+	rm -f strto_test printf_test math_test fpconv_test softdouble_test div64_test newlib_math_test
 .PHONY: all run clean
