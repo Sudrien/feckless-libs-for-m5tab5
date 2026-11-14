@@ -13,6 +13,7 @@
 #pragma once
 
 #include <stddef.h>
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "esp_err.h"
@@ -52,6 +53,15 @@ esp_err_t feckless_umode_load(const uint8_t *image, size_t size,
  * holds interrupts off); the app is then stuck, and unload refuses it. */
 #define FECKLESS_UMODE_STOP_WAIT_MS 3000   /* > the longest a host call may wait */
 feckless_umode_end_t feckless_umode_app_run(feckless_umode_app_t *app);
+
+/* u-feckless-0043: where an address in the loaded app is in its ELF file.
+ * True, with *elf_vaddr the ELF's own virtual address -- what addr2line and
+ * objdump take, against the ELF the build linked before stripping -- when
+ * addr lies in the app's loaded image; false otherwise (the box's heap or
+ * stack, a host address, or no image). For a fault's pc, so a launcher can
+ * log something a build directory can answer. Call it before unload. */
+bool feckless_umode_app_elf_vaddr(const feckless_umode_app_t *app, uintptr_t addr,
+                                  uint32_t *elf_vaddr);
 
 /* u-feckless-0022: the app loaded now, or NULL. One at a time. */
 feckless_umode_app_t *feckless_umode_app_loaded(void);

@@ -622,6 +622,36 @@ static void run_on_task(void *arg)
     vTaskDelete(NULL);
 }
 
+/* u-feckless-0043. The inverse of esp_elf_map_sym(): the loader copies the
+ * ELF's loadable segments into one block, psegment, standing for the ELF's
+ * addresses from svaddr for segment_size bytes. On targets where it maps
+ * sections to bus-address mirrors instead (the ESP32 and S2/S3, which this
+ * component does not run on), each section has its own address. */
+bool feckless_umode_app_elf_vaddr(const feckless_umode_app_t *a, uintptr_t addr,
+                                  uint32_t *elf_vaddr)
+{
+    if (!a || !elf_vaddr) {
+        return false;
+    }
+#if CONFIG_ELF_LOADER_BUS_ADDRESS_MIRROR
+    for (int i = 0; i < ELF_SECS; i++) {
+        const uintptr_t at = a->elf.sec[i].addr;
+        if (at && addr >= at && addr - at < a->elf.sec[i].size) {
+            *elf_vaddr = (uint32_t)(addr - at + a->elf.sec[i].v_addr);
+            return true;
+        }
+    }
+    return false;
+#else
+    const uintptr_t at = (uintptr_t)a->elf.psegment;
+    if (!at || addr < at || addr - at >= a->elf.segment_size) {
+        return false;
+    }
+    *elf_vaddr = (uint32_t)(addr - at + a->elf.svaddr);
+    return true;
+#endif
+}
+
 feckless_umode_end_t feckless_umode_app_run_on(feckless_umode_app_t *a, int core)
 {
     run_on_t r = { .app = a, .done = xSemaphoreCreateBinary() };

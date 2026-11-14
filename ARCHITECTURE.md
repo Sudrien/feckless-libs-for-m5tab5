@@ -3510,3 +3510,30 @@ which saves and reloads `tp` as the ecall path does; not run.
 
 *What to look for:* boxwin's `double maths: hash d01dbf09, newlib's`
 line and the rest of its run, with Avoidant built against this.
+
+### u-feckless-0043 -- where a fault is in the app's ELF
+
+`feckless_umode_app_elf_vaddr(app, addr, &vaddr)`: for an address in the
+loaded app's image, the ELF's own virtual address, which `addr2line` and
+`objdump` take against the ELF the build linked before stripping. False
+for anything else -- the box's heap or stack, a host address.
+
+It is `esp_elf_map_sym()` turned round: on the P4 the loader copies the
+loadable segments into one block, `psegment`, standing for the ELF's
+addresses from `svaddr` for `segment_size` bytes. The bus-address-mirror
+branch (ESP32, S2, S3) is there for completeness and unused here.
+
+Why: a fault's `pc` is a box address that differs from load to load, and
+Avoidant showed it on its panel only. The PIE fault (0034) and the errno
+fault (0042) each cost a round of asking for that line and a guess at
+what was there. With this a launcher can log the offset, and the build
+directory answers the rest (u-avoidant-0003).
+
+*Checked, on a host:* the function compiled against elf_loader 2.1.0's
+`esp_elf_t`, as 64-bit and as 32-bit code under ASan and UBSan, with an
+image block: for every 37th byte the loader's own forward mapping gives,
+this gives the ELF address back; one byte before and after the block, a
+NULL block and a NULL app give false; the last byte gives the last
+address.
+
+*Not checked:* in an ESP-IDF build; on a board.
