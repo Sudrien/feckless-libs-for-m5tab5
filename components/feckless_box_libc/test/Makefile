@@ -1,6 +1,7 @@
 # Host tests for feckless_box_libc: strto* and the vendored printf against
 # the host's libc, the maths (u-feckless-0020) against its libm, and the
-# double arithmetic (u-feckless-0036) against its FPU.
+# double arithmetic (u-feckless-0036) against its FPU, and the 64-bit
+# division (u-feckless-0038) against its own.
 #
 #   make -C components/feckless_box_libc/test
 #
@@ -41,13 +42,20 @@ softdouble_test: softdouble_test.c ../src/box_softdouble.c
 	$(CC) -std=gnu11 -O2 -Wall -Wextra -Werror -ffp-contract=off -fno-builtin \
 	      -D'BOX_NAME(n)=box_##n' -o $@ softdouble_test.c ../src/box_softdouble.c
 
-run: strto_test printf_test math_test fpconv_test softdouble_test
+# u-feckless-0038. Against the host's 64-bit division; 237 million checks,
+# so -O2 like softdouble_test, and the same reason sanitizers add little.
+div64_test: div64_test.c ../src/box_div64.c
+	$(CC) -std=gnu11 -O2 -Wall -Wextra -Werror -D'BOX_NAME(n)=box_##n' \
+	      -o $@ div64_test.c ../src/box_div64.c
+
+run: strto_test printf_test math_test fpconv_test softdouble_test div64_test
 	./strto_test
 	./printf_test
 	./math_test
 	./fpconv_test
 	./softdouble_test
+	./div64_test
 
 clean:
-	rm -f strto_test printf_test math_test fpconv_test softdouble_test
+	rm -f strto_test printf_test math_test fpconv_test softdouble_test div64_test
 .PHONY: all run clean

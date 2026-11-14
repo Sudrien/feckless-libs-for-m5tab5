@@ -120,6 +120,12 @@ __floatundidf
 __clzsi2
 __ctzsi2
 __clzdi2
+# ---- u-feckless-0038: 64-bit integer division (src/box_div64.c), for the
+# same reason and with the same arrangement
+__udivdi3
+__umoddi3
+__divdi3
+__moddi3
 # ---- from the toolchain's libgcc.a (libgcc_names.txt)
 __ashldi3
 __ashrdi3

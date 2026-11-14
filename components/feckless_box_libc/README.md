@@ -83,7 +83,12 @@ it (`cmake/boxcheck.cmake`):
   single precision, so each double operation is a call; these were host
   calls, a trap an operation, and are now in the app. IEEE 754, round to
   nearest even, the canonical NaN. The double libm names (`sqrt`, `sin`,
-  `exp`, ...) and the four 64-bit divisions are still host calls.
+  `exp`, ...) are still host calls.
+
+- **64-bit integer division** (u-feckless-0038, `src/box_div64.c`):
+  `__udivdi3`, `__umoddi3`, `__divdi3`, `__moddi3`, which is `/` and `%` on
+  an `int64_t` or `uint64_t`. Also host calls until then. A divisor under
+  65536 (microseconds by 1000) takes four hardware divides.
 
 Not here, so not usable in a box yet: `sscanf`, `strtod`, `strtof`, `atof`,
 `strftime`, `rand` (picolibc's are not position-independent).
@@ -97,4 +102,5 @@ against the host's `snprintf`, the float conversions bit for bit against
 the host's (9 million), the maths against the host's libm (the worst
 error of each function over a sweep, and the special values), the double
 arithmetic bit for bit against the host's FPU (190 million, about a
-quarter of a minute).
+quarter of a minute), the 64-bit division against the host's (237 million,
+a few seconds).

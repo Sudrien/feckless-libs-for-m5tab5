@@ -3228,3 +3228,87 @@ them and the double libm calls, which are still host calls.
 
 Lothesome, whose meter was the other cost named in 0036, has not been
 rebuilt against this.
+
+### u-feckless-0038 -- 64-bit integer division in the app
+
+The last of libgcc's arithmetic that was a host call for a boxed app. RV32
+has no instruction that divides a 64-bit integer, so `/` and `%` on one
+are `__udivdi3`, `__umoddi3`, `__divdi3` and `__moddi3`; libgcc's reach
+`__clz_tab` absolutely (0005) and the box answered them, a trap a
+division. A program that keeps time in microseconds divides by 1000
+wherever it wants milliseconds, and Defeatist's `dsd_next()` divides a
+64-bit position once a block.
+
+`src/box_div64.c`, this component's own, three ways by the divisor:
+
+- dividend and divisor both in 32 bits: one hardware divide;
+- a divisor under 65536, which `/ 1000` is: long division in 16-bit
+  digits, four hardware divides at most, each of a number that fits in 32
+  bits because the remainder carried in is under the divisor;
+- anything else: shift and subtract, a bit a step, for as many bits as the
+  dividend is longer than the divisor.
+
+Signed division is on the magnitudes, truncating toward zero, the
+remainder with the dividend's sign. What C leaves undefined is defined as
+the P4's own divide instructions define it: by zero, a quotient of all
+ones (-1 signed) and the dividend as the remainder; the most negative
+number by -1, itself and 0.
+
+The four names are in `inapp.txt`; `feckless_box_calls`' table keeps them
+for an ELF built before. With 0036 this leaves the double libm names as
+the only arithmetic that traps.
+
+*Checked, on a host:* `make -C components/feckless_box_libc/test`.
+`div64_test` compares all four with the host's own division and, for the
+unsigned pair, checks n == q * d + r with r < d besides: every pair of 41
+edge values, then six million rounds of random dividends and divisors of
+every length against each other, negated, against the edges, with 16-bit
+divisors, exact multiples, and quotients of 0 and 1; and the undefined
+cases against what this file says they are. 237,049,214 checks, none
+differing, also under ASan and UBSan. Seven breaks were tried. Five fail
+it, by between 7 and 62 million checks: the alignment one bit short, the
+wrong digit in the 16-bit way, the remainder's sign taken from the
+quotient's rule, n == d treated as n < d, the last subtraction step
+dropped. Two change nothing and are not faults in the test: a divisor of
+exactly 65536 sent the 16-bit way still fits (the remainder is under
+65536 either way), and the 32-bit short cut removed leaves the other two
+ways, which are right for those values too.
+
+*Checked, with the board build's toolchain:* compiled at -O0, -Og, -Os,
+-O2 and -O3, with and without -fPIC, -ffunction-sections, -Wall -Wextra
+-Werror. No undefined symbol but `__ashldi3` at -Os, which is in the app
+from libgcc. **No relocation against any of the four names** in the
+object, which is the check that the file does not divide a 64-bit value
+itself: on a host that would pass every test and on the P4 it would call
+itself for ever. Its only calls are to its own `udivmod`. A
+position-independent object that divides and takes remainders, signed and
+unsigned, linked `-shared -z text --no-undefined` with this file: nothing
+left undefined.
+
+*Checked, on emulated RISC-V, this file and 0036's together:* a
+freestanding harness built with the board build's compiler (`rv32imafc`,
+-O2) and run under qemu-riscv32 8.2.2. With both files compiled under
+other names beside libgcc's own routines, it calls each pair on the same
+operands and requires the same bits: every pair of 20 double edge values
+and 300,000 rounds of random, close-exponent, subnormal and
+few-significant-bit doubles through add, subtract, multiply and divide;
+the four conversions from an integer; the four divisions, and by 16-bit
+divisors; the three bit counts. 9,563,929 comparisons, none differing --
+NaNs included, since on RISC-V libgcc returns the canonical one too. So
+what 0036 could only say of a host is now also true where the code runs
+as RISC-V instructions, called by compiler-generated code with a double
+in a pair of integer registers. Then, with these files as the routines
+themselves and libgcc's members for those names out of the link,
+Defeatist's `bw_arith()` (u-defeatist-0010) gave the hashes a host's FPU
+gives. The harness is not in this patch. An emulator is not the P4, and
+its build had neither `xesploop` nor `xespv`.
+
+*Not checked:* an ESP-IDF build; `boxcheck`; a board. How long a division
+takes there, either way.
+
+*What to look for:* an app rebuilt against this imports none of the four
+(`boxcheck` fails if it does), and Avoidant's `ended ... N calls` falls by
+the divisions it made. Defeatist's boxwin from u-defeatist-0010 on prints
+the time of a 64-bit division and a hash of a few hundred thousand
+results that must be the host's: built against 0037 that is the trap's
+time, built against this the division's.
