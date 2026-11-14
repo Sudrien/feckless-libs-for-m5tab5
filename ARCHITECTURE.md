@@ -3537,3 +3537,15 @@ NULL block and a NULL app give false; the last byte gives the last
 address.
 
 *Not checked:* in an ESP-IDF build; on a board.
+
+### u-feckless-0044 -- 0041 and 0042 on a board
+
+Defeatist's boxwin, built against 0041 to 0043, ran to the end on a Tab5
+(ESP32-P4 v1.3). Its maths line hashes to d01dbf09, the value of the
+toolchain's newlib libm, so 0041's libm in the app gives what the host
+calls gave. Times per call: sqrt 2377 ns, sin 11161, exp 6032, log
+5490, pow 15558.
+
+Without 0042 the same build hit a store access fault at 0x4ff6feb0, in
+the first `errno` write; with it there is none. 0043 has not been seen
+on a board, as nothing faulted.
