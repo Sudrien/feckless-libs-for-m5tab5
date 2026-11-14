@@ -3374,3 +3374,21 @@ equal in cost, and a hardware divide and the high multiplies are not.
 *What to look for:* boxwin rebuilt against this, `a divide N ns` near
 1000 and not 3211, both arithmetic hashes still the host's, and the DSD
 `set-up` figures lower than 58, 106 and 153 ms.
+
+### u-feckless-0040 -- 0039 on a board
+
+Documentation only. Defeatist's boxwin rebuilt against 0039 and run from
+Avoidant's `umode` branch on a Tab5:
+
+    boxwin: double arithmetic: hash 1beec1c3, the host's; an add 356 ns, a multiply 279 ns, a divide 886 ns, from a 64-bit integer 219 ns
+
+A double divide is 886 ns where 0036's took 3,211: 3.6 times faster, and
+better than the 1 microsecond 0039 estimated from instruction counts.
+The arithmetic hash is the host's, so some 8,000 divides of every kind of
+operand gave the bits a real FPU gives, on the P4. The add, multiply and
+conversion times did not move. That program's DSD filter design, which
+divides once a term, now takes 42, 78 and 114 ms in a box: it took 220,
+410 and 600 with its arithmetic as host calls.
+
+What is left of those set-up times is mostly the double libm functions
+(`sin`, `sqrt`, ...), which are still host calls (0025).
