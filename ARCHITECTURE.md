@@ -3459,3 +3459,54 @@ the files is unrun); `boxcheck`; a board; how much faster.
 third arithmetic line, a hash of these functions that must be the
 toolchain's, and their times. Built against 0040 they are host calls',
 built against this the routines', and the hash is the same either way.
+
+### u-feckless-0042 -- a window gets its own tp, so errno is the box's
+
+**On a board.** Defeatist's boxwin, built with 0041 and its own
+u-defeatist-0013, ended 2 ms into its new maths check, before its first
+result, with `ended (reason 1), 34 calls`. Avoidant's panel said:
+
+    The app stopped: store access fault at 0x48570be (0x4ff6feb0)
+
+(the pc as read off the panel, a digit short). 0x4ff6feb0 is internal
+RAM, nowhere near the box in PSRAM, and in the range the launcher's own
+task stacks and thread areas are in.
+
+**Why.** 0023 gave every thread of a boxed app an errno block in the box
+and set `ctx.x[4]`, the thread's `tp`, to it; feckless_box_libc's
+`__errno()` returns `tp`. But `feckless_umode_enter` never loaded `tp`
+from the context: since 2f7ff30 it has left the user the kernel's `gp`
+and `tp` alike, "so that gp-relative addressing and IDF's per-core tp
+both work in U-mode". So in a window `tp` was the host task's, and
+`__errno()` handed the program a pointer into the launcher's memory.
+
+Nothing found out, because no boxed program had stored an errno: every
+function that sets one -- libm above all -- was a host call, which sets
+the launcher's. 0041 put newlib's maths in the app, and the check's first
+`sqrt` of a negative argument stored `EDOM` through it. The PMP refused
+the store, as it should. (A program that only read errno got a word of
+the launcher's, also refused; boxwin reads none.)
+
+**Fixed.** `feckless_umode_enter` loads `tp` from `ctx.x[4]` with the
+other user registers. `gp` is still the kernel's. Nothing on the trap
+path reads `tp` before `.Lkresume` reloads the kernel's from the kernel
+frame, and the trap entry already saved the user's into `ctx.x[4]`, so a
+thread's `tp` survives host calls and windows on any core. An app that
+uses no errno is unaffected; no boxed app reaches IDF code that wants
+the kernel's `tp`, since everything of IDF's is behind an ecall.
+
+**This is the launcher's code**, not the app's: Avoidant has to be built
+against it. boxwin's ELF needs no rebuild.
+
+*Checked:* `umode.S` assembled with the board build's toolchain against
+ESP-IDF 6.1's P4 headers; the new `lw tp, 16(a0)` is the load of
+`ctx.x[4]`, in the run of user-register loads before `mret`.
+`make -C components/feckless_umode/test` passes (it scripts the run loop
+and does not assemble this file).
+
+*Not checked:* a board. With `CONFIG_FECKLESS_UMODE_PREEMPTIBLE`, an
+interrupt taken in a window enters through this component's own vector,
+which saves and reloads `tp` as the ecall path does; not run.
+
+*What to look for:* boxwin's `double maths: hash d01dbf09, newlib's`
+line and the rest of its run, with Avoidant built against this.

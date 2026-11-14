@@ -421,14 +421,25 @@ feckless_umode_enter:
   ori   t0, t0, FUMODE_MSTATUS_MPIE
   csrw  mstatus, t0
 
-  /* The user's registers.  gp and tp are deliberately NOT loaded: the user
-   * inherits the kernel's, so that gp-relative addressing and IDF's per-core
-   * tp both work in U-mode.  They are saved on the kernel frame above and
-   * restored on the way out, so a user that clobbers them cannot hurt us.
+  /* The user's registers.  gp is deliberately NOT loaded: the user inherits
+   * the kernel's, so that gp-relative addressing works in U-mode.  It is
+   * saved on the kernel frame above and restored on the way out, so a user
+   * that clobbers it cannot hurt us.
+   *
+   * tp IS loaded (u-feckless-0042).  It is the thread's errno block in the
+   * box (0023: feckless_box_libc's __errno() returns tp), set in ctx.x[4] by
+   * the loader for app_main and for each thread.  Until 0042 it was left
+   * the kernel's, like gp, so __errno() returned the host task's tp and the
+   * first errno a boxed program stored was a store outside its box: a store
+   * access fault at an internal-RAM address.  No program stored one before
+   * 0041 put newlib's maths in the app.  Nothing on the trap path below
+   * reads tp before the kernel's is reloaded from KF_TP, and the user's is
+   * saved into ctx.x[4] on the way out as before.
    *
    * sp and a0 come last -- a0 is the base register for all of this.
    */
 
+  lw    tp,  FUMODE_CTX_X(4)(a0)
   lw    ra,  FUMODE_CTX_X(1)(a0)
   lw    t2,  FUMODE_CTX_X(7)(a0)
   lw    s0,  FUMODE_CTX_X(8)(a0)
