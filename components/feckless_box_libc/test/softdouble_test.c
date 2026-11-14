@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <string.h>
 
+void box_div_fix(void);
 double box___adddf3(double, double);
 double box___subdf3(double, double);
 double box___muldf3(double, double);
@@ -29,6 +30,11 @@ int box___ctzsi2(uint32_t);
 int box___clzdi2(uint64_t);
 
 static uint64_t checks, failures;
+
+/* u-feckless-0039: corrections the division needed after its reciprocal,
+ * the most in one call. Built with -DBOX_DIV_FIX='box_div_fix()'. */
+static unsigned fix_now, fix_max;
+void box_div_fix(void) { fix_now++; }
 
 static uint64_t bits(double d) { uint64_t u; memcpy(&u, &d, 8); return u; }
 static double from(uint64_t u) { double d; memcpy(&d, &u, 8); return d; }
@@ -53,7 +59,9 @@ static void pair(uint64_t a, uint64_t b)
     same("add", a, b, box___adddf3(x, y), x + y);
     same("sub", a, b, box___subdf3(x, y), x - y);
     same("mul", a, b, box___muldf3(x, y), x * y);
+    fix_now = 0;
     same("div", a, b, box___divdf3(x, y), x / y);
+    if (fix_now > fix_max) fix_max = fix_now;
 }
 
 static uint64_t rng = 0x9e3779b97f4a7c15ull;
@@ -188,6 +196,15 @@ int main(void)
         printf("FAIL zero does not say the width\n");
     }
 
+    /* The reciprocal is to within two of the quotient (box_softdouble.c,
+     * div_q55); a third correction would mean the bound is wrong, even if
+     * every result came out right by the remainder. */
+    checks++;
+    if (fix_max > 2) {
+        failures++;
+        printf("FAIL the division needed %u corrections after its reciprocal; it should need 2 at most\n", fix_max);
+    }
+    printf("softdouble: the division needed %u corrections at most\n", fix_max);
     printf(failures ? "softdouble: %" PRIu64 " checks, %" PRIu64 " FAILED\n"
                     : "softdouble: %" PRIu64 " checks, all the host's bits\n", checks, failures);
     return failures != 0;

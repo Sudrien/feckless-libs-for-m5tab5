@@ -3312,3 +3312,65 @@ the divisions it made. Defeatist's boxwin from u-defeatist-0010 on prints
 the time of a 64-bit division and a hash of a few hundred thousand
 results that must be the host's: built against 0037 that is the trap's
 time, built against this the division's.
+
+### u-feckless-0039 -- double division by a reciprocal
+
+0036's `__divdf3` took the quotient a bit a step: 54 rounds of shift,
+compare and subtract. On the P4, timed in a box by Defeatist's boxwin
+(u-defeatist-0011), that was 3,211 ns a divide against 280 ns a multiply
+and 356 ns an add, and it was most of what is left of the DSD filter
+design (58, 106 and 153 ms), whose Bessel series divides once a term.
+
+**Now.** Mantissas normalised as before, the dividend made at least the
+divisor; then, for `d = mb << 11` in (2^63, 2^64):
+
+- a seed for `y = 2^127 / d` from `d`'s top 16 bits plus one, by one
+  32-bit hardware divide (`divu`, an instruction, not a call);
+- two Newton steps, `y += y (2^127 - d y) / 2^127`, in 64-bit fixed
+  point from 32-bit multiplies: about 15, 30, then 60 bits;
+- the quotient `q = ma y / 2^62`, one multiply;
+- the exact remainder `ma 2^54 - q mb`, modulo 2^64, which is enough
+  because the true value is within a few divisors of zero; and `q` moved by
+  one while it is negative or not less than `mb`.
+
+Every `y` is below the true reciprocal -- the seed by construction, a
+Newton step from below stays below, truncation only lowers it -- so the
+error term is never negative and `y` never reaches 2^64. The result does
+not rest on that bound: the remainder makes it right whatever the
+reciprocal's error. The bound decides only how many times `q` moves.
+A divisor that is a power of two is still done by a shift.
+
+*Checked, on a host:* `softdouble_test` as in 0036, 190,034,156 checks,
+every one the host's bits, under ASan and UBSan as well. It now also
+counts the corrections each division needs after its reciprocal and fails
+on more than two. **The most any division needed was one.** Eight breaks
+were tried. Five fail it: one Newton step instead of two; the upward
+correction removed; the cross terms of the low multiply dropped; the
+128-bit multiply's middle carry dropped; the seed taken without the plus
+one. The other three do not, and none is a fault in the test. The
+power-of-two shortcut removed changes nothing, because the reciprocal
+path converges below 2^64 for that divisor too. Dropping the low bit of
+the error term, or the borrow between its halves, moves `y` by a unit or
+two in 2^64; that is far inside what the correction absorbs, and no
+division needed a second correction.
+
+*Checked, on emulated RISC-V:* compiled with the board build's compiler
+and run under qemu-riscv32 against libgcc's own `__divdf3`, with 0036's
+and 0038's other routines, as before: 9,563,929 comparisons, none
+differing. Then `bw_arith()`: both hashes the host's. Counted under the
+emulator, one executed instruction at a time, on doubles near one: a
+divide is 444 instructions a call where it was 1,101, loop included,
+against 235 for a multiply and 263 for an add measured the same way.
+
+*Checked, with the board build's toolchain:* -O0 to -O3, -fPIC, -Wall
+-Wextra -Werror: undefined symbols only `__ashldi3` and `__lshrdi3`, in
+the app from libgcc as before.
+
+*Not checked:* an ESP-IDF build; a board. From the counts and boxwin's
+0011 times, a divide should cost about 1 microsecond on the P4, a third
+of what it did. That is an estimate: it takes the P4's instructions as
+equal in cost, and a hardware divide and the high multiplies are not.
+
+*What to look for:* boxwin rebuilt against this, `a divide N ns` near
+1000 and not 3211, both arithmetic hashes still the host's, and the DSD
+`set-up` figures lower than 58, 106 and 153 ms.

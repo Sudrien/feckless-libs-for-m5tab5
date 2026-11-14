@@ -82,7 +82,8 @@ it (`cmake/boxcheck.cmake`):
   and the bit counts (`__clzsi2`, `__ctzsi2`, `__clzdi2`). The P4's FPU is
   single precision, so each double operation is a call; these were host
   calls, a trap an operation, and are now in the app. IEEE 754, round to
-  nearest even, the canonical NaN. The double libm names (`sqrt`, `sin`,
+  nearest even, the canonical NaN. Division is by a reciprocal and an
+  exact remainder (u-feckless-0039). The double libm names (`sqrt`, `sin`,
   `exp`, ...) are still host calls.
 
 - **64-bit integer division** (u-feckless-0038, `src/box_div64.c`):

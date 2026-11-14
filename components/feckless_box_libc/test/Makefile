@@ -40,7 +40,8 @@ fpconv_test: fpconv_test.c ../src/box_fpconv.c
 # with no pointer in it.
 softdouble_test: softdouble_test.c ../src/box_softdouble.c
 	$(CC) -std=gnu11 -O2 -Wall -Wextra -Werror -ffp-contract=off -fno-builtin \
-	      -D'BOX_NAME(n)=box_##n' -o $@ softdouble_test.c ../src/box_softdouble.c
+	      -D'BOX_NAME(n)=box_##n' -D'BOX_DIV_FIX()=box_div_fix()' \
+	      -o $@ softdouble_test.c ../src/box_softdouble.c
 
 # u-feckless-0038. Against the host's 64-bit division; 237 million checks,
 # so -O2 like softdouble_test, and the same reason sanitizers add little.

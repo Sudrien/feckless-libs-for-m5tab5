@@ -22,8 +22,8 @@
  *
  * NOTHING IN THIS FILE MAY USE A DOUBLE OPERATOR, divide a 64-bit integer,
  * or count bits with a builtin: each of those is a call to a function this
- * file is there to provide, or to one that is still a host call
- * (__udivdi3). The doubles are handled as their bits. The build's check is
+ * file is there to provide, or to one that is still a host call. The
+ * doubles are handled as their bits. The build's check is
  * that the object has no undefined symbol (ARCHITECTURE.md, 0036).
  *
  * test/softdouble_test.c runs every function against the host's own double
@@ -228,6 +228,73 @@ double BOX_NAME(__muldf3)(double x, double y)
 
 /* ---- divide -------------------------------------------------------------- */
 
+/* A hook for test/softdouble_test.c, which counts the corrections below to
+ * hold the reciprocal to its bound; nothing in an app. */
+#ifdef BOX_DIV_FIX
+void box_div_fix(void);
+#else
+#define BOX_DIV_FIX() ((void)0)
+#endif
+
+/* a * b, all 128 bits, from 32-bit halves: a 64 x 64 multiply would be a
+ * call of its own on RV32. */
+static inline void mul_128(u64 a, u64 b, u64 *hi, u64 *lo)
+{
+    const u32 a0 = (u32)a, a1 = (u32)(a >> 32), b0 = (u32)b, b1 = (u32)(b >> 32);
+    const u64 p00 = (u64)a0 * b0, p01 = (u64)a0 * b1, p10 = (u64)a1 * b0, p11 = (u64)a1 * b1;
+    const u64 mid = p01 + p10;
+    const u64 mid_carry = mid < p01;
+    const u64 l = p00 + (mid << 32);
+    *lo = l;
+    *hi = p11 + (mid >> 32) + (mid_carry << 32) + (l < p00);
+}
+
+static inline u64 mul_hi(u64 a, u64 b)
+{
+    u64 hi, lo;
+    mul_128(a, b, &hi, &lo);
+    return hi;
+}
+
+/* The low 64 bits of a * b. */
+static inline u64 mul_lo(u64 a, u64 b)
+{
+    const u32 a0 = (u32)a, a1 = (u32)(a >> 32), b0 = (u32)b, b1 = (u32)(b >> 32);
+    return (u64)a0 * b0 + ((u64)(a0 * b1 + a1 * b0) << 32);    /* the cross terms wrap: wanted */
+}
+
+/*
+ * floor(ma * 2^54 / mb) give or take two, for 53-bit mb with its leading 1
+ * at bit 52 and not a power of two, and mb <= ma < 2 mb.
+ *
+ * d = mb << 11 is in (2^63, 2^64), and y approximates 2^127 / d, which is
+ * then under 2^64. Every y here is below it: the seed is taken from d's top
+ * 16 bits plus one, a Newton step from below stays below (y (2 - d y) is at
+ * most 1/d), and each truncation only lowers it. So d * y < 2^127 always and
+ * the error term below is never negative.
+ *
+ * The seed is good to about 2^-15, one step to 2^-30, two to 2^-60 and a
+ * few units of truncation. The quotient ma * 2^65 / d = ma * y / 2^62 then
+ * comes out low by under two; the remainder in __divdf3 fixes that.
+ */
+static inline u64 div_q55(u64 ma, u64 mb)
+{
+    const u64 d = mb << 11;
+    const u32 dh = (u32)(d >> 48);                           /* [2^15, 2^16) */
+    u64 y = (u64)(0xffffffffu / (dh + 1)) << 47;            /* a 32-bit divide: an instruction */
+    for (int k = 0; k < 2; k++) {
+        u64 ph, pl;
+        mul_128(d, y, &ph, &pl);
+        /* e = 2^127 - d y, which is under 2^112 after the seed; its top
+         * bits, e >> 63, under 2^49. */
+        const u64 el = 0ull - pl;
+        const u64 eh = 0x8000000000000000ull - ph - (pl != 0);
+        const u64 e63 = (eh << 1) | (el >> 63);
+        y += mul_hi(y, e63);                                /* y e / 2^127 */
+    }
+    return mul_hi(ma << 2, y);                               /* ma y / 2^62 */
+}
+
 double BOX_NAME(__divdf3)(double x, double y)
 {
     const u64 a = bits(x), b = bits(y);
@@ -255,24 +322,41 @@ double BOX_NAME(__divdf3)(double x, double y)
     mb |= HIDDEN;
 
     /* Make the dividend at least the divisor, so the quotient is in [1, 2)
-     * and its first bit is known; then one bit a step, by subtraction. 55
-     * bits are wanted -- the 53 kept, one to round on and one more so that
-     * the rest can be jammed -- which puts the leading 1 at bit 54. The
-     * remainder stays under the divisor, under 2^53, so it can be doubled
-     * in 64 bits. (No 64-bit divide: that is __udivdi3, a host call.) */
+     * and its leading bit is known. 55 bits of quotient are wanted -- the 53
+     * kept, one to round on and one more so that the rest can be jammed --
+     * q = floor(ma * 2^54 / mb), with its leading 1 at bit 54.
+     *
+     * u-feckless-0039: by a reciprocal, not a bit a step. 0036 took 54
+     * steps of shift, compare and subtract, 3.2 us on the P4 against 0.3 us
+     * for a multiply (u-defeatist-0011). Now: the divisor's reciprocal to
+     * about 60 bits from one 32-bit hardware divide and two Newton steps,
+     * the quotient from one multiply by it, and then the exact remainder,
+     * which puts right the last bit or two whatever the reciprocal's error
+     * -- so the result is correct by the remainder, not by the bound. */
     int e = ea - eb + 0x3fe;
     if (ma < mb) {
         ma <<= 1;
         e--;
     }
-    u64 rem = ma - mb;
-    u64 q = 1;
-    for (int i = 0; i < 54; i++) {
-        rem <<= 1;
-        q <<= 1;
-        if (rem >= mb) {
+    u64 q, rem;
+    if (mb == HIDDEN) {
+        q = ma << 2;                            /* a power of two: exact */
+        rem = 0;
+    } else {
+        q = div_q55(ma, mb);
+        /* ma * 2^54 - q * mb, modulo 2^64: the true value is within a few
+         * divisors of zero, under 2^56, so modulo 2^64 is enough and the
+         * sign is the top bit. */
+        rem = (ma << 54) - mul_lo(q, mb);
+        while ((int64_t)rem < 0) {
+            q--;
+            rem += mb;
+            BOX_DIV_FIX();
+        }
+        while (rem >= mb) {
+            q++;
             rem -= mb;
-            q |= 1;
+            BOX_DIV_FIX();
         }
     }
     /* Up to bit 62, and what is left of the dividend as the jam bit. */
