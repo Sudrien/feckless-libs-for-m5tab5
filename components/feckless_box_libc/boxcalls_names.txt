@@ -88,6 +88,8 @@ gfx_fill_circle
 gfx_blit
 gfx_draw_text
 gfx_text_w
+gfx_draw_text_style
+gfx_text_w_style
 gfx_wrap_line
 gfx_draw_para
 gfx_fb

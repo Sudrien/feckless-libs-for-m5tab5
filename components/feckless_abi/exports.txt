@@ -57,6 +57,7 @@ gfx_draw_pct_centred
 gfx_draw_spinner
 gfx_draw_text
 gfx_draw_text_clipped
+gfx_draw_text_style
 gfx_draw_text_tail
 gfx_draw_time
 gfx_draw_time_dashes
@@ -78,6 +79,7 @@ gfx_set_filter
 gfx_set_rotation
 gfx_text_rtl
 gfx_text_w
+gfx_text_w_style
 gfx_time_text
 gfx_time_text_w
 gfx_w

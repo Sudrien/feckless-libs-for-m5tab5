@@ -445,6 +445,23 @@ H(c_gfx_text_w)
     *ret = s ? (uint32_t)gfx_text_w(s, (int)a[1]) : 0;
     return true;
 }
+/* u-feckless-0051: styled text (9006, 9008), as Jinxed Writer draws its
+ * markdown: (x, y, s, scale, max_w, colour, style), seven arguments. */
+H(c_gfx_draw_text_style)
+{
+    const char *s = str(w, a[2], FECKLESS_BOX_STR_MAX);
+    if (s) {
+        gfx_draw_text_style((int)a[0], (int)a[1], s, (int)a[3], (int)a[4], (uint16_t)a[5], (unsigned)a[6]);
+    }
+    *ret = 0;
+    return true;
+}
+H(c_gfx_text_w_style)
+{
+    const char *s = str(w, a[0], FECKLESS_BOX_STR_MAX);
+    *ret = s ? (uint32_t)gfx_text_w_style(s, (int)a[1], (unsigned)a[2]) : 0;
+    return true;
+}
 H(c_gfx_wrap_line)
 {
     const char *s = str(w, a[0], FECKLESS_BOX_STR_MAX);
@@ -629,6 +646,7 @@ static const feckless_umode_call_t s_own[] = {
     DATA(ark12_ckpt, sizeof ark12_ckpt), DATA(ark12_litbase, sizeof ark12_litbase),
     DATA(ark12_lit, ARK12_LIT_BYTES), DATA(ark12_tiles, ARK12_TILES * 3u),
     FN(gfx_fill_rect), FN(gfx_fill_circle), FNU(gfx_blit),   /* u-feckless-0032: gfx has its own lock */ FN(gfx_draw_text), FN(gfx_text_w),
+    FN(gfx_draw_text_style), FN(gfx_text_w_style),   /* u-feckless-0051 */
     FN(gfx_wrap_line), FN(gfx_draw_para),
     /* u-feckless-0030: unlocked -- they read gfx's state, and gfx_fb's one
      * write (s_fb_granted) is the same value from either thread. An app

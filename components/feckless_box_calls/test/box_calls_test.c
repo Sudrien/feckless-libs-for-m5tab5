@@ -249,6 +249,16 @@ static void test_gfx(void)
     CHECK(calls == 0);                                              /* not drawn */
     CHECK(C2("gfx_text_w", P(s), 2) == 9 * 12);
     CHECK(C2("gfx_text_w", P(&box), 2) == 0);
+    /* u-feckless-0051: styled, the style in a6 */
+    call("gfx_draw_text_style", 5, 6, P(s), 3, 400, 0x07e0, 0x5, 0);
+    CHECK(!strcmp(last_fn, "gfx_draw_text_style") && !strcmp(last_str, "two words"));
+    CHECK(last_i[0] == 5 && last_i[1] == 6 && last_i[2] == 3 && last_i[3] == 400 && last_i[4] == 0x07e0 && last_i[5] == 0x5);
+    calls = 0;
+    call("gfx_draw_text_style", 5, 6, P(&box), 3, 400, 0x07e0, 0x5, 0);
+    CHECK(calls == 0);
+    CHECK(C4("gfx_text_w_style", P(s), 2, 0x2, 0) == 9 * 14 && last_i[1] == 0x2);
+    CHECK(C4("gfx_text_w_style", P(s), 2, 0x1, 0) == 9 * 12);
+    CHECK(C4("gfx_text_w_style", P(&box), 2, 0x2, 0) == 0);
     uint32_t *next = (uint32_t *)(uintptr_t)feckless_box_alloc(&box, 4);
     CHECK(C4("gfx_wrap_line", P(s), 2, 300, P(next)) == 3 && *next == P(s) + 4);
     CHECK(C4("gfx_wrap_line", P(s), 2, 300, 0) == 3);

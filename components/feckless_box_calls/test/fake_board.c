@@ -59,6 +59,8 @@ void gfx_fill_rect(int x, int y, int w, int h, uint16_t c) { rec("gfx_fill_rect"
 void gfx_fill_circle(int x, int y, int r, uint16_t c) { rec("gfx_fill_circle", NULL, 4, x, y, r, (int)c); }
 void gfx_draw_text(int x, int y, const char *s, int sc, int mw, uint16_t c) { rec("gfx_draw_text", s, 5, x, y, sc, mw, (int)c); }
 int gfx_text_w(const char *s, int sc) { rec("gfx_text_w", s, 1, sc); return (int)strlen(s) * 6 * sc; }
+void gfx_draw_text_style(int x, int y, const char *s, int sc, int mw, uint16_t c, unsigned st) { rec("gfx_draw_text_style", s, 6, x, y, sc, mw, (int)c, (int)st); }
+int gfx_text_w_style(const char *s, int sc, unsigned st) { rec("gfx_text_w_style", s, 2, sc, (int)st); return (int)strlen(s) * (st & 2 ? 7 : 6) * sc; }
 size_t gfx_wrap_line(const char *s, int sc, int mw, const char **next)
 {
     rec("gfx_wrap_line", s, 2, sc, mw);

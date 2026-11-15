@@ -3879,3 +3879,34 @@ wrong offset; the new test's pattern does not repeat.)
 *Not checked:* compiled for the P4, since there is no riscv32-esp-elf
 toolchain in this session; only the host's gcc, with `-Werror`, built
 it, and the no-fast-seek build. An ESP-IDF build; a board.
+
+### u-feckless-0051 -- styled text in the ABI and in a box
+
+`gfx_draw_text_style()` and `gfx_text_w_style()` (9006, 9008: bold, heavy
+and italic, for Jinxed Writer's markdown) have been in
+feckless_graphics_handler's public header since v0.9.5. They were not in
+`exports.txt`, whose drivers-and-graphics section is meant to be the two
+libraries' whole public API, pasted from `tools/feckless_exports.py`. That
+section has not been regenerated since 9006 was written.
+
+- **`exports.txt`**: the two names, in their sorted places. This is a
+  compatible addition. A trusted launcher's generated table now has
+  them too, from the same library.
+- **feckless_box_calls**: both answered. The string is checked to 64 KB
+  in the box, as `gfx_draw_text`'s is. The style is the seventh argument,
+  in a6, so no eighth is needed.
+
+Only these two. Whether the section lacks other names added since
+v0.1.0 needs the script run against a build, and there is none in this
+session.
+
+*Checked, on a host:* `make -C components/feckless_box_calls/test` (259
+calls). Styled text reaches the stand-in with every argument, style
+included. A string outside the box is not drawn, and its width is 0.
+Heavy's width comes back as the stand-in's. Two changes are each caught:
+the style dropped, from the draw and from the width.
+`cmake -P components/feckless_abi/test/filter_test.cmake` passes.
+`boxcalls_names.txt` regenerated (259 names).
+
+*Not checked:* compiled for the P4; an ESP-IDF build of a launcher
+generating its table with the two names; a board.
