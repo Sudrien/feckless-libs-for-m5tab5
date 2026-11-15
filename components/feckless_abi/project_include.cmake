@@ -30,6 +30,10 @@ macro(feckless_abi_elf _name)
     list(APPEND ELF_COMPONENTS esp_app_format)
     project_elf(${_name})
     string(REPLACE "-gcc" "-readelf" _fa_readelf "${CMAKE_C_COMPILER}")
+    # u-feckless-0054: an embedder's own calls, as more sections; set by
+    # feckless_abi_box_elf(... OWN_CALLS ...). '|' so the list stays one
+    # argument on the command line.
+    string(REPLACE ";" "|" _fa_extra "${FECKLESS_ABI_OWN_CALLS}")
     add_custom_command(TARGET elf POST_BUILD
         COMMAND ${CMAKE_COMMAND}
                 -DREADELF=${_fa_readelf}
@@ -37,6 +41,7 @@ macro(feckless_abi_elf _name)
                 -DEXPORTS=${FECKLESS_ABI_DIR}/exports.txt
                 -DHEADER=${FECKLESS_ABI_DIR}/include/feckless_abi.h
                 -DSECTIONS=${FECKLESS_ABI_DIR}/sections
+                "-DEXTRA_SECTIONS=${_fa_extra}"
                 -P ${FECKLESS_ABI_DIR}/cmake/abicheck.cmake
         COMMENT "Checking ${_name}.app.elf against the feckless ABI"
         VERBATIM)

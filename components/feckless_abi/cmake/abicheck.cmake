@@ -3,7 +3,13 @@
 # An app's ELF against the ABI (feckless_abi_elf() runs this):
 #
 #   cmake -DREADELF=<readelf> -DELF=<app.elf> -DEXPORTS=<exports.txt>
-#         -DHEADER=<feckless_abi.h> -DSECTIONS=<sections/> -P cmake/abicheck.cmake
+#         -DHEADER=<feckless_abi.h> -DSECTIONS=<sections/>
+#         [-DEXTRA_SECTIONS=<file>|<file>...] -P cmake/abicheck.cmake
+#
+# u-feckless-0054: EXTRA_SECTIONS, '|'-separated, are section files that are
+# not feckless's: an embedder's own calls (feckless_abi_box_elf()'s
+# OWN_CALLS), checked exactly as a section is -- each must have an
+# "@symbol" line, and an ELF taking any of its names must refer to it.
 #
 # Every undefined symbol must be in exports.txt or a section's list, or
 # the launcher has no entry for it and esp_elf_relocate() fails on the
@@ -74,6 +80,36 @@ if(SECTIONS)
         set(_sec_ref_${_sec} FALSE)
     endforeach()
 endif()
+set(_extra_sections "")
+if(EXTRA_SECTIONS)
+    string(REPLACE "|" ";" _extra_files "${EXTRA_SECTIONS}")
+    foreach(_f IN LISTS _extra_files)
+        if(NOT EXISTS "${_f}")
+            file(REMOVE "${ELF}")
+            message(FATAL_ERROR "feckless_abi: no own-calls file ${_f}")
+        endif()
+        get_filename_component(_sec "${_f}" NAME_WE)
+        if(_sec IN_LIST _sections)
+            file(REMOVE "${ELF}")
+            message(FATAL_ERROR "feckless_abi: own-calls file ${_f} has the name of a "
+                    "feckless section (${_sec}); give it another")
+        endif()
+        file(STRINGS "${_f}" _sv REGEX "^@symbol ")
+        if(NOT _sv)
+            file(REMOVE "${ELF}")
+            message(FATAL_ERROR "feckless_abi: own-calls file ${_f} has no \"@symbol <name>\" "
+                    "line: the version symbol an ELF taking its names must refer to")
+        endif()
+        string(REGEX REPLACE "^@symbol +([A-Za-z0-9_]+).*$" "\\1" _sv "${_sv}")
+        file(STRINGS "${_f}" _sn REGEX "^[A-Za-z_][A-Za-z0-9_]*$")
+        list(APPEND _sections "${_sec}")
+        list(APPEND _extra_sections "${_sec}")
+        set(_sec_sym_${_sec} "${_sv}")
+        set(_sec_names_${_sec} "${_sn}")
+        set(_sec_used_${_sec} FALSE)
+        set(_sec_ref_${_sec} FALSE)
+    endforeach()
+endif()
 
 set(_missing "")
 set(_versioned FALSE)
@@ -115,6 +151,12 @@ if(NOT _versioned)
 endif()
 set(_in "${_version_sym}")
 foreach(_sec IN LISTS _sections)
+    if(_sec_used_${_sec} AND NOT _sec_ref_${_sec} AND _sec IN_LIST _extra_sections)
+        file(REMOVE "${ELF}")
+        message(FATAL_ERROR "feckless_abi: ${ELF} takes names from its own calls, ${_sec}, "
+                "but does not refer to ${_sec_sym_${_sec}}. Refer to it first thing in "
+                "app_main(), as feckless_abi_require() refers to its symbol.")
+    endif()
     if(_sec_used_${_sec} AND NOT _sec_ref_${_sec})
         file(REMOVE "${ELF}")
         message(FATAL_ERROR "feckless_abi: ${ELF} takes names from the ${_sec} "

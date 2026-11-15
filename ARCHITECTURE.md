@@ -4028,3 +4028,64 @@ the app -- each fail it. `box_nvs.c` compiled for the P4 against ESP-IDF
 
 *Not checked:* a launcher naming a namespace (Avoidant would name
 `defeatist` for Defeatist); real NVS; a board.
+
+### u-feckless-0054 -- an app's own calls, for an ELF its own firmware boxes
+
+`feckless_umode_load()` takes any table, so a firmware that embeds and
+boxes its own ELF (Lothesome's standalone.c, Jinxed's boxlog) can answer
+calls of its own beside `feckless_box_calls_v1()`'s. Jinxed's editor
+needs exactly this: its key queue, its sender, its power and settings
+are the firmware's, and never a launcher's (u-jinxed-0001, 0011). The
+load allowed it. The build did not: abicheck refused any import outside
+`exports.txt` and `sections/`, and boxcheck any import outside
+`boxcalls_names.txt`.
+
+- **`feckless_abi_box_elf(<name> OWN_CALLS <file>...)`**. Each file is a
+  section's format: names one a line, and `@symbol <name>`. Paths
+  relative to the project. With no `OWN_CALLS`, the macro passes the
+  checks exactly what it passed before.
+- **abicheck** (`-DEXTRA_SECTIONS=<file>|<file>`) reads each file as one
+  more section, with the same rule. An ELF that takes any of its names
+  must refer to its `@symbol`, and the summary line counts it. A file
+  with no `@symbol`, a file with a feckless section's name, or a missing
+  file fails the build. `feckless_abi_elf()` passes
+  `FECKLESS_ABI_OWN_CALLS`, which only `feckless_abi_box_elf()` sets. A
+  trusted ELF has no own calls, since a trusted launcher's table is
+  generated from the ABI.
+- **boxcheck** (`-DANSWERS=<boxcalls_names.txt>|<file>...`) takes the
+  files' names and their `@symbol`s as answered. It still refuses in-app
+  names and names that nobody answers.
+- **Why the symbol:** Avoidant, or any launcher, does not answer it, and
+  elf_loader refuses the ELF by that one name at load. Without it, the
+  load would fail on whichever own call it met first, which says less.
+
+*Checked, on a host:* `cmake -P components/feckless_abi/test/owncalls_test.cmake`,
+24 checks. It runs the real abicheck and boxcheck against the real
+`exports.txt`, `sections/`, `feckless_abi.h`, `inapp.txt` and
+`boxcalls_names.txt`, with a stand-in readelf printing each case's
+imports:
+- own calls with their symbol pass, and are counted;
+- the same ELF without `OWN_CALLS` is refused, naming them, and
+  deleted;
+- own names without the symbol, a file without `@symbol`, a file named
+  `storage`, a missing file: each refused;
+- no own name taken: the symbol is not required;
+- two files, each symbol required;
+- storage still requires `feckless_abi_storage_v2`;
+- boxcheck answers own names and the symbol, refuses them without the
+  file, and still refuses an unanswered name and an in-app name.
+
+Six changes are each caught: the own symbol not required, not
+answered, the files ignored, a section's name allowed, `@symbol` not
+required, and boxcheck reading no answers. Two of the test's own
+expectations were wrong at first and were fixed. They did not allow for
+CMake wrapping a FATAL_ERROR's text, and a `\+` in a regex lost its
+backslash through the test's macro. `filter_test.cmake` still passes.
+
+The two macros were run in script mode with project_elf,
+add_custom_command and the toolchain queries stubbed. With
+`OWN_CALLS own.txt`, abicheck got `-DEXTRA_SECTIONS=/abs/own.txt` and
+boxcheck `-DANSWERS=.../boxcalls_names.txt|/abs/own.txt`. Without it,
+`EXTRA_SECTIONS` was empty and `ANSWERS` unchanged.
+
+*Not checked:* an ESP-IDF build with `OWN_CALLS`; a board.

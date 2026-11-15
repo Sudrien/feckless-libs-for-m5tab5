@@ -12,6 +12,15 @@
 # link into a shared object), and a second check (cmake/boxcheck.cmake). main must
 # REQUIRE feckless_box_libc and call feckless_abi_require_box().
 #
+# u-feckless-0054: feckless_abi_box_elf(<name> OWN_CALLS <file>...), for an
+# ELF that only its own firmware runs, whose table adds calls of its own to
+# feckless_box_calls_v1()'s (feckless_umode_load() takes any table). Each
+# file is a section's format -- one name a line, and "@symbol <name>", the
+# version symbol the firmware's table answers as data and the ELF must
+# refer to. Both checks take its names: abicheck as one more section,
+# boxcheck as answered. A launcher that does not answer the symbol refuses
+# the ELF at load, by that one name.
+#
 # project_elf() links with its own flags, not the project's, so a bare -lc
 # would be the toolchain's default multilib (and newlib's): picolibc's libc.a
 # is found here from the project's -march/-mabi as picolibc.specs finds it.
@@ -19,6 +28,20 @@
 set(FECKLESS_BOX_LIBC_DIR "${CMAKE_CURRENT_LIST_DIR}")
 
 macro(feckless_abi_box_elf _name)
+    cmake_parse_arguments(_fb "" "" "OWN_CALLS" ${ARGN})
+    if(_fb_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR "feckless_abi_box_elf: unexpected arguments: ${_fb_UNPARSED_ARGUMENTS}")
+    endif()
+    set(FECKLESS_ABI_OWN_CALLS "")
+    set(_fb_answers "${FECKLESS_BOX_LIBC_DIR}/boxcalls_names.txt")
+    foreach(_fb_f IN LISTS _fb_OWN_CALLS)
+        get_filename_component(_fb_f "${_fb_f}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+        if(NOT EXISTS "${_fb_f}")
+            message(FATAL_ERROR "feckless_abi_box_elf: no OWN_CALLS file ${_fb_f}")
+        endif()
+        list(APPEND FECKLESS_ABI_OWN_CALLS "${_fb_f}")
+        string(APPEND _fb_answers "|${_fb_f}")
+    endforeach()
     separate_arguments(_fb_flags UNIX_COMMAND "${CMAKE_C_FLAGS}")
     execute_process(COMMAND ${CMAKE_C_COMPILER} ${_fb_flags} -print-sysroot
                     OUTPUT_VARIABLE _fb_sysroot OUTPUT_STRIP_TRAILING_WHITESPACE)
@@ -74,7 +97,7 @@ macro(feckless_abi_box_elf _name)
                 -DREADELF=${_fb_readelf}
                 -DELF=${CMAKE_BINARY_DIR}/${_name}.app.elf
                 -DINAPP=${FECKLESS_BOX_LIBC_DIR}/inapp.txt
-                -DANSWERS=${FECKLESS_BOX_LIBC_DIR}/boxcalls_names.txt
+                "-DANSWERS=${_fb_answers}"
                 -P ${FECKLESS_BOX_LIBC_DIR}/cmake/boxcheck.cmake
         COMMENT "Checking ${_name}.app.elf for a box"
         VERBATIM)

@@ -31,6 +31,32 @@ void app_main(void)
 main `REQUIRES feckless_box_libc`, and the app's manifest names it at the
 same tag as the other feckless components.
 
+### An app's own calls (u-feckless-0054)
+
+An ELF that only its own firmware runs (the firmware embeds it and boxes
+it, as Lothesome's and Jinxed's do) can import calls that the firmware
+answers itself, beside `feckless_box_calls_v1()`'s.
+`feckless_umode_load()` takes any table. The build is told the names:
+
+```cmake
+feckless_abi_box_elf(myapp OWN_CALLS myapp_calls.txt)
+```
+
+```
+# myapp_calls.txt: a section's format
+@symbol myapp_calls_v1
+myapp_key_next
+myapp_send_start
+```
+
+Both checks take these names: feckless_abi's as one more section,
+boxcheck as answered. An ELF that imports any of them must refer to the
+`@symbol`, as it must for a feckless section. The firmware's table
+answers that symbol as data, the version of its calls. A launcher that
+does not answer it, which is every launcher but the app's own firmware,
+refuses the ELF at load by that one name. The file may not have a
+feckless section's name, and several files may be given.
+
 ## What is in the app
 
 `inapp.txt` is the list, and the build fails a boxed ELF that imports any of
@@ -116,6 +142,7 @@ Not here, so not usable in a box yet: `sscanf`, `strtod`, `strtof`, `atof`,
 ## Tests
 
     make -C components/feckless_box_libc/test
+    cmake -P components/feckless_abi/test/owncalls_test.cmake   # the checks with OWN_CALLS
 
 `strto*` against the host's libc (800 000 comparisons), the vendored printf
 against the host's `snprintf`, the float conversions bit for bit against

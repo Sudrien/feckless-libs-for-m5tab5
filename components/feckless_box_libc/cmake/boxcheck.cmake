@@ -3,7 +3,12 @@
 # A boxed app's ELF, after feckless_abi's own check (abicheck.cmake):
 #
 #   cmake -DREADELF=<readelf> -DELF=<app.elf> -DINAPP=<inapp.txt>
-#         -DANSWERS=<boxcalls_names.txt> -P cmake/boxcheck.cmake
+#         -DANSWERS=<boxcalls_names.txt>[|<own calls>...] -P cmake/boxcheck.cmake
+#
+# u-feckless-0054: ANSWERS may be '|'-separated: boxcalls_names.txt, then
+# the embedder's own calls (feckless_abi_box_elf()'s OWN_CALLS), whose names
+# its table answers beside feckless_box_calls_v1()'s; their "@symbol" names
+# are answered too, as data.
 #
 # It must refer to feckless_abi_box_v1 (feckless_abi_require_box()), and it
 # must not import any name in inapp.txt: those are linked into the app, and
@@ -48,7 +53,17 @@ endif()
 # (boxcalls_names.txt): the ABI check passes a name the launcher exports, but
 # the box answers only its own table, so a name outside it failed the load,
 # on the board ("Can't find common sqrt"), not the build.
-file(STRINGS "${ANSWERS}" _answers REGEX "^[A-Za-z_][A-Za-z0-9_]*$")
+string(REPLACE "|" ";" _answer_files "${ANSWERS}")
+set(_answers "")
+foreach(_f IN LISTS _answer_files)
+    file(STRINGS "${_f}" _a REGEX "^[A-Za-z_][A-Za-z0-9_]*$")
+    list(APPEND _answers ${_a})
+    file(STRINGS "${_f}" _sv REGEX "^@symbol ")
+    if(_sv)
+        string(REGEX REPLACE "^@symbol +([A-Za-z0-9_]+).*$" "\\1" _sv "${_sv}")
+        list(APPEND _answers "${_sv}")
+    endif()
+endforeach()
 set(_unanswered "")
 foreach(_s IN LISTS _und)
     if(NOT _s IN_LIST _answers)
