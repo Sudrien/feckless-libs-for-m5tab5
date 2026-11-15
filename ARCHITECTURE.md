@@ -3783,3 +3783,39 @@ Every changed file compiled with riscv32-esp-elf 15.2.0 against ESP-IDF
 are all in-app or the box's.
 
 *Not checked:* an ESP-IDF build of a launcher or an app with it; a board.
+
+### u-feckless-0049 -- the first boxed Defeatist link: the box section, a stream buffer in place
+
+Defeatist's boxed ELF (u-defeatist-0022), linked against 0045 to 0048,
+stopped at the ABI check on one name, and its PCM rings showed 0045
+allocating 10.5 MB it did not need to.
+
+- **`feckless_box_heap_stats`** (0048) is imported by feckless_box_libc's
+  heap figures, so it is in the ABI's box section now
+  (`sections/box.txt`); abicheck refused the ELF without it.
+- **A static stream buffer's storage is the app's, in place**, when it
+  holds the size asked in the box. It is only the bytes in flight: the
+  head, tail and waiting lists are in the control block, which stays the
+  host's, so whatever the app writes there is data, never a pointer the
+  host follows. 0045 used the host's own storage always, and Defeatist
+  hands over three rings of 3.5 MB: 10.5 MB of the launcher's PSRAM, on
+  top of the same in the box. Storage past the box still gets the
+  host's.
+- **Four names in `exports.txt`** that a box answers (0045) and the ABI
+  did not list, so an app that calls them passes abicheck:
+  `vStreamBufferDelete`, `xStreamBufferGenericCreate`,
+  `xStreamBufferIsFull`, `xTaskGenericNotifyWait`. A compatible addition.
+
+With these, the boxed player's ELF passes both checks: 180 imports, all
+in `feckless_abi_v1 + feckless_abi_box_v1 + feckless_abi_storage_v2` and
+all answered by the box.
+
+*Checked:* `make -C components/feckless_box_calls/test` (251 calls; the
+stream buffer's bytes land in the app's storage and its control block is
+untouched; storage past the box gets the host's); `cmake -P
+components/feckless_abi/test/filter_test.cmake`; `box_rtos.c` compiled for
+the P4 against ESP-IDF 6.1.1. Defeatist's boxed ELF built with ESP-IDF
+6.1.1 against this branch, the registry's components fetched from GitHub
+(u-defeatist-0022 says how).
+
+*Not checked:* a launcher built with it; a board.

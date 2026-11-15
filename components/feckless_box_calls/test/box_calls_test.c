@@ -502,10 +502,13 @@ static void test_rtos(void)
     C1("vQueueDelete", c);                                         /* twice: nothing */
     CHECK(fake_live == before - 1);
 
-    /* stream buffers: the app's storage and control block are not used */
+    /* stream buffers: the app's storage in place (u-feckless-0049), its
+     * control block never */
     uint8_t *sb_store = (uint8_t *)(uintptr_t)feckless_box_alloc(&box, 64);
+    uint8_t *sb_ctl = (uint8_t *)(uintptr_t)feckless_box_alloc(&box, 64);
     memset(sb_store, 0, 64);
-    const uint32_t sb = call("xStreamBufferGenericCreateStatic", 64, 1, 0, P(sb_store), P(sb_store), 0, 0, 0);
+    memset(sb_ctl, 0, 64);
+    const uint32_t sb = call("xStreamBufferGenericCreateStatic", 64, 1, 0, P(sb_store), P(sb_ctl), 0, 0, 0);
     CHECK(sb && sb != q);
     CHECK(call("xStreamBufferGenericCreateStatic", 64, 1, 0, 0, 0, 0x100, 0, 0) == 0);   /* a callback */
     CHECK(call("xStreamBufferGenericCreateStatic", 64, 65, 0, 0, 0, 0, 0, 0) == 0);      /* trigger past size */
@@ -513,7 +516,12 @@ static void test_rtos(void)
     CHECK(call("xStreamBufferGenericCreateStatic", 0, 0, 0, 0, 0, 0, 0, 0) == 0);
     memcpy(it, "0123456789", 10);
     CHECK(C4("xStreamBufferSend", sb, P(it), 10, 0) == 10);
-    CHECK(sb_store[0] == 0);                                       /* not the app's storage */
+    CHECK(!memcmp(sb_store, "0123456789", 10));                    /* the app's storage, in place */
+    for (int i = 0; i < 64; i++) CHECK(sb_ctl[i] == 0);            /* its control block untouched */
+    const uint32_t far = call("xStreamBufferGenericCreateStatic", 64, 1, 0, P(mem) + MEM - 32, 0, 0, 0, 0);
+    CHECK(far != 0);                                               /* storage past the box: the host's */
+    CHECK(C4("xStreamBufferSend", far, P(it), 4, 0) == 4);
+    C1("vStreamBufferDelete", far);
     CHECK(C4("xStreamBufferSend", sb, 0x1000, 10, 0) == 0);
     CHECK(C1("xStreamBufferBytesAvailable", sb) == 10 && C1("xStreamBufferSpacesAvailable", sb) == 54);
     memset(it, 0, 16);

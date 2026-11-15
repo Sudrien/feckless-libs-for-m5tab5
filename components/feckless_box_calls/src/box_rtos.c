@@ -10,10 +10,17 @@
  * aim the kernel anywhere; so every object is the host's -- its control
  * block in internal RAM, as FreeRTOS on the P4 needs (the spinlock), its
  * storage in PSRAM -- and the app gets a number for it. A static create's
- * buffers, which the app passed from its own memory, are not used: an app's
- * StaticQueue_t is the app's to scribble on. The items, the stream bytes
- * and the values copied out are the only things that cross, each checked
- * to lie in the box.
+ * control block, which the app passed from its own memory, is not used: an
+ * app's StaticQueue_t is the app's to scribble on. The items, the stream
+ * bytes and the values copied out are the only things that cross, each
+ * checked to lie in the box.
+ *
+ * u-feckless-0049: a static stream buffer's storage is the app's own, in
+ * place, when it lies in the box. It holds only the bytes in flight -- the
+ * indices are in the host's control block -- so whatever the app writes
+ * there is data, never a pointer the host follows; and Defeatist's three
+ * PCM rings are 3.5 MB each, which 0045 allocated a second time in the
+ * host's PSRAM.
  *
  * The calls that may wait are UNLOCKED (u-feckless-0023): a thread blocked
  * on a mutex must not hold every other thread's host calls up. They wait in
@@ -458,7 +465,10 @@ H(c_xQueueGiveMutexRecursive)
 
 /* ---- stream buffers ------------------------------------------------------ */
 
-static uint32_t stream_new(uint32_t size, uint32_t trigger, uint32_t is_msg, uint32_t cb1, uint32_t cb2)
+/* in_box: the app's storage, already checked to hold size bytes in the
+ * box; 0 for the host's own, in PSRAM. */
+static uint32_t stream_new(uint32_t size, uint32_t trigger, uint32_t is_msg, uint32_t cb1, uint32_t cb2,
+                           uint32_t in_box)
 {
     if (size == 0 || size > STREAM_MAX || trigger > size || is_msg > 1 || cb1 || cb2 ||
         (is_msg && size <= sizeof(size_t))) {
@@ -468,19 +478,21 @@ static uint32_t stream_new(uint32_t size, uint32_t trigger, uint32_t is_msg, uin
     if (!o) return 0;
     o->len = size;
     o->ctl = internal(sizeof(StaticStreamBuffer_t));
-    o->store = outer(size);
-    if (!o->ctl || !o->store) return unmade(o);
-    o->h = xStreamBufferGenericCreateStatic(size, trigger, (BaseType_t)is_msg, o->store,
+    if (!in_box) o->store = outer(size);    /* freed with it; the app's is the app's */
+    uint8_t *const store = in_box ? (uint8_t *)(uintptr_t)in_box : o->store;
+    if (!o->ctl || !store) return unmade(o);
+    o->h = xStreamBufferGenericCreateStatic(size, trigger, (BaseType_t)is_msg, store,
                                             (StaticStreamBuffer_t *)o->ctl, NULL, NULL);
     return o->h ? made(o) : unmade(o);
 }
 
 /* (size, trigger, message?, storage *, static *, send callback, receive
- * callback): the app's storage and control block are not used. */
+ * callback): the app's storage in place if it holds size bytes in the box
+ * (u-feckless-0049), else the host's; the app's control block never. */
 H(c_xStreamBufferGenericCreateStatic)
 {
-    (void)w;
-    *ret = stream_new(a[0], a[1], a[2], a[5], a[6]);
+    const uint32_t in_box = (a[3] && a[0] && ok_ptr(w, a[3], a[0])) ? a[3] : 0;
+    *ret = stream_new(a[0], a[1], a[2], a[5], a[6], in_box);
     return true;
 }
 
@@ -488,7 +500,7 @@ H(c_xStreamBufferGenericCreateStatic)
 H(c_xStreamBufferGenericCreate)
 {
     (void)w;
-    *ret = stream_new(a[0], a[1], a[2], a[3], a[4]);
+    *ret = stream_new(a[0], a[1], a[2], a[3], a[4], 0);
     return true;
 }
 

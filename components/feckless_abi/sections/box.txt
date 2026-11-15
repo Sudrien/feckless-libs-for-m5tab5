@@ -11,3 +11,7 @@
 # u-feckless-0006: the log line feckless_box_libc's esp_log() formats in
 # the app and hands over as two strings.
 feckless_box_log
+
+# u-feckless-0049: the box heap's figures, which feckless_box_libc's
+# heap_caps_get_info() and its siblings ask for (u-feckless-0048).
+feckless_box_heap_stats

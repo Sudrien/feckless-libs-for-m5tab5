@@ -188,6 +188,13 @@ xTaskGenericNotifyFromISR
 xTaskGetCurrentTaskHandle
 xTaskGetStackStart
 xTaskGetTickCount
+# u-feckless-0049: the four a box answers (u-feckless-0045) that were not
+# here, so an app that calls them passes the ABI check: the dynamic stream
+# buffer's create and delete, its full test, and xTaskNotifyWait().
+vStreamBufferDelete
+xStreamBufferGenericCreate
+xStreamBufferIsFull
+xTaskGenericNotifyWait
 
 # ---- ESP-IDF -----------------------------------------------------------
 _esp_error_check_failed
