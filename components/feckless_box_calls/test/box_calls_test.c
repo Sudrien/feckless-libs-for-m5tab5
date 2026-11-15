@@ -203,6 +203,7 @@ static void test_give_up(void)
     CHECK(strstr(last_str, "? ") || strstr(last_str, "?:"));
     CHECK(ends("abort", 0, 0, 0, 0, 0) && strstr(last_str, "abort()"));
     CHECK(ends("__assert_func", P(file), 12, P(fn), P(ex), 0) && strstr(last_str, "main.c:12"));
+    CHECK(ends("esp_restart", 0, 0, 0, 0, 0) && strstr(last_str, "restart"));   /* u-feckless-0048 */
     char *tag = put_str("sd_io"), *star = put_str("*");
     CHECK(C1("esp_log_level_get", P(tag)) == 3 && !strcmp(level_tag, "sd_io"));
     CHECK(C1("esp_log_level_get", P(&box)) == 0);
@@ -741,6 +742,15 @@ static void test_drivers(void)
     for (unsigned i = 0; i < sizeof unl / sizeof *unl; i++) CHECK(flags_of(unl[i]) == FECKLESS_UMODE_CALL_UNLOCKED);
     const char *lck[] = { "polyrsp_process", "polyrsp_open", "audio_out_set_format", "gfx_fill_poly", "rtc8130_read" };
     for (unsigned i = 0; i < sizeof lck / sizeof *lck; i++) CHECK(flags_of(lck[i]) == 0);
+
+    /* u-feckless-0048: randomness and the clock */
+    CHECK(C0("esp_random") == 0xc0ffee11u);
+    uint8_t *rnd = (uint8_t *)(uintptr_t)feckless_box_alloc(&box, 32);
+    memset(rnd, 0, 32);
+    C2("esp_fill_random", P(rnd), 32);
+    CHECK(rnd[0] == 0x3c && rnd[31] == 0x3c);
+    C2("esp_fill_random", P(mem) + MEM - 8, 32);                    /* past the box: nothing */
+    CHECK(C2("settimeofday", 0, 0) == (uint32_t)-1 && C2("settimeofday", 0x1000, 0) == (uint32_t)-1);
 
     /* the box goes: resamplers closed, the amplifier idle again */
     d_idle = 0;

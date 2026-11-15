@@ -11,6 +11,7 @@ calloc
 realloc
 free
 heap_caps_malloc
+feckless_box_heap_stats
 feckless_abi_v1
 feckless_abi_box_v1
 __adddf3
@@ -108,6 +109,10 @@ gfx_text_rtl
 gfx_para_rows
 lcd_backlight_set_counts
 touch_swallow
+esp_random
+esp_fill_random
+settimeofday
+esp_restart
 feckless_abi_storage_v2
 f_open
 f_read

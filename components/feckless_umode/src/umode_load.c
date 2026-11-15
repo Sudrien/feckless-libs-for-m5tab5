@@ -77,6 +77,7 @@ struct feckless_umode_app {
     feckless_umode_end_t bad;       /* the first end that was not EXIT */
     uintptr_t tls_main;             /* app_main's errno block (tp) */
     TaskHandle_t main_task;         /* u-feckless-0045: the host task running app_main */
+    feckless_box_alloc_t *table;    /* u-feckless-0048: the box's allocation table, host PSRAM */
     app_thread_t th[FECKLESS_UMODE_MAX_THREADS];
 };
 
@@ -444,6 +445,7 @@ static void free_app(feckless_umode_app_t *a)
     if (a->ended) vSemaphoreDelete(a->ended);
     heap_caps_free(a->syms);
     heap_caps_free(a->block);
+    heap_caps_free(a->table);
     heap_caps_free(a);
 }
 
@@ -477,6 +479,13 @@ esp_err_t feckless_umode_load(const uint8_t *image, size_t size,
     a->block = heap_caps_aligned_alloc(BOX_ALIGN, box_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!a->block || !feckless_box_init(&a->box, (uintptr_t)a->block, box_size, stack)) {
         ESP_LOGE(TAG, "no box of %u KB with %u KB of stack", (unsigned)(box_size >> 10), (unsigned)(stack >> 10));
+        goto fail;
+    }
+    /* u-feckless-0048: the allocation table, in the host's PSRAM: the box's
+     * own 256 is soon too few for an app that builds a JSON tree. */
+    a->table = heap_caps_malloc(FECKLESS_UMODE_BOX_ALLOCS * sizeof *a->table, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!a->table || !feckless_box_set_table(&a->box, a->table, FECKLESS_UMODE_BOX_ALLOCS)) {
+        ESP_LOGE(TAG, "no allocation table of %u entries", (unsigned)FECKLESS_UMODE_BOX_ALLOCS);
         goto fail;
     }
 

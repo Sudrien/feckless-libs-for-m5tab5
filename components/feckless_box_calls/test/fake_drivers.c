@@ -106,3 +106,8 @@ esp_err_t lcd_backlight_set_counts(uint32_t duty) { d_duty = duty; return ESP_OK
 void touch_swallow(void) { d_swallow++; }
 bool usbhost_running(void) { return true; }
 bool usbhost_vbus_on(void) { return false; }
+
+/* u-feckless-0048 */
+#include "esp_random.h"
+uint32_t esp_random(void) { return 0xc0ffee11u; }
+void esp_fill_random(void *buf, size_t len) { memset(buf, 0x3c, len); }

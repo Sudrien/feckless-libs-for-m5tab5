@@ -64,11 +64,27 @@ static bool c_free(feckless_umode_window_t *w, const uint32_t a[7], uint32_t *re
     return true;
 }
 
+/* u-feckless-0048: (feckless_box_stats_t *): the box's heap, for
+ * feckless_box_libc's heap_caps_get_info() and its siblings. */
+static bool c_feckless_box_heap_stats(feckless_umode_window_t *w, const uint32_t a[7], uint32_t *ret)
+{
+    feckless_box_stats_t st;
+    *ret = 0;
+    if (!feckless_umode_range_ok(w, a[0], sizeof st)) {
+        return true;
+    }
+    feckless_box_stats(box_of(w), &st);
+    memcpy((void *)(uintptr_t)a[0], &st, sizeof st);
+    *ret = 1;
+    return true;
+}
+
 const feckless_umode_call_t feckless_umode_heap_calls[] = {
     { "malloc", c_malloc, NULL, 0, 0 },
     { "calloc", c_calloc, NULL, 0, 0 },
     { "realloc", c_realloc, NULL, 0, 0 },
     { "free", c_free, NULL, 0, 0 },
     { "heap_caps_malloc", c_heap_caps_malloc, NULL, 0, 0 },
+    { "feckless_box_heap_stats", c_feckless_box_heap_stats, NULL, 0, 0 },   /* u-feckless-0048 */
 };
 const uint32_t feckless_umode_heap_calls_n = sizeof feckless_umode_heap_calls / sizeof feckless_umode_heap_calls[0];

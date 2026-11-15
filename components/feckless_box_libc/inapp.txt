@@ -156,6 +156,37 @@ log1p
 scalbn
 finite
 nan
+# ---- u-feckless-0048: strtod and its family (src/box_strtod.c); strdup,
+# strndup, strerror, strftime (src/box_string.c); sscanf, vsscanf
+# (src/box_scanf.c); the rest of stdio, over the host's fwrite and fread,
+# and the standard streams (src/box_stdio.c); the box heap's figures and
+# the failed-allocation hook (src/box_heap.c)
+strtod
+strtof
+atof
+strdup
+strndup
+strerror
+strftime
+sscanf
+vsscanf
+fputc
+putc
+fputs
+fprintf
+vfprintf
+fgetc
+getc
+stdin
+stdout
+stderr
+heap_caps_get_free_size
+heap_caps_get_minimum_free_size
+heap_caps_get_largest_free_block
+heap_caps_get_total_size
+heap_caps_get_info
+heap_caps_print_heap_info
+heap_caps_register_failed_alloc_callback
 # ---- from the toolchain's libgcc.a (libgcc_names.txt)
 __ashldi3
 __ashrdi3

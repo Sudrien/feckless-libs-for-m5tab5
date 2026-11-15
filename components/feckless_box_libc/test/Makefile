@@ -58,7 +58,13 @@ newlib_math_test: newlib_math_test.c $(NEWLIB_MATH_SRCS) newlib_shim/machine/iee
 	$(CC) -std=gnu11 -O2 -w -ffp-contract=off -fno-builtin -Inewlib_shim -I$(NEWLIB_MATH)/common \
 	      -o $@ newlib_math_test.c $(NEWLIB_MATH_SRCS)
 
-run: strto_test printf_test math_test fpconv_test softdouble_test div64_test newlib_math_test
+# u-feckless-0048: strtod, the strings, sscanf, the stdio wrappers, the heap
+LIBC48 := ../src/box_strtod.c ../src/box_string.c ../src/box_scanf.c ../src/box_stdio.c ../src/box_strto.c ../src/box_heap.c
+libc48_test: libc48_test.c $(LIBC48)
+	$(CC) $(CFLAGS) -fno-builtin -Ifake_idf -D'BOX_NAME(n)=box_##n' -D'BOX_HOST(n)=host_##n' -D'BOX_STD(n)=box_##n' \
+	      -o $@ libc48_test.c $(LIBC48) -lm $(LDFLAGS)
+
+run: strto_test printf_test math_test fpconv_test softdouble_test div64_test newlib_math_test libc48_test
 	./strto_test
 	./printf_test
 	./math_test
@@ -66,7 +72,8 @@ run: strto_test printf_test math_test fpconv_test softdouble_test div64_test new
 	./softdouble_test
 	./div64_test
 	./newlib_math_test
+	ASAN_OPTIONS=allocator_may_return_null=1 ./libc48_test
 
 clean:
-	rm -f strto_test printf_test math_test fpconv_test softdouble_test div64_test newlib_math_test
+	rm -f strto_test printf_test math_test fpconv_test softdouble_test div64_test newlib_math_test libc48_test
 .PHONY: all run clean

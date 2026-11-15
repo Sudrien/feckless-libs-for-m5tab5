@@ -54,6 +54,18 @@ it (`cmake/boxcheck.cmake`):
   host never walks a format whose `%s` would be the app's pointer, and is
   handed to the host's `feckless_box_log` as a tag and a message.
 
+- **strtod, the strings, sscanf, the rest of stdio, the heap's figures**
+  (u-feckless-0048, this component's own): `strtod`, `strtof`, `atof`
+  (double-double scaling, within an ulp); `strdup`, `strndup`, `strerror`,
+  `strftime` (the C locale, UTC); `sscanf`, `vsscanf` (C11's conversions
+  but `L`); `fputc`, `putc`, `fputs`, `fprintf`, `vfprintf`, `fgetc`,
+  `getc` over the host's `fwrite` and `fread`, and `stdin`, `stdout`,
+  `stderr` as numbers the host never gives, written to its console;
+  `heap_caps_get_free_size`, `_get_minimum_free_size`,
+  `_get_largest_free_block`, `_get_total_size`, `_get_info`,
+  `_print_heap_info` from one host call (`feckless_box_heap_stats`), and
+  `heap_caps_register_failed_alloc_callback`, which the `heap_caps_*`
+  allocators here call when the box's heap says no.
 - **Single-precision maths** (u-feckless-0020, `src/box_math.c`, this
   component's own): `sinf`, `cosf`, `sincosf`, `tanf`, `atanf`, `atan2f`,
   `asinf`, `acosf`, `tanhf`, `expf`, `exp2f`, `exp10f`, `logf`, `log2f`,

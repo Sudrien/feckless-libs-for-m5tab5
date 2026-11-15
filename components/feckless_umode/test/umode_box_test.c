@@ -70,6 +70,43 @@ static void test_fill_and_table_limit(void)
     for (uint32_t i = 1; i < box.n; i++) CHECK(box.a[i].off > box.a[i - 1].off);
 }
 
+/* u-feckless-0048: a bigger table, given after init, and the heap's stats */
+static void test_bigger_table(void)
+{
+    static feckless_box_alloc_t big[1000];
+    feckless_box_init(&box, B, MEM_SIZE, 4096);
+    int k = 0;
+    while (feckless_box_alloc(&box, 1)) k++;
+    CHECK(k == FECKLESS_BOX_MAX_ALLOCS);
+    CHECK(!feckless_box_set_table(&box, big, 100));                 /* the live ones do not fit */
+    CHECK(box.a == box.own && box.cap == FECKLESS_BOX_MAX_ALLOCS);
+    CHECK(!feckless_box_set_table(&box, NULL, 1000));
+    CHECK(feckless_box_set_table(&box, big, 1000));
+    CHECK(box.a == big && box.n == (uint32_t)k && big[k - 1].off == (uint32_t)(k - 1) * 16);
+    while (feckless_box_alloc(&box, 1)) k++;
+    CHECK(k == 1000);                                               /* 16 KB of 60: the table again */
+    for (uint32_t i = 1; i < box.n; i++) CHECK(box.a[i].off > box.a[i - 1].off);
+    CHECK(feckless_box_free(&box, B + 16 * 500) && feckless_box_len(&box, B + 16 * 501) == 1);
+
+    feckless_box_stats_t st;
+    feckless_box_init(&box, B, MEM_SIZE, 4096);
+    feckless_box_stats(&box, &st);
+    CHECK(st.total == box.heap_end && st.free == box.heap_end && st.largest == box.heap_end);
+    CHECK(st.blocks == 0 && st.free_blocks == 1 && st.min_free == box.heap_end);
+    const uintptr_t a = feckless_box_alloc(&box, 100);              /* 112 placed */
+    const uintptr_t b = feckless_box_alloc(&box, 1000);             /* 1008 */
+    const uintptr_t c = feckless_box_alloc(&box, 10);               /* 16 */
+    (void)a; (void)c;
+    CHECK(feckless_box_free(&box, b));
+    feckless_box_stats(&box, &st);
+    CHECK(st.free == box.heap_end - 128 && st.blocks == 2 && st.free_blocks == 2);
+    CHECK(st.largest == box.heap_end - 112 - 1008 - 16);
+    CHECK(st.min_free == box.heap_end - 112 - 1008 - 16);           /* the least it was */
+    CHECK(feckless_box_realloc(&box, a, 600) == a);                 /* into b's hole: 608 */
+    feckless_box_stats(&box, &st);
+    CHECK(st.free == box.heap_end - 608 - 16 && box.used == 608 + 16);
+}
+
 static void test_realloc(void)
 {
     feckless_box_init(&box, B, MEM_SIZE, 4096);
@@ -116,8 +153,16 @@ static void test_random(void)
         }
     }
     int count = 0;
-    for (int i = 0; i < 200; i++) if (live[i]) { count++; CHECK(feckless_box_len(&box, live[i]) > 0); }
+    uint32_t used = 0;
+    for (int i = 0; i < 200; i++) if (live[i]) {
+        count++;
+        CHECK(feckless_box_len(&box, live[i]) > 0);
+        used += (feckless_box_len(&box, live[i]) + 15u) & ~15u;
+    }
     CHECK((uint32_t)count == box.n);
+    feckless_box_stats_t st;                                        /* u-feckless-0048 */
+    feckless_box_stats(&box, &st);
+    CHECK(box.used == used && st.free == box.heap_end - used && st.min_free <= st.free);
 }
 
 static void test_stubs(void)
@@ -194,6 +239,21 @@ static void test_calls(void)
     CHECK(feckless_umode_calls_ext(&w, idx[3], a, &z) && box.n == before - 1);
     a[0] = 16; a[1] = 0xffffffff;
     CHECK(feckless_umode_calls_ext(&w, idx[4], a, &p) && p);
+
+    /* u-feckless-0048: the heap's stats, into the box only */
+    uint32_t hs = 0;
+    for (uint32_t j = 0; j < h.n; j++)
+        if (!strcmp(h.calls[j].name, "feckless_box_heap_stats")) hs = FECKLESS_SYS_EXT_BASE + j;
+    CHECK(hs != 0);
+    w.lo = B;
+    w.hi = B + MEM_SIZE;
+    const uintptr_t out = feckless_box_alloc(&box, sizeof(feckless_box_stats_t));
+    a[0] = (uint32_t)out;
+    CHECK(feckless_umode_calls_ext(&w, hs, a, &z) && z == 1);
+    const feckless_box_stats_t *st = (const feckless_box_stats_t *)out;
+    CHECK(st->total == box.heap_end && st->blocks == box.n && st->free < st->total);
+    a[0] = (uint32_t)(uintptr_t)&box;                                   /* the host's memory */
+    CHECK(feckless_umode_calls_ext(&w, hs, a, &z) && z == 0);
 }
 
 int main(void)
@@ -206,6 +266,7 @@ int main(void)
     test_init();
     test_alloc_free();
     test_fill_and_table_limit();
+    test_bigger_table();
     test_realloc();
     test_random();
     test_stubs();

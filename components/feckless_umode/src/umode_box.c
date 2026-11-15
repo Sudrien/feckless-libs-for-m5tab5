@@ -27,7 +27,48 @@ bool feckless_box_init(feckless_box_t *b, uintptr_t base, uint32_t size, uint32_
     b->base = base;
     b->size = size;
     b->heap_end = size - stack;
+    b->a = b->own;                              /* u-feckless-0048 */
+    b->cap = FECKLESS_BOX_MAX_ALLOCS;
+    b->min_free = b->heap_end;
     return true;
+}
+
+bool feckless_box_set_table(feckless_box_t *b, feckless_box_alloc_t *table, uint32_t cap)
+{
+    if (!table || cap < b->n) {
+        return false;
+    }
+    memmove(table, b->a, b->n * sizeof b->a[0]);
+    b->a = table;
+    b->cap = cap;
+    return true;
+}
+
+void feckless_box_stats(const feckless_box_t *b, feckless_box_stats_t *out)
+{
+    memset(out, 0, sizeof *out);
+    out->total = b->heap_end;
+    out->blocks = b->n;
+    out->min_free = b->min_free;
+    uint32_t at = 0;
+    for (uint32_t i = 0; i <= b->n; i++) {
+        const uint32_t end = i < b->n ? b->a[i].off : b->heap_end;
+        if (end > at) {
+            const uint32_t gap = end - at;
+            out->free += gap;
+            out->free_blocks++;
+            if (gap > out->largest) out->largest = gap;
+        }
+        if (i < b->n) at = ALIGN_UP(b->a[i].off + b->a[i].len);
+    }
+}
+
+/* Bytes the table's allocations take, rounded as they are placed. */
+static void note_used(feckless_box_t *b, int64_t delta)
+{
+    b->used = (uint32_t)((int64_t)b->used + delta);
+    const uint32_t free = b->heap_end > b->used ? b->heap_end - b->used : 0;
+    if (free < b->min_free) b->min_free = free;
 }
 
 void feckless_box_stack(const feckless_box_t *b, uint32_t *lo, uint32_t *hi)
@@ -65,7 +106,7 @@ static bool off_of(const feckless_box_t *b, uintptr_t p, uint32_t *off)
 
 uintptr_t feckless_box_alloc(feckless_box_t *b, uint32_t len)
 {
-    if (len == 0 || b->n >= FECKLESS_BOX_MAX_ALLOCS || len > b->heap_end) {
+    if (len == 0 || b->n >= b->cap || len > b->heap_end) {
         return 0;
     }
     const uint32_t need = ALIGN_UP(len);
@@ -87,6 +128,7 @@ uintptr_t feckless_box_alloc(feckless_box_t *b, uint32_t len)
     b->a[i].off = at;
     b->a[i].len = len;
     b->n++;
+    note_used(b, need);
     return b->base + at;
 }
 
@@ -100,6 +142,7 @@ bool feckless_box_free(feckless_box_t *b, uintptr_t p)
     if (i < 0) {
         return false;
     }
+    note_used(b, -(int64_t)ALIGN_UP(b->a[i].len));
     memmove(&b->a[i], &b->a[i + 1], (b->n - (uint32_t)i - 1) * sizeof b->a[0]);
     b->n--;
     return true;
@@ -135,6 +178,7 @@ uintptr_t feckless_box_realloc(feckless_box_t *b, uintptr_t p, uint32_t len)
     /* In place: up to the next allocation, or heap_end. */
     const uint32_t limit = (uint32_t)i + 1 < b->n ? b->a[i + 1].off : b->heap_end;
     if (len <= limit - off) {
+        note_used(b, (int64_t)ALIGN_UP(len) - (int64_t)ALIGN_UP(b->a[i].len));
         b->a[i].len = len;
         return p;
     }

@@ -19,6 +19,7 @@
 
 #include "esp_err.h"
 #include "esp_log.h"
+#include "esp_random.h"        /* u-feckless-0048 */
 #include "esp_rom_sys.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -558,6 +559,42 @@ H(c_gfx_para_rows)
 H(c_lcd_backlight_set_counts) { (void)w; *ret = (uint32_t)lcd_backlight_set_counts(a[0]); return true; }
 H(c_touch_swallow) { (void)w; (void)a; touch_swallow(); *ret = 0; return true; }
 
+/* ---- randomness, the clock, a restart (u-feckless-0048) ------------------ */
+
+H(c_esp_random) { (void)w; (void)a; *ret = esp_random(); return true; }
+/* (buf *, len) */
+H(c_esp_fill_random)
+{
+    if (ok_ptr(w, a[0], a[1])) {
+        esp_fill_random((void *)(uintptr_t)a[0], a[1]);
+    }
+    *ret = 0;
+    return true;
+}
+/* (const struct timeval *, tz): the launcher's clock. An app that keeps the
+ * time from the RTC or the network sets it, as the trusted path lets it. */
+H(c_settimeofday)
+{
+    struct timeval tv;
+    if (!a[0] || !ok_ptr(w, a[0], sizeof tv)) {
+        *ret = (uint32_t)-1;
+        return true;
+    }
+    memcpy(&tv, (const void *)(uintptr_t)a[0], sizeof tv);
+    *ret = (uint32_t)settimeofday(&tv, NULL);
+    return true;
+}
+/* A boxed app restarts by ending: the launcher is what comes back, and
+ * can run it again. Rebooting the board on an app's say-so is not the
+ * box's to allow. */
+H(c_esp_restart)
+{
+    (void)a;
+    ESP_LOGW("box", "the app asked for a restart (pc 0x%08x): it ends here", (unsigned)w->ctx.pc);
+    *ret = 0;
+    return false;
+}
+
 /* ---- the table ----------------------------------------------------------- */
 
 static const uint32_t s_abi_v1 = FECKLESS_ABI_VERSION;
@@ -604,6 +641,8 @@ static const feckless_umode_call_t s_own[] = {
     FN(gfx_time_text_w), FN(gfx_draw_time_text), FN(gfx_draw_text_tail),
     FN(gfx_draw_text_clipped), FN(gfx_text_rtl), FN(gfx_para_rows),
     FN(lcd_backlight_set_counts), FN(touch_swallow),
+    /* u-feckless-0048 */
+    FNU(esp_random), FNU(esp_fill_random), FN(settimeofday), FN(esp_restart),
 };
 
 #define OWN_N (sizeof s_own / sizeof s_own[0])

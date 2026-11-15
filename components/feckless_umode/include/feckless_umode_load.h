@@ -27,6 +27,11 @@ extern "C" {
 
 typedef struct feckless_umode_app feckless_umode_app_t;
 
+/* u-feckless-0048: the most live allocations an app's heap may have: a
+ * table of this many in the host's PSRAM (8 bytes each), for the box's
+ * life. */
+#define FECKLESS_UMODE_BOX_ALLOCS 8192
+
 /* A box of box_size bytes in PSRAM, stack bytes of it the stack; the stubs
  * for calls[] written into it; the ELF relocated into it, every import
  * resolved to a stub or a data copy; the PMP granted the box (read, write,

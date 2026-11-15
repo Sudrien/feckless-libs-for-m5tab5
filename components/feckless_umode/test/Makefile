@@ -32,8 +32,8 @@ umode_plan_test: umode_plan_test.c ../src/umode_plan.c ../include/feckless_umode
 umode_run_test: umode_run_test.c ../src/umode_run.c ../include/feckless_umode_run.h ../include/feckless_umode_sys.h ../include/feckless_umode.h
 	$(CC) $(CFLAGS) -o $@ umode_run_test.c ../src/umode_run.c $(LDFLAGS)
 
-umode_box_test: umode_box_test.c ../src/umode_box.c ../src/umode_calls.c ../include/feckless_umode_box.h ../include/feckless_umode_calls.h
-	$(CC) $(CFLAGS) -o $@ umode_box_test.c ../src/umode_box.c ../src/umode_calls.c $(LDFLAGS)
+umode_box_test: umode_box_test.c ../src/umode_box.c ../src/umode_calls.c ../src/umode_run.c ../include/feckless_umode_box.h ../include/feckless_umode_calls.h
+	$(CC) $(CFLAGS) -o $@ umode_box_test.c ../src/umode_box.c ../src/umode_calls.c ../src/umode_run.c $(LDFLAGS)
 
 run: umode_plan_test umode_run_test umode_box_test
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=0 ./umode_plan_test

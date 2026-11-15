@@ -40,7 +40,12 @@ typedef struct {
     uint32_t size;
     uint32_t heap_end;              /* offset: allocations stay below it; the stack is above */
     uint32_t n;                     /* live allocations, sorted by off */
-    feckless_box_alloc_t a[FECKLESS_BOX_MAX_ALLOCS];
+    /* u-feckless-0048: the table is a, of cap entries: own[] unless a
+     * bigger one, in host memory, was given (feckless_box_set_table()). */
+    feckless_box_alloc_t *a;
+    uint32_t cap;
+    uint32_t used, min_free;        /* bytes allocated now; the least free there has been */
+    feckless_box_alloc_t own[FECKLESS_BOX_MAX_ALLOCS];
 } feckless_box_t;
 
 /* A box over [base, base+size). stack bytes at the top are the stack's and
@@ -59,6 +64,24 @@ uintptr_t feckless_box_alloc(feckless_box_t *b, uint32_t len);
 /* Free the allocation that starts at p. False, and nothing freed, for any p
  * that is not one. */
 bool feckless_box_free(feckless_box_t *b, uintptr_t p);
+
+/* u-feckless-0048: a bigger allocation table than the box's own
+ * FECKLESS_BOX_MAX_ALLOCS, cap entries at table, in host memory the program
+ * cannot reach (never the box). The live allocations are copied into it;
+ * false, and nothing changed, if they do not fit. The caller keeps the
+ * table for the box's life and frees it after. A program with a heap of
+ * many small blocks -- a JSON tree, a list of strings -- runs out of 256
+ * long before it runs out of bytes. */
+bool feckless_box_set_table(feckless_box_t *b, feckless_box_alloc_t *table, uint32_t cap);
+
+/* u-feckless-0048: what heap_caps_get_info() tells an app about its heap.
+ * free: heap bytes not allocated (each allocation counted at its rounded
+ * size); largest: the biggest run one allocation could take; min_free: the
+ * least free since init. */
+typedef struct {
+    uint32_t total, free, largest, min_free, blocks, free_blocks;
+} feckless_box_stats_t;
+void feckless_box_stats(const feckless_box_t *b, feckless_box_stats_t *out);
 
 /* The live allocation that starts at p: its length, or 0. */
 uint32_t feckless_box_len(const feckless_box_t *b, uintptr_t p);

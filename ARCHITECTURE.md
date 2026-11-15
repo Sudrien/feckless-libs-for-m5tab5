@@ -3718,3 +3718,68 @@ pool slot and directory. `box_storage.c` compiled with riscv32-esp-elf
 *Not checked:* an ESP-IDF build of a launcher with it; a board; writes on
 an exFAT card past 2 GB (`fwrite` is stdio's, `stat`'s size is
 `off_t`).
+
+### u-feckless-0048 -- the rest of libc in the app, a bigger heap table, and a few host calls
+
+Step 4 for Defeatist's player in a box: what its ELF imports from libc
+that a box had nowhere to put, the heap's bookkeeping for an app with
+many small blocks, and four calls.
+
+**In the app** (feckless_box_libc, `inapp.txt`):
+
+- `strtod`, `strtof`, `atof` (`src/box_strtod.c`). picolibc's do not link
+  into a shared object, and Defeatist's cJSON parses every number with
+  strtod. Decimal, hexadecimal, inf and nan. Up to 15 digits and a power
+  of ten up to 22 is one correctly rounded operation; past that 10^e is
+  5^e * 2^e, 5^e built in double-double arithmetic (products split by
+  Veltkamp's method, no fused multiply-add assumed), the digits scaled
+  there and the power of two applied last.
+- `strdup`, `strndup`, `strerror`, `strftime` (`src/box_string.c`):
+  strftime in the C locale, %Z "UTC" and %z "+0000".
+- `sscanf`, `vsscanf` (`src/box_scanf.c`): C11's conversions over this
+  component's strto* family, all but `L` (long double is a quad on
+  ilp32f, and nothing here makes one).
+- `fputc`, `putc`, `fputs`, `fprintf`, `vfprintf`, `fgetc`, `getc` and
+  `stdin`, `stdout`, `stderr` (`src/box_stdio.c`). Formatting is the app's;
+  the bytes go to the host through `fwrite` and `fread`, a string a call.
+  The standard streams are numbers the host never gives a FILE, and
+  writes to them go to its console through `putchar`, as printf's do.
+- The heap's figures (`src/box_heap.c`): `heap_caps_get_free_size`,
+  `_minimum_free_size`, `_largest_free_block`, `_total_size`, `_info`,
+  `_print_heap_info`, all from one new host call, and
+  `heap_caps_register_failed_alloc_callback`, whose hook the in-app
+  `heap_caps_*` allocators now call -- the app's own code, run in the app.
+
+**feckless_umode:** a box's allocation table had 256 entries, inline in
+the app struct in internal RAM. A JSON tree, a station list or a set of
+strings runs out of those long before it runs out of bytes. The table is
+now a pointer; the box keeps its own 256 until `feckless_box_set_table()`
+gives it a bigger one in host memory, and `feckless_umode_load()` gives
+every app `FECKLESS_UMODE_BOX_ALLOCS` (8192) in the host's PSRAM, 64 KB.
+`feckless_box_stats()` and the `feckless_box_heap_stats` call report the
+heap's free bytes, largest gap and least free (the box now counts bytes
+allocated as it goes).
+
+**feckless_box_calls:** `esp_random`, `esp_fill_random` (into the box);
+`settimeofday` (the launcher's clock, which an app keeping time from the
+RTC or the network sets, as the trusted path lets it); and `esp_restart`,
+which ends the app rather than reboot the board -- the launcher is what
+comes back, and can run it again.
+
+*Checked, on a host:* `make -C components/feckless_box_libc/test`'s new
+`libc48_test`: strtod against the host's on 20 edge cases, 200 000
+values of up to 15 digits (all exact) and 200 000 17-digit values across
+the exponent range (all equal to the host's); strftime against the host's
+in eight formats over 20 000 dates; Defeatist's three sscanf formats
+against the host's, and the rest of the language; the stdio wrappers over
+stand-in host calls, a format past the 256 bytes kept on the stack; the
+heap figures and the failed-allocation hook. `make -C
+components/feckless_umode/test`: a table filled to 256, refused a smaller
+one, given 1000 and filled to it; the stats after allocation, free and
+realloc in place, and against the random test's own count; the call into
+the box only. `make -C components/feckless_box_calls/test`: 251 calls.
+Every changed file compiled with riscv32-esp-elf 15.2.0 against ESP-IDF
+6.1.1's headers at -Wall -Wextra -Werror; the libc files' undefined names
+are all in-app or the box's.
+
+*Not checked:* an ESP-IDF build of a launcher or an app with it; a board.
