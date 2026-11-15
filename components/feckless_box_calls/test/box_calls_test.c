@@ -80,7 +80,7 @@ static void test_table(void)
             CHECK(strcmp(calls_tab[i].name, calls_tab[j].name) != 0);       /* no name twice */
     int data = 0;
     for (uint32_t i = 0; i < ncalls; i++) if (!calls_tab[i].fn) { data++; CHECK(calls_tab[i].data && calls_tab[i].data_len >= 4); }
-    CHECK(data == 10);       /* abi_v1, box_v1, storage_v2; Ark12's six tables (u-feckless-0021); audio_v1 (u-feckless-0052) */
+    CHECK(data == 11);       /* abi_v1, box_v1, storage_v2; Ark12's six tables (u-feckless-0021); audio_v1 (u-feckless-0052); nvs_v1 (0053) */
     for (uint32_t i = 0; i < ncalls; i++) {
         if (!strcmp(calls_tab[i].name, "ark12_lit")) CHECK(calls_tab[i].data_len == 10);
         if (!strcmp(calls_tab[i].name, "ark12_tiles")) CHECK(calls_tab[i].data_len == 12);
@@ -876,6 +876,102 @@ static void test_codec(void)
     (void)alac;
 }
 
+/* u-feckless-0053: NVS in the launcher's namespaces only, against fake_nvs.c */
+#include "nvs_handler.h"
+extern const void *n_last_src;
+extern int n_writes;
+
+static char *bstr(const char *s)
+{
+    char *p = (char *)(uintptr_t)feckless_box_alloc(&box, (uint32_t)strlen(s) + 1);
+    strcpy(p, s);
+    return p;
+}
+
+static void test_nvs(void)
+{
+    char *mine = bstr("defeatist"), *wifi = bstr("wifi"), *k = bstr("prefs"), *k2 = bstr("lang");
+    uint8_t *u8 = (uint8_t *)(uintptr_t)feckless_box_alloc(&box, 4);
+    uint32_t *len = (uint32_t *)(uintptr_t)feckless_box_alloc(&box, 4);
+    uint8_t *buf = (uint8_t *)(uintptr_t)feckless_box_alloc(&box, 64);
+
+    /* named nothing: nothing found, nothing changed */
+    CHECK(C0("nvsh_ready") == 0);
+    CHECK(C4("nvsh_set_u8", P(mine), P(k2), 3, 0) == ESP_ERR_NOT_ALLOWED && n_writes == 0);
+    *u8 = 77;
+    CHECK(C4("nvsh_get_u8", P(mine), P(k2), P(u8), 0) == ESP_ERR_NVS_NOT_FOUND && *u8 == 77);
+
+    /* the launcher's own value, which the app must never reach */
+    CHECK(nvsh_set_str("wifi", "pass", "secret") == ESP_OK);
+    const char *const one[] = { "defeatist" };
+    CHECK(feckless_box_calls_nvs(one, 1));
+    CHECK(C0("nvsh_ready") == 1);
+    *len = 64;
+    CHECK(C4("nvsh_get_str", P(wifi), P(bstr("pass")), P(buf), P(len)) == ESP_ERR_NVS_NOT_FOUND);
+    CHECK(C4("nvsh_set_str", P(wifi), P(bstr("pass")), P(bstr("x")), 0) == ESP_ERR_NOT_ALLOWED);
+    CHECK(C4("nvsh_erase_key", P(wifi), P(bstr("pass")), 0, 0) == ESP_ERR_NOT_ALLOWED);
+    CHECK(C1("nvsh_erase_ns", P(wifi)) == ESP_ERR_NOT_ALLOWED);
+    size_t hl = 16; char hb[16];
+    CHECK(nvsh_get_str("wifi", "pass", hb, &hl) == ESP_OK && !strcmp(hb, "secret"));
+    CHECK(C4("nvsh_get_u8", P(bstr("defeatis")), P(k2), P(u8), 0) == ESP_ERR_NVS_NOT_FOUND);  /* a prefix is not it */
+
+    /* integers */
+    CHECK(C4("nvsh_set_u8", P(mine), P(k2), 0x1ff, 0) == ESP_OK);       /* the low byte, as the u8 it is */
+    CHECK(C4("nvsh_get_u8", P(mine), P(k2), P(u8), 0) == ESP_OK && *u8 == 0xff);
+    CHECK(C4("nvsh_set_i32", P(mine), P(bstr("clk")), (uint32_t)-5, 0) == ESP_OK);
+    int32_t *i32 = (int32_t *)(uintptr_t)feckless_box_alloc(&box, 4);
+    CHECK(C4("nvsh_get_i32", P(mine), P(bstr("clk")), P(i32), 0) == ESP_OK && *i32 == -5);
+    CHECK(C4("nvsh_get_u8", P(mine), P(k2), 0x1000, 0) == ESP_ERR_INVALID_ARG);
+    CHECK(C4("nvsh_get_u8", P(mine), 0x1000, P(u8), 0) == ESP_ERR_INVALID_ARG);
+    CHECK(C4("nvsh_get_u8", P(mine), P(bstr("")), P(u8), 0) == ESP_ERR_INVALID_ARG);
+    CHECK(C4("nvsh_get_u8", P(mine), P(bstr("a_key_far_too_long")), P(u8), 0) == ESP_ERR_INVALID_ARG);
+
+    /* a blob through the host: what NVS writes from is never the app's */
+    for (int i = 0; i < 7; i++) buf[i] = (uint8_t)(i + 1);
+    CHECK(C4("nvsh_set_blob", P(mine), P(k), P(buf), 7) == ESP_OK);
+    CHECK(n_last_src && ((uintptr_t)n_last_src < P(mem) || (uintptr_t)n_last_src >= P(mem) + MEM));
+    memset(buf, 0, 64);
+    *len = 0;
+    CHECK(C4("nvsh_get_blob", P(mine), P(k), 0, P(len)) == ESP_OK && *len == 7);     /* the size only */
+    *len = 3;
+    CHECK(C4("nvsh_get_blob", P(mine), P(k), P(buf), P(len)) == ESP_ERR_NVS_INVALID_LENGTH && *len == 7 && buf[0] == 0);
+    *len = 64;
+    CHECK(C4("nvsh_get_blob", P(mine), P(k), P(buf), P(len)) == ESP_OK && *len == 7 && buf[6] == 7 && buf[7] == 0);
+    *len = 64;
+    CHECK(C4("nvsh_get_blob", P(mine), P(k), P(mem + MEM - 8), P(len)) == ESP_ERR_INVALID_ARG);   /* room past the box */
+    CHECK(C4("nvsh_set_blob", P(mine), P(k), P(mem + MEM - 4), 7) == ESP_ERR_INVALID_ARG);
+    CHECK(C4("nvsh_set_blob", P(mine), P(k), P(buf), 8193) == ESP_ERR_INVALID_ARG);
+    CHECK(C4("nvsh_set_blob", P(mine), P(k), 0, 0) == ESP_OK);        /* empty */
+
+    /* a string */
+    CHECK(C4("nvsh_set_str", P(mine), P(bstr("key")), P(bstr("abc")), 0) == ESP_OK);
+    *len = 64;
+    CHECK(C4("nvsh_get_str", P(mine), P(bstr("key")), P(buf), P(len)) == ESP_OK && *len == 4 && !strcmp((char *)buf, "abc"));
+    char *unterminated = (char *)(mem + MEM - 4);
+    memcpy(unterminated, "abcd", 4);
+    CHECK(C4("nvsh_set_str", P(mine), P(bstr("key")), P(unterminated), 0) == ESP_ERR_INVALID_ARG);
+
+    /* erase */
+    CHECK(C4("nvsh_erase_key", P(mine), P(bstr("key")), 0, 0) == ESP_OK);
+    CHECK(C4("nvsh_erase_key", P(mine), P(bstr("key")), 0, 0) == ESP_ERR_NVS_NOT_FOUND);
+    CHECK(C1("nvsh_erase_ns", P(mine)) == ESP_OK);
+    CHECK(C4("nvsh_get_u8", P(mine), P(k2), P(u8), 0) == ESP_ERR_NVS_NOT_FOUND);
+    CHECK(nvsh_get_str("wifi", "pass", hb, &hl) == ESP_OK);           /* still the launcher's */
+
+    /* bad lists change nothing */
+    const char *const five[] = { "a", "b", "c", "d", "e" }, *const longn[] = { "sixteen_chars_xx" }, *const empty[] = { "" };
+    CHECK(!feckless_box_calls_nvs(five, 5) && !feckless_box_calls_nvs(longn, 1) && !feckless_box_calls_nvs(empty, 1));
+    CHECK(!feckless_box_calls_nvs(NULL, 1));
+    CHECK(C0("nvsh_ready") == 1);
+    CHECK(flags_of("nvsh_set_blob") == FECKLESS_UMODE_CALL_UNLOCKED);
+    nr_of("feckless_abi_nvs_v1");
+
+    /* the names go with the app */
+    feckless_box_calls_end();
+    CHECK(C0("nvsh_ready") == 0);
+    CHECK(C4("nvsh_set_u8", P(mine), P(k2), 1, 0) == ESP_ERR_NOT_ALLOWED);
+}
+
 /* u-feckless-0026: the table's names are feckless_box_libc's
  * boxcalls_names.txt, which boxcheck holds every import of a boxed ELF to:
  * the same set, one name a line. */
@@ -929,6 +1025,7 @@ int main(int argc, char **argv)
     test_rtos();
     test_drivers();
     test_codec();
+    test_nvs();
     printf(failed ? "%d FAILED\n" : "box_calls: all passed (%u calls)\n", failed ? failed : (int)ncalls);
     return failed != 0;
 }

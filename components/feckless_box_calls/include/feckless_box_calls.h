@@ -14,6 +14,7 @@
  */
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "feckless_umode_calls.h"
@@ -34,6 +35,14 @@ const feckless_umode_call_t *feckless_box_calls_v1(uint32_t *n);
  * reads would wait on them), and forget the handles it was given. Call it
  * after feckless_umode_unload(). */
 void feckless_box_calls_end(void);
+
+/* u-feckless-0053: the NVS namespaces the next app may use, at most four
+ * of at most 15 characters, copied; feckless_box_calls_end() forgets them.
+ * Call it before feckless_umode_load(). Named none (the default), the app's
+ * gets find nothing and its sets and erases are ESP_ERR_NOT_ALLOWED, so
+ * NVS -- the launcher's Wi-Fi credentials, other apps' settings -- is out
+ * of its reach. false, and nothing changed, for a bad list. */
+bool feckless_box_calls_nvs(const char *const *ns, uint32_t n);
 
 /* The longest string the table reads from an app (a gfx paragraph). */
 #define FECKLESS_BOX_STR_MAX  65536u

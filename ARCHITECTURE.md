@@ -3972,3 +3972,59 @@ regenerated.
 
 *Not checked:* concurrent calls into one decoder (the stand-in is single
 threaded); a launcher built with it; a board.
+
+### u-feckless-0053 -- NVS in a box, in the launcher's namespaces
+
+A boxed app had no NVS: Defeatist's boxed player (u-defeatist-0022)
+defines feckless_nvs_handler's calls in the app as "nothing stored", so
+its volume, brightness, rotation, language and clock correction start
+from the defaults on every launch with no card. `src/box_nvs.c` answers
+them -- but NVS is the launcher's too: its Wi-Fi credentials, its own
+settings, every other app's. So:
+
+- **Only the namespaces the launcher names.**
+  `feckless_box_calls_nvs(names, n)`, before `feckless_umode_load()`:
+  four at most, 15 characters each (NVS's own limit), copied. A call
+  naming any other reads as empty (ESP_ERR_NVS_NOT_FOUND, as on a device
+  whose NVS was never written) and refuses a set or erase with
+  ESP_ERR_NOT_ALLOWED. Named none -- the default, and what an existing
+  launcher gets -- the app has no NVS at all, which is what it had before.
+  The whole name is compared; a prefix is not it.
+- **The names go with the app.** `feckless_box_calls_end()` forgets them,
+  so the next app starts with none unless the launcher names its own.
+- **Strings and blobs are copied through the host's heap**, 8 KB at most:
+  NVS never writes from the app's memory, which another of its threads
+  could change in the middle of the write, and a read reaches the app
+  only once NVS has given all of it. A string is copied as measured and
+  terminated again by the host. A get keeps the handler's two ways (a NULL
+  buffer asks the size; too small a buffer is ESP_ERR_NVS_INVALID_LENGTH
+  with the size) and writes nothing past the room the app gave. An
+  integer get leaves the app's value alone on a miss, as the handler
+  does, so a default put there first survives.
+- **Unlocked**: a flash write is milliseconds, and the handler's own lock
+  orders the app's threads.
+- **`feckless_abi_nvs_v1` is answered**, so an app can require the
+  section, which abicheck has it do once it takes any of its names -- as
+  a box answers `feckless_abi_storage_v2` without all of storage. Not
+  answered: `nvsh_list`, `nvsh_log`, `nvsh_stats` and `nvsh_migrate`,
+  which walk or move whole namespaces, the launcher's among them; an app
+  importing one is refused at load by that name.
+
+*Checked, on a host:* `make -C components/feckless_box_calls/test`, 280
+calls, against a stand-in NVS: the section's version answered; named nothing, nothing found and nothing
+written; the launcher's own namespace never read, written or erased by
+the app with another named; a prefix of a named namespace refused;
+integers, a string and a blob round-tripped, with the blob's size asked
+alone, too small a buffer answered with the size and nothing written,
+and buffers and strings past the box refused; NVS handed the host's copy,
+never the app's memory; erase of a key and of the app's namespace; bad
+lists (five names, sixteen characters, an empty name, NULL) refused with
+nothing changed; the names gone after the app. Five deliberate breaks --
+any namespace taken as named, the blob not copied in, NVS handed the
+app's pointer, `nvsh_ready` true with no namespace, the names kept past
+the app -- each fail it. `box_nvs.c` compiled for the P4 against ESP-IDF
+6.1.1's headers at -Wall -Wextra -Werror; 64 bytes of stack at most.
+`boxcalls_names.txt` regenerated.
+
+*Not checked:* a launcher naming a namespace (Avoidant would name
+`defeatist` for Defeatist); real NVS; a board.

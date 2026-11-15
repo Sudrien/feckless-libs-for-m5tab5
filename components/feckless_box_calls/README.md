@@ -129,6 +129,15 @@ feckless_umode_load(image, size, calls, n, 4 << 20, 64 << 10, &app);
   `feckless_box_calls_end()` closes the app's resamplers and, if it played
   anything, puts the amplifier back to idle.
 
+- **NVS** (u-feckless-0053, `src/box_nvs.c`): feckless_nvs_handler's
+  `nvsh_get_`/`nvsh_set_` u8, u32, i32, str and blob, `nvsh_erase_key`,
+  `nvsh_erase_ns`, `nvsh_ready` and `feckless_abi_nvs_v1`, only in the namespaces the launcher
+  named with `feckless_box_calls_nvs()` before the load (four at most).
+  Any other reads as empty and refuses a change with ESP_ERR_NOT_ALLOWED;
+  named none, the app has no NVS. Strings and blobs (8 KB at most) are
+  copied through the host's heap. Unlocked. The names are forgotten at
+  `feckless_box_calls_end()`.
+
 - **esp_audio_codec's simple decoder** (u-feckless-0052, `src/box_codec.c`),
   where the launcher links the codec: `esp_audio_dec_register_default`,
   `esp_audio_simple_dec_register_default` (once each, ALREADY_EXIST taken

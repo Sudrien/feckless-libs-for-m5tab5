@@ -72,3 +72,8 @@ void box_rtos_named(win_t *w, uint32_t id, uint32_t name);
 extern const feckless_umode_call_t box_codec_calls[];
 extern const uint32_t box_codec_calls_n;
 void box_codec_end(void);
+
+/* u-feckless-0053: NVS, in the namespaces the launcher named (box_nvs.c). */
+extern const feckless_umode_call_t box_nvs_calls[];
+extern const uint32_t box_nvs_calls_n;
+void box_nvs_end(void);

@@ -5,10 +5,11 @@ idf_component_register(
     SRCS "src/box_calls.c" "src/box_storage.c" "src/box_audio.c"
          "src/box_rtos.c"   # u-feckless-0045
          "src/box_codec.c"  # u-feckless-0052
+         "src/box_nvs.c"    # u-feckless-0053
     INCLUDE_DIRS "include"
     REQUIRES feckless_umode
     PRIV_REQUIRES feckless_abi feckless_drivers feckless_graphics_handler
-                  feckless_storage_handler fatfs vfs
+                  feckless_storage_handler feckless_nvs_handler nvs_flash fatfs vfs
                   esp_timer log freertos esp_rom heap
 )
 
