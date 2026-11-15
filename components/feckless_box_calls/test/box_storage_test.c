@@ -9,6 +9,7 @@
  *   make -C components/feckless_box_calls/test
  */
 #include <dirent.h>
+#include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -303,6 +304,120 @@ static void test_writes(void)
     call("closedir", d, 0, 0, 0);
 }
 
+/* u-feckless-0050: Jinxed Writer's doclog.c as it calls: the directory
+ * made (EEXIST read from errno), a twin written, ferror()ed, fflush()ed
+ * and fsync(fileno())ed, the export put in place with unlink() and
+ * rename(); and every failure's errno, at the thread's tp. */
+static void test_writer(void)
+{
+    int *eno = box_alloc(sizeof(int));
+    w.ctx.x[4] = P(eno);                                            /* the thread's errno block */
+    char pbuf[128];
+    snprintf(pbuf, sizeof pbuf, "%s/jinxed", dir);
+    char *jd = put_str(pbuf), *wb = put_str("wb"), *rb = put_str("rb");
+    CHECK(call("mkdir", P(jd), 0777, 0, 0) == 0);
+    *eno = 0;
+    CHECK(call("mkdir", P(jd), 0777, 0, 0) == (uint32_t)-1 && *eno == EEXIST);
+
+    snprintf(pbuf, sizeof pbuf, "%s/jinxed/.note.md.h0", dir);
+    char *twin = put_str(pbuf);
+    const uint32_t f = call("fopen", P(twin), P(wb), 0, 0);
+    CHECK(f != 0);
+    uint8_t *rec = box_alloc(9000);
+    uint32_t x = 1;                                                 /* not periodic in a slice */
+    for (int i = 0; i < 9000; i++) rec[i] = (uint8_t)((x = x * 1103515245u + 12345u) >> 16);
+    CHECK(call("fwrite", P(rec), 1, 9000, f) == 9000);
+    CHECK(call("ferror", f, 0, 0, 0) == 0 && call("feof", f, 0, 0, 0) == 0);
+    CHECK(call("fflush", f, 0, 0, 0) == 0);
+    const uint32_t fd = call("fileno", f, 0, 0, 0);
+    CHECK(fd != (uint32_t)-1 && fd != f && (fd < w.lo || fd >= w.hi));
+    CHECK(call("fsync", fd, 0, 0, 0) == 0);
+    *eno = 0;
+    CHECK(call("fsync", f, 0, 0, 0) == (uint32_t)-1 && *eno == EBADF);          /* a FILE is not an fd */
+    CHECK(call("fclose", fd, 0, 0, 0) == (uint32_t)EOF);                        /* nor an fd a FILE */
+    CHECK(call("fclose", f, 0, 0, 0) == 0);
+    *eno = 0;
+    CHECK(call("fsync", fd, 0, 0, 0) == (uint32_t)-1 && *eno == EBADF);         /* closed */
+    *eno = 0;
+    CHECK(call("fileno", f, 0, 0, 0) == (uint32_t)-1 && *eno == EBADF);
+    CHECK(call("ferror", f, 0, 0, 0) == 1 && call("feof", f, 0, 0, 0) == 0);
+
+    /* read to the end: feof, then clearerr */
+    const uint32_t g = call("fopen", P(twin), P(rb), 0, 0);
+    uint8_t *back = box_alloc(9100);
+    CHECK(call("fread", P(back), 1, 9100, g) == 9000 && !memcmp(back, rec, 9000));
+    CHECK(call("feof", g, 0, 0, 0) == 1 && call("ferror", g, 0, 0, 0) == 0);
+    CHECK(call("clearerr", g, 0, 0, 0) == 0 && call("feof", g, 0, 0, 0) == 0);
+    CHECK(call("fclose", g, 0, 0, 0) == 0);
+
+    /* the export: unlink the old, rename the .tmp in */
+    snprintf(pbuf, sizeof pbuf, "%s/jinxed/note.md", dir);
+    char *exp = put_str(pbuf);
+    snprintf(pbuf, sizeof pbuf, "%s/jinxed/note.md.tmp", dir);
+    char *tmp = put_str(pbuf);
+    uint32_t e = call("fopen", P(exp), P(wb), 0, 0);
+    CHECK(call("fwrite", P(rec), 1, 3, e) == 3 && call("fclose", e, 0, 0, 0) == 0);
+    e = call("fopen", P(tmp), P(wb), 0, 0);
+    CHECK(call("fwrite", P(rec), 1, 7, e) == 7 && call("fclose", e, 0, 0, 0) == 0);
+    CHECK(call("unlink", P(exp), 0, 0, 0) == 0);
+    CHECK(call("rename", P(tmp), P(exp), 0, 0) == 0);
+    struct stat *st = box_alloc(sizeof(struct stat));
+    CHECK(call("stat", P(exp), P(st), 0, 0) == 0 && st->st_size == 7);
+    *eno = 0;
+    CHECK(call("unlink", P(tmp), 0, 0, 0) == (uint32_t)-1 && *eno == ENOENT);
+    *eno = 0;
+    CHECK(call("stat", P(tmp), P(st), 0, 0) == (uint32_t)-1 && *eno == ENOENT);
+    *eno = 0;
+    CHECK(call("rename", P(tmp), P(exp), 0, 0) == (uint32_t)-1 && *eno == ENOENT);
+    *eno = 0;
+    CHECK(call("remove", P(tmp), 0, 0, 0) == (uint32_t)-1 && *eno == ENOENT);
+    *eno = 0;
+    CHECK(call("fopen", P(tmp), P(rb), 0, 0) == 0 && *eno == ENOENT);
+
+    /* refusals before any call: EFAULT for a pointer, EBADF for a number */
+    *eno = 0;
+    CHECK(call("unlink", 0x1000, 0, 0, 0) == (uint32_t)-1 && *eno == EFAULT);
+    *eno = 0;
+    CHECK(call("mkdir", 0x1000, 0777, 0, 0) == (uint32_t)-1 && *eno == EFAULT);
+    *eno = 0;
+    CHECK(call("stat", P(exp), 0x1000, 0, 0) == (uint32_t)-1 && *eno == EFAULT);
+    *eno = 0;
+    CHECK(call("fopen", 0x1000, P(rb), 0, 0) == 0 && *eno == EFAULT);
+    *eno = 0;
+    CHECK(call("fseek", 0x46494c00u + 15, 0, SEEK_SET, 0) == (uint32_t)-1 && *eno == EBADF);
+    *eno = 0;
+    CHECK(call("ftell", 0x46494c00u + 99, 0, 0, 0) == (uint32_t)-1 && *eno == EBADF);
+    *eno = 0;
+    CHECK(call("fflush", 0x46494c00u + 99, 0, 0, 0) == (uint32_t)EOF && *eno == EBADF);
+    *eno = 0;
+    CHECK(call("fclose", 0x46494c00u + 99, 0, 0, 0) == (uint32_t)EOF && *eno == EBADF);
+    CHECK(call("fsync", 0x46440000u + 16, 0, 0, 0) == (uint32_t)-1);
+    CHECK(call("ferror", 0, 0, 0, 0) == 1 && call("feof", 0, 0, 0, 0) == 0 && call("clearerr", 0, 0, 0, 0) == 0);
+
+    /* every slot open: EMFILE */
+    uint32_t h[16];
+    int n = 0;
+    while (n < 16 && (h[n] = call("fopen", P(exp), P(rb), 0, 0)) != 0) n++;
+    *eno = 0;
+    CHECK(n == 16 && call("fopen", P(exp), P(rb), 0, 0) == 0 && *eno == EMFILE);
+    while (n > 0) call("fclose", h[--n], 0, 0, 0);
+
+    /* success leaves errno as it was, and a tp outside the box is not written */
+    *eno = 1234;
+    CHECK(call("stat", P(exp), P(st), 0, 0) == 0 && *eno == 1234);
+    int *outside = mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT, -1, 0);
+    CHECK(outside != MAP_FAILED);
+    if (outside != MAP_FAILED) {
+        *outside = 77;
+        w.ctx.x[4] = P(outside);
+        CHECK(call("unlink", P(tmp), 0, 0, 0) == (uint32_t)-1 && *outside == 77);
+        w.ctx.x[4] = P(eno) + MEM;                                  /* past the box's end */
+        CHECK(call("unlink", P(tmp), 0, 0, 0) == (uint32_t)-1);
+        munmap(outside, 4096);
+    }
+    w.ctx.x[4] = 0;
+}
+
 /* storage_io's files: a FILE number, reads through the staging buffer */
 static void test_storage_io(void)
 {
@@ -439,6 +554,7 @@ int main(void)
     test_dirs();
     test_storage_handler();
     test_writes();
+    test_writer();
     test_storage_io();
     test_ffdir();
     test_more_handler();

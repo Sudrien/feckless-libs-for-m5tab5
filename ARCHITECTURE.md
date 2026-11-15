@@ -3819,3 +3819,63 @@ the P4 against ESP-IDF 6.1.1. Defeatist's boxed ELF built with ESP-IDF
 (u-defeatist-0022 says how).
 
 *Not checked:* a launcher built with it; a board.
+
+### u-feckless-0050 -- the rest of stdio a writer needs, and errno, in a box
+
+What Jinxed Writer's log (its `doclog.c`, u-jinxed-0001) calls that a box
+did not answer, and the errno it reads.
+
+- **Six names:** `ferror`, `feof`, `clearerr`, `fileno`, `fsync`,
+  `unlink`, all already in the storage section. The log is `fflush()`ed
+  and `fsync(fileno())`ed after every append, so that a power cut tears
+  the tail of at most one of its twins, and checked with `ferror()`. Its
+  export goes in place with `unlink()` and then `rename()`, because FatFs
+  will not rename over a file. `fileno()` gives a number of its own,
+  `TOKEN_FD` + the FILE's slot. Only `fsync()` takes it, since no other
+  fd call is a box's, and a FILE number handed to `fsync()` (or an fd
+  to `fclose()`) is refused. A `storage_io_open()` file has a slot like
+  `fopen()`'s, so it can be synced too.
+- **errno.** No box call set the app's errno before this, so after a
+  failed call it read whatever was last stored there. `doclog.c` makes
+  its directory with `mkdir()` and treats `EEXIST` as success. It logs
+  the errno of a failed `mkdir()` and `rename()`. `box_set_errno()`
+  (`box_calls_priv.h`) writes the word at the calling thread's `tp`,
+  which `feckless_box_libc`'s `__errno()` returns (u-feckless-0023,
+  0042), if that word is in the box. In `box_storage.c`, `fopen`,
+  `fclose`, `fseek`, `ftell`, `fflush`, `remove`, `rename`, `mkdir`,
+  `rmdir`, `stat`, `utime` and the six above set it on failure. The
+  value is the host's errno from the call that failed, or the reason for
+  a refusal made before any call: `EFAULT` for a pointer, `EBADF` for a
+  number the box did not give, `EMFILE` for no free FILE slot, and
+  `EOVERFLOW` for an `ftell()` past the app's `long`. A success leaves it
+  alone, as C's do. Both sides are one picolibc, so one numbering.
+  `storage_io_*`, FatFs and the directory calls are unchanged: FatFs
+  returns its own codes, and the rest were not needed.
+
+*Checked, on a host:* `make -C components/feckless_box_calls/test` (257
+calls). box_storage's new `test_writer` plays doclog's sequence over real
+files:
+- mkdir, and `EEXIST` read back from errno;
+- 9000 bytes of a non-periodic pattern written across a slice edge,
+  `ferror`/`feof` clear, `fflush`, `fsync(fileno())`, read back to the
+  end, `feof` set, `clearerr`;
+- the export unlinked and renamed in, and `ENOENT` from unlink, stat,
+  rename, remove and fopen;
+- `EFAULT` and `EBADF` refusals, FILE and fd numbers mixed up, a closed
+  file's fd, `EMFILE` with all sixteen slots open;
+- a success leaving errno alone, and a `tp` outside the box -- in a
+  second mapping, with a canary, and past the box's end -- not written.
+
+Five changes are each caught: `rc()` setting no errno, `fsync()`
+taking a FILE number, `fileno()` returning the FILE number, no
+`EMFILE`, `feof()` always 0. Writing errno through an unchecked `tp` is
+also caught, as a crash rather than a FAIL. Two of the changes first
+failed to compile under `-Werror` and tested nothing; they were redone.
+`boxcalls_names.txt` regenerated (257 names).
+(0047's `test_writes` pattern, `i * 7`, repeats every 256 bytes, a
+divisor of the 8 KB slice, so it would not see a slice written from the
+wrong offset; the new test's pattern does not repeat.)
+
+*Not checked:* compiled for the P4, since there is no riscv32-esp-elf
+toolchain in this session; only the host's gcc, with `-Werror`, built
+it, and the no-fast-seek build. An ESP-IDF build; a board.

@@ -168,6 +168,12 @@ storage_hold_background
 storage_hold_readers
 storage_hold_brief
 storage_release_brief
+ferror
+feof
+clearerr
+fileno
+fsync
+unlink
 audio_out_init
 audio_out_set_volume
 audio_out_headphones

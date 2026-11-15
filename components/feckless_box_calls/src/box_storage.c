@@ -21,6 +21,7 @@
  * otherwise wait on.
  */
 #include <dirent.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -43,6 +44,7 @@
 #define PATH_MAX_BOX 1024u
 #define TOKEN_FILE 0x46494c00u              /* "FIL\0" + slot: a FILE * */
 #define TOKEN_DIR  0x44495200u              /* "DIR\0" + slot: a DIR * */
+#define TOKEN_FD   0x46440000u              /* "FD\0\0" + slot: fileno() of a FILE, u-feckless-0050 */
 
 /*
  * u-feckless-0015: reads into the box go through internal RAM.
@@ -292,22 +294,40 @@ static FILE *file_of(uint32_t t)
     return (t >= TOKEN_FILE && i < MAX_FILE) ? s_file[i] : NULL;
 }
 
+/* u-feckless-0050: a host call's int result for the app, its errno set
+ * from the host's when it failed; and a refusal before any call, with the
+ * errno it stands for (EFAULT a pointer, EBADF a number not given). */
+static uint32_t rc(win_t *w, int r)
+{
+    if (r != 0) box_set_errno(w, errno);
+    return (uint32_t)r;
+}
+static uint32_t refuse(win_t *w, int e, uint32_t r)
+{
+    box_set_errno(w, e);
+    return r;
+}
+
 H(c_fopen)
 {
     const char *path = str(w, a[0], PATH_MAX_BOX);
     const char *mode = str(w, a[1], 8);
     *ret = 0;
     if (!path || !mode) {
+        refuse(w, EFAULT, 0);
         return true;
     }
     int i = 0;
     while (i < MAX_FILE && s_file[i]) i++;
     if (i == MAX_FILE) {
+        refuse(w, EMFILE, 0);
         return true;
     }
     s_file[i] = fopen(path, mode);
     if (s_file[i]) {
         *ret = TOKEN_FILE + (uint32_t)i;
+    } else {
+        box_set_errno(w, errno);
     }
     return true;
 }
@@ -356,19 +376,22 @@ H(c_fgets)
 /* long is 32 bits in the app. */
 H(c_fseek)
 {
-    (void)w;
     FILE *f = file_of(a[0]);
-    *ret = f ? (uint32_t)fseek(f, (long)(int32_t)a[1], (int)a[2]) : (uint32_t)-1;
+    *ret = f ? rc(w, fseek(f, (long)(int32_t)a[1], (int)a[2])) : refuse(w, EBADF, (uint32_t)-1);
     return true;
 }
 
 H(c_ftell)
 {
-    (void)w;
     FILE *f = file_of(a[0]);
     long p = f ? ftell(f) : -1;
-    if (p > INT32_MAX) {
+    if (!f) {
+        box_set_errno(w, EBADF);
+    } else if (p < 0) {
+        box_set_errno(w, errno);
+    } else if (p > INT32_MAX) {
         p = -1;                             /* does not fit the app's long */
+        box_set_errno(w, EOVERFLOW);
     }
     *ret = (uint32_t)(int32_t)p;
     return true;
@@ -376,15 +399,14 @@ H(c_ftell)
 
 H(c_fclose)
 {
-    (void)w;
     FILE *f = file_of(a[0]);
     if (!f) {
-        *ret = (uint32_t)EOF;
+        *ret = refuse(w, EBADF, (uint32_t)EOF);
         return true;
     }
     const uint32_t i = a[0] - TOKEN_FILE;
     s_file[i] = NULL;
-    *ret = (uint32_t)(s_file_io[i] ? storage_io_close(f) : fclose(f));
+    *ret = rc(w, s_file_io[i] ? storage_io_close(f) : fclose(f));
     s_file_io[i] = false;
     return true;
 }
@@ -429,17 +451,16 @@ H(c_fwrite)
 /* fflush(NULL) flushes the app's own files, not every stream the host has. */
 H(c_fflush)
 {
-    (void)w;
     if (a[0] == 0) {
         int r = 0;
         for (int i = 0; i < MAX_FILE; i++) {
             if (s_file[i] && fflush(s_file[i]) != 0) r = EOF;
         }
-        *ret = (uint32_t)r;
+        *ret = rc(w, r);
         return true;
     }
     FILE *f = file_of(a[0]);
-    *ret = f ? (uint32_t)fflush(f) : (uint32_t)EOF;
+    *ret = f ? rc(w, fflush(f)) : refuse(w, EBADF, (uint32_t)EOF);
     return true;
 }
 
@@ -455,25 +476,25 @@ H(c_rewind)
 H(c_remove)
 {
     const char *p = str(w, a[0], PATH_MAX_BOX);
-    *ret = p ? (uint32_t)remove(p) : (uint32_t)-1;
+    *ret = p ? rc(w, remove(p)) : refuse(w, EFAULT, (uint32_t)-1);
     return true;
 }
 H(c_rename)
 {
     const char *from = str(w, a[0], PATH_MAX_BOX), *to = str(w, a[1], PATH_MAX_BOX);
-    *ret = (from && to) ? (uint32_t)rename(from, to) : (uint32_t)-1;
+    *ret = (from && to) ? rc(w, rename(from, to)) : refuse(w, EFAULT, (uint32_t)-1);
     return true;
 }
 H(c_mkdir)
 {
     const char *p = str(w, a[0], PATH_MAX_BOX);
-    *ret = p ? (uint32_t)mkdir(p, (mode_t)a[1]) : (uint32_t)-1;
+    *ret = p ? rc(w, mkdir(p, (mode_t)a[1])) : refuse(w, EFAULT, (uint32_t)-1);
     return true;
 }
 H(c_rmdir)
 {
     const char *p = str(w, a[0], PATH_MAX_BOX);
-    *ret = p ? (uint32_t)rmdir(p) : (uint32_t)-1;
+    *ret = p ? rc(w, rmdir(p)) : refuse(w, EFAULT, (uint32_t)-1);
     return true;
 }
 /* (path, struct stat *): one picolibc on both sides, so one layout */
@@ -482,12 +503,12 @@ H(c_stat)
     const char *p = str(w, a[0], PATH_MAX_BOX);
     struct stat st;
     if (!p || !ok_ptr(w, a[1], sizeof st)) {
-        *ret = (uint32_t)-1;
+        *ret = refuse(w, EFAULT, (uint32_t)-1);
         return true;
     }
     const int r = stat(p, &st);
     if (r == 0) memcpy((void *)(uintptr_t)a[1], &st, sizeof st);
-    *ret = (uint32_t)r;
+    *ret = rc(w, r);
     return true;
 }
 /* (path, const struct utimbuf * or NULL for now) */
@@ -496,11 +517,59 @@ H(c_utime)
     const char *p = str(w, a[0], PATH_MAX_BOX);
     struct utimbuf t;
     if (!p || (a[1] && !ok_ptr(w, a[1], sizeof t))) {
-        *ret = (uint32_t)-1;
+        *ret = refuse(w, EFAULT, (uint32_t)-1);
         return true;
     }
     if (a[1]) memcpy(&t, (const void *)(uintptr_t)a[1], sizeof t);
-    *ret = (uint32_t)utime(p, a[1] ? &t : NULL);
+    *ret = rc(w, utime(p, a[1] ? &t : NULL));
+    return true;
+}
+
+/* ---- u-feckless-0050: the rest of stdio a writer uses ---------------------
+ * Jinxed Writer's log (its doclog.c) is fflush()ed and fsync(fileno())ed
+ * after every append, checked with ferror(), and its export put in place
+ * with unlink() and rename(). fileno() gives a number of its own, TOKEN_FD
+ * + the FILE's slot, which only fsync() takes: no other fd call is a box's,
+ * and a FILE number is not an fd. */
+
+H(c_ferror)
+{
+    (void)w;
+    FILE *f = file_of(a[0]);
+    *ret = f ? (uint32_t)(ferror(f) != 0) : 1u;
+    return true;
+}
+H(c_feof)
+{
+    (void)w;
+    FILE *f = file_of(a[0]);
+    *ret = f ? (uint32_t)(feof(f) != 0) : 0u;
+    return true;
+}
+H(c_clearerr)
+{
+    (void)w;
+    FILE *f = file_of(a[0]);
+    if (f) clearerr(f);
+    *ret = 0;
+    return true;
+}
+H(c_fileno)
+{
+    *ret = file_of(a[0]) ? TOKEN_FD + (a[0] - TOKEN_FILE) : refuse(w, EBADF, (uint32_t)-1);
+    return true;
+}
+H(c_fsync)
+{
+    const uint32_t i = a[0] - TOKEN_FD;
+    FILE *f = (a[0] >= TOKEN_FD && i < MAX_FILE) ? s_file[i] : NULL;
+    *ret = f ? rc(w, fsync(fileno(f))) : refuse(w, EBADF, (uint32_t)-1);
+    return true;
+}
+H(c_unlink)
+{
+    const char *p = str(w, a[0], PATH_MAX_BOX);
+    *ret = p ? rc(w, unlink(p)) : refuse(w, EFAULT, (uint32_t)-1);
     return true;
 }
 
@@ -955,6 +1024,8 @@ const feckless_umode_call_t box_storage_calls[] = {
     FN(storage_usb_info), FN(storage_usb_busy), FN(storage_usb_power), FN(storage_usb_powered),
     FN(storage_hold_background), FN(storage_hold_readers), FN(storage_hold_brief),
     FN(storage_release_brief),
+    /* u-feckless-0050 */
+    FN(ferror), FN(feof), FN(clearerr), FN(fileno), FN(fsync), FN(unlink),
 };
 const uint32_t box_storage_calls_n = sizeof box_storage_calls / sizeof box_storage_calls[0];
 

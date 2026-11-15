@@ -81,6 +81,12 @@ feckless_umode_load(image, size, calls, n, 4 << 20, 64 << 10, &app);
     FatFs directories. The storage list is not here: it calls the app's
     filter, so an app links `storage_list.c` into itself, over these.
 
+  - u-feckless-0050, as Jinxed Writer's log uses it: `ferror`, `feof`,
+    `clearerr`, `fileno` (a number of its own, which only `fsync` takes),
+    `fsync`, `unlink`. A failed stdio or path call now sets the app's
+    `errno` -- the word at the thread's `tp` -- from the host's, or
+    `EFAULT`, `EBADF` or `EMFILE` for a refusal before any call.
+
   Not yet: `f_write`, `f_stat`, `open`/`read`, `access`, `fseeko`.
 
 - **Audio and USB** (u-feckless-0021, `src/box_audio.c`), as Lothesome

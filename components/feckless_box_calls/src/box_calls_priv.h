@@ -25,6 +25,18 @@ static inline const char *str(const win_t *w, uint32_t p, uint32_t max)
     return feckless_umode_strlen(w, (uintptr_t)p, max) >= 0 ? (const char *)(uintptr_t)p : NULL;
 }
 
+/* u-feckless-0050: the app's errno, which feckless_box_libc's __errno()
+ * finds at the calling thread's tp (u-feckless-0023, 0042): set where the
+ * host call failed, so an app reads it as it would after its own libc's. A
+ * tp outside the box is left alone. The two sides are one picolibc, so one
+ * numbering. */
+static inline void box_set_errno(win_t *w, int e)
+{
+    if (feckless_umode_range_ok(w, (uintptr_t)w->ctx.x[4], sizeof(int))) {
+        *(int *)(uintptr_t)w->ctx.x[4] = e;
+    }
+}
+
 static inline feckless_box_t *box_of_win(win_t *w)
 {
     return feckless_umode_calls_of(w)->box;
