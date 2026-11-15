@@ -9,3 +9,8 @@ static inline void *heap_caps_aligned_alloc(size_t align, size_t n, unsigned cap
     (void)caps;
     return aligned_alloc(align, (n + align - 1) / align * align);
 }
+/* u-feckless-0045: box_rtos.c's control blocks and storage. */
+#define MALLOC_CAP_SPIRAM   (1 << 10)
+extern unsigned fake_caps_last;
+static inline void *heap_caps_malloc(size_t n, unsigned caps) { fake_caps_last = caps; return malloc(n); }
+static inline void heap_caps_free(void *p) { free(p); }

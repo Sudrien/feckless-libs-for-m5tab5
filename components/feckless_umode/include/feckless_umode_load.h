@@ -107,6 +107,28 @@ feckless_umode_end_t feckless_umode_app_run_on(feckless_umode_app_t *app, int co
 /* The window, for its counters and range. */
 feckless_umode_window_t *feckless_umode_app_window(feckless_umode_app_t *app);
 
+/* u-feckless-0045: which of the app's threads a window is, for the FreeRTOS
+ * calls (feckless_box_calls' box_rtos.c). An id is what the app holds as a
+ * TaskHandle_t: 1 + the slot for a thread (the number spawn gives),
+ * FECKLESS_UMODE_MAIN_THREAD for app_main and the constructors, 0 for none.
+ *
+ * thread_id: the id of the window w, 0 if it is none of this app's.
+ * thread_task: the host task running id's window (a TaskHandle_t), NULL if
+ * the thread is not running.
+ * thread_stack: id's stack in the box, [*lo, *hi); false if not running.
+ * Every thread's stack is filled with FECKLESS_UMODE_STACK_FILL before its
+ * first window, app_main's before the first constructor, as FreeRTOS fills
+ * a task's, so the untouched part can be measured.
+ * stopping: the app has begun to stop (one of its threads ended other than
+ * by EXIT); a host call that waits gives up rather than wait on, since the
+ * thread's next host call ends it. */
+#define FECKLESS_UMODE_MAIN_THREAD (FECKLESS_UMODE_MAX_THREADS + 1)
+#define FECKLESS_UMODE_STACK_FILL  0xa5u
+uint32_t feckless_umode_app_thread_id(feckless_umode_app_t *app, const feckless_umode_window_t *w);
+void *feckless_umode_app_thread_task(feckless_umode_app_t *app, uint32_t id);
+bool feckless_umode_app_thread_stack(feckless_umode_app_t *app, uint32_t id, uint32_t *lo, uint32_t *hi);
+bool feckless_umode_app_stopping(const feckless_umode_app_t *app);
+
 /* Revoke the grant, then free everything. The app's fini functions are not
  * run: esp_elf would run them in M-mode. u-feckless-0023: not if a thread of
  * the app is still running (see feckless_umode_app_run()): that is logged,

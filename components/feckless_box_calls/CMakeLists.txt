@@ -3,6 +3,7 @@
 # (u-feckless-0006). Linked by a launcher, beside feckless_umode.
 idf_component_register(
     SRCS "src/box_calls.c" "src/box_storage.c" "src/box_audio.c"
+         "src/box_rtos.c"   # u-feckless-0045
     INCLUDE_DIRS "include"
     REQUIRES feckless_umode
     PRIV_REQUIRES feckless_abi feckless_drivers feckless_graphics_handler

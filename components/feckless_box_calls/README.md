@@ -90,6 +90,34 @@ feckless_umode_load(image, size, calls, n, 4 << 20, 64 << 10, &app);
   characters at most. `feckless_box_calls_end()` closes a microphone the
   app left open and stops its stream and capture.
 
+- **FreeRTOS** (u-feckless-0045, `src/box_rtos.c`), as Defeatist uses it:
+  - mutexes, recursive mutexes, binary and counting semaphores and queues
+    (`xQueueGenericCreate`, `xQueueCreateMutex`,
+    `xQueueCreateCountingSemaphore`, `vQueueDelete`, `xQueueGenericSend`,
+    `xQueueSemaphoreTake`, `xQueueReceive`, `xQueuePeek`,
+    `uxQueueMessagesWaiting`, `xQueueGenericReset`,
+    `xQueueTakeMutexRecursive`, `xQueueGiveMutexRecursive`);
+  - stream and message buffers (`xStreamBufferGenericCreateStatic`,
+    `xStreamBufferGenericCreate`, `vStreamBufferDelete`, `_Send`,
+    `_Receive`, `_BytesAvailable`, `_SpacesAvailable`, `_IsEmpty`,
+    `_IsFull`, `_Reset`);
+  - task notifications (`xTaskGenericNotify`, `ulTaskGenericNotifyTake`,
+    `xTaskGenericNotifyWait`), index 0;
+  - critical sections (`xPortEnterCriticalTimeout`, `vPortEnterCritical`,
+    `vPortExitCriticalMultiCore`, `vPortExitCritical`), one recursive mutex
+    for the app; `xPortInIsrContext` (never);
+  - tasks: `xTaskCreateStaticPinnedToCore`, `xTaskGetTickCount`,
+    `xTaskGetCurrentTaskHandle`, `pcTaskGetName`,
+    `uxTaskGetStackHighWaterMark`, `xTaskGetStackStart`,
+    `uxTaskPriorityGet`, `vTaskPrioritySet`, `eTaskGetState`,
+    `vTaskSuspend` (the caller only).
+
+  Every object is the host's, with a number in the box; a static create's
+  buffers are not used. The calls that wait are unlocked and wait in 100 ms
+  slices, giving up when the app stops. Notifications are a value and a
+  state per thread kept here, not the host task's own. A thread made with
+  `tskNO_AFFINITY` goes on the caller's core.
+
 ## Tests
 
     make -C components/feckless_box_calls/test

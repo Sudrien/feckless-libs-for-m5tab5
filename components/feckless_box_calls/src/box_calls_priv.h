@@ -44,3 +44,13 @@ void box_storage_end(void);
 extern const feckless_umode_call_t box_audio_calls[];
 extern const uint32_t box_audio_calls_n;
 void box_audio_end(void);
+
+/* u-feckless-0045: FreeRTOS's locks, queues, stream buffers, notifications,
+ * critical sections and task queries (box_rtos.c). box_rtos_core(): the
+ * core a thread asked for, tskNO_AFFINITY made the caller's. box_rtos_named():
+ * a thread spawned, with the app's name for it (a box string, or 0). */
+extern const feckless_umode_call_t box_rtos_calls[];
+extern const uint32_t box_rtos_calls_n;
+void box_rtos_end(void);
+int box_rtos_core(int asked);
+void box_rtos_named(win_t *w, uint32_t id, uint32_t name);

@@ -76,6 +76,7 @@ struct feckless_umode_app {
     bool have_bad;
     feckless_umode_end_t bad;       /* the first end that was not EXIT */
     uintptr_t tls_main;             /* app_main's errno block (tp) */
+    TaskHandle_t main_task;         /* u-feckless-0045: the host task running app_main */
     app_thread_t th[FECKLESS_UMODE_MAX_THREADS];
 };
 
@@ -368,6 +369,7 @@ esp_err_t feckless_umode_app_spawn(feckless_umode_app_t *a, uint32_t fn, uint32_
         goto undo;
     }
     memset((void *)t->tls, 0, TLS_BYTES);
+    memset((void *)t->stack, FECKLESS_UMODE_STACK_FILL, stack_bytes);     /* u-feckless-0045 */
     t->app = a;
     t->win = a->win;                            /* the box's range and calls; counters from 0 */
     t->win.syscalls = t->win.irqs = t->win.migrations = 0;
@@ -598,13 +600,27 @@ feckless_umode_end_t feckless_umode_app_run(feckless_umode_app_t *a)
         }
     }
     a->elf.init_done = true;
+    /* u-feckless-0045: app_main's thread, for the FreeRTOS calls; its stack
+     * filled once, as a thread's is at spawn. */
+    a->main_task = xTaskGetCurrentTaskHandle();
+    uint32_t slo, shi;
+    feckless_box_stack(&a->box, &slo, &shi);
+    memset((void *)(uintptr_t)slo, FECKLESS_UMODE_STACK_FILL, shi - slo);
     for (uint32_t i = 0; i < nc; i++) {
         end = run_one(a, ctors[i]);
         if (end.reason != FECKLESS_UMODE_END_EXIT) {
+            a->main_task = NULL;
             return finish(a, end);
         }
     }
-    return finish(a, run_one(a, (uintptr_t)a->elf.entry));
+    end = run_one(a, (uintptr_t)a->elf.entry);
+    /* Threads go on after app_main returns, and their host calls must not
+     * reach a host task that is about to be gone. Under the lock, as the
+     * FreeRTOS calls look this up under it. */
+    xSemaphoreTakeRecursive(a->lock, portMAX_DELAY);
+    a->main_task = NULL;
+    xSemaphoreGiveRecursive(a->lock);
+    return finish(a, end);
 }
 
 /* u-feckless-0031 */
@@ -710,6 +726,64 @@ esp_err_t feckless_umode_app_grant(feckless_umode_app_t *a, uint32_t lo, uint32_
 feckless_umode_window_t *feckless_umode_app_window(feckless_umode_app_t *a)
 {
     return &a->win;
+}
+
+/* u-feckless-0045. Called from host calls, which run under the app's lock
+ * unless flagged UNLOCKED; a caller that needs the task or the stack to
+ * stay is a locked call (a thread frees both under the lock as it ends). */
+uint32_t feckless_umode_app_thread_id(feckless_umode_app_t *a, const feckless_umode_window_t *w)
+{
+    if (!a || !w) {
+        return 0;
+    }
+    if (w == &a->win) {
+        return FECKLESS_UMODE_MAIN_THREAD;
+    }
+    for (int i = 0; i < FECKLESS_UMODE_MAX_THREADS; i++) {
+        if (w == &a->th[i].win) {
+            return (uint32_t)i + 1;
+        }
+    }
+    return 0;
+}
+
+void *feckless_umode_app_thread_task(feckless_umode_app_t *a, uint32_t id)
+{
+    if (!a) {
+        return NULL;
+    }
+    if (id == FECKLESS_UMODE_MAIN_THREAD) {
+        return a->main_task;
+    }
+    if (id < 1 || id > FECKLESS_UMODE_MAX_THREADS || !a->th[id - 1].running) {
+        return NULL;
+    }
+    return a->th[id - 1].task;
+}
+
+bool feckless_umode_app_thread_stack(feckless_umode_app_t *a, uint32_t id, uint32_t *lo, uint32_t *hi)
+{
+    if (!a || !lo || !hi) {
+        return false;
+    }
+    if (id == FECKLESS_UMODE_MAIN_THREAD) {
+        if (!a->main_task) {
+            return false;
+        }
+        feckless_box_stack(&a->box, lo, hi);
+        return true;
+    }
+    if (id < 1 || id > FECKLESS_UMODE_MAX_THREADS || !a->th[id - 1].running || !a->th[id - 1].stack) {
+        return false;
+    }
+    *lo = (uint32_t)a->th[id - 1].stack;
+    *hi = *lo + feckless_box_len(&a->box, a->th[id - 1].stack);
+    return true;
+}
+
+bool feckless_umode_app_stopping(const feckless_umode_app_t *a)
+{
+    return !a || a->stopping;
 }
 
 void feckless_umode_unload(feckless_umode_app_t *a)

@@ -3549,3 +3549,76 @@ calls gave. Times per call: sqrt 2377 ns, sin 11161, exp 6032, log
 Without 0042 the same build hit a store access fault at 0x4ff6feb0, in
 the first `errno` write; with it there is none. 0043 has not been seen
 on a board, as nothing faulted.
+
+### u-feckless-0045 -- FreeRTOS's locks, queues and stream buffers in a box
+
+Step 1 of putting Defeatist's player in a box (u-defeatist-0022). Its ELF,
+built from main/ as the ABI v1 ELF is, imports 413 names; 259 of them a
+box does not answer, and 29 of those are FreeRTOS: the player takes and
+gives a semaphore at about 300 sites, makes 20 mutexes, sends its PCM
+through a stream buffer, and wakes its reindex and recorder tasks with
+task notifications. `src/box_rtos.c` answers those 29 and their nearest
+siblings, 40 names in all.
+
+- **Objects are the host's.** A queue's control block holds the list
+  pointers the scheduler follows; one in the box would let the app aim the
+  kernel. Each object's control block is in internal RAM (the P4's
+  spinlock), its storage in PSRAM, and the app holds a number. A static
+  create's buffers are the app's to scribble on and are not used.
+- **Waits are unlocked, in slices.** A thread blocked on a mutex must not
+  hold up its siblings' host calls (u-feckless-0023), so every call that
+  may wait is `FECKLESS_UMODE_CALL_UNLOCKED`, and waits 100 ms at a time,
+  giving up as soon as the app is stopping -- no host call outlives
+  `FECKLESS_UMODE_STOP_WAIT_MS`. The object table has a spinlock of its
+  own, and each object a count of the unlocked calls inside it: one
+  deleted under a waiting thread is freed by the last call to leave.
+- **FreeRTOS's assertions are the launcher's panic**, so what it would
+  assert on is refused first: a mutex given by a task that does not hold
+  it (the IDF builds FreeRTOS without `xQueueGetMutexHolder()`, so the
+  holder is kept here), an overwrite to a queue longer than one, an item
+  queue taken as a semaphore, a stream buffer's trigger past its size, a
+  message buffer too small for its length word, a callback (the host
+  cannot run the app's code).
+- **Notifications are not the host task's.** The host task that runs a
+  thread's window also runs its host calls, and a driver among those may
+  wait on its own notification, which an app's `xTaskNotify()` would
+  satisfy or swallow. Each thread has a value, a state and a binary
+  semaphore here, with FreeRTOS's semantics on top. Index 0 only.
+- **Critical sections are one recursive mutex** for the app, the
+  `portMUX_TYPE` untouched. A window already runs an app's threads on its
+  core one at a time between host calls; the mutex carries that across a
+  host call and across cores.
+- **Tasks.** `xTaskCreateStaticPinnedToCore` spawns as
+  `xTaskCreatePinnedToCore` does (the app's stack and TCB unused). Both
+  keep the app's name for `pcTaskGetName`, and both now put a
+  `tskNO_AFFINITY` thread on the caller's core: FreeRTOS would be free to
+  put it on core 0, where its windows would starve the panel
+  (u-feckless-0031). `uxTaskGetStackHighWaterMark` and
+  `xTaskGetStackStart` measure the thread's stack in the box;
+  `vTaskSuspend` suspends only the caller, until the app stops.
+
+`feckless_umode` gains what that needs: `feckless_umode_app_thread_id()`
+(the window's thread: 1 + its slot, `FECKLESS_UMODE_MAIN_THREAD` for
+app_main), `_thread_task()` and `_thread_stack()`, and `_stopping()`.
+Every thread's stack is filled with `FECKLESS_UMODE_STACK_FILL` (0xa5,
+FreeRTOS's byte) at spawn, and app_main's before the first constructor;
+app_main's host task is forgotten, under the lock, as it returns.
+
+*Checked, on a host:* `make -C components/feckless_box_calls/test`, 171
+calls, against a single-threaded FreeRTOS stand-in (`test/fake_rtos.c`)
+that aborts where FreeRTOS would assert: mutex, recursive mutex, binary
+and counting semaphores, a queue of 8-byte items front and back, stream
+and message buffers, notifications (each action, the take's count down
+and clear, the wait's bits), critical sections nested and contended,
+every task query, the slicing of a wait (250 ms is three tries, the last
+50), a wait forever that gives up when the app stops, pointers outside
+the box and tokens the box did not give, and the box's end freeing every
+object. Four deliberate breaks -- the holder check, the slicing, the
+token's upper bound, the message buffer's size -- each fail it.
+`box_rtos.c`, `box_calls.c` and `umode_load.c` compiled with
+riscv32-esp-elf 15.2.0 against ESP-IDF 6.1.1's headers at -Wall -Wextra
+-Werror. `boxcalls_names.txt` regenerated (171 names).
+
+*Not checked:* an ESP-IDF build of a launcher with it; the waits, the
+deferred delete and the spinlock with real threads (the stand-in is
+single-threaded); `umode_load.c`'s new functions run; a board.

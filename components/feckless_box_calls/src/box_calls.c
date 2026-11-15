@@ -214,7 +214,9 @@ H(c_feckless_box_log)
 /* u-feckless-0023: a thread. (fn, name, stack bytes, param, prio, handle *,
  * core), as IDF's; the name is the host's own ("box_tN"), and the handle a
  * number, 1 + the slot -- which nothing takes back yet (vTaskDelete(NULL)
- * is feckless_box_libc's, and ends the calling thread). */
+ * is feckless_box_libc's, and ends the calling thread).
+ * u-feckless-0045: the app's name is kept for pcTaskGetName(), and
+ * tskNO_AFFINITY is the caller's core (box_rtos.c says why). */
 H(c_xTaskCreatePinnedToCore)
 {
     if (a[5] && !ok_ptr(w, a[5], 4)) {
@@ -223,12 +225,13 @@ H(c_xTaskCreatePinnedToCore)
     }
     uint32_t id = 0;
     const esp_err_t e = feckless_umode_app_spawn(feckless_umode_app_loaded(), a[0], a[3], a[2],
-                                                 (int)a[4], (int)a[6], &id);
+                                                 (int)a[4], box_rtos_core((int)a[6]), &id);
     if (e != ESP_OK) {
         ESP_LOGE("box", "xTaskCreatePinnedToCore: %s", esp_err_to_name(e));
         *ret = (uint32_t)-1;
         return true;
     }
+    box_rtos_named(w, id, a[1]);
     if (a[5]) {
         memcpy((void *)(uintptr_t)a[5], &id, 4);
     }
@@ -514,10 +517,11 @@ static const feckless_umode_call_t s_own[] = {
 #define HEAP_MAX 8
 #define STORAGE_MAX 32
 #define AUDIO_MAX 32
+#define RTOS_MAX 48
 
 const feckless_umode_call_t *feckless_box_calls_v1(uint32_t *n)
 {
-    static feckless_umode_call_t table[HEAP_MAX + OWN_N + STORAGE_MAX + AUDIO_MAX];
+    static feckless_umode_call_t table[HEAP_MAX + OWN_N + STORAGE_MAX + AUDIO_MAX + RTOS_MAX];
     static uint32_t count;
     if (!count) {
         uint32_t k = 0;
@@ -533,6 +537,9 @@ const feckless_umode_call_t *feckless_box_calls_v1(uint32_t *n)
         for (uint32_t i = 0; i < box_audio_calls_n && i < AUDIO_MAX; i++) {
             table[k++] = box_audio_calls[i];
         }
+        for (uint32_t i = 0; i < box_rtos_calls_n && i < RTOS_MAX; i++) {
+            table[k++] = box_rtos_calls[i];
+        }
         count = k;
     }
     *n = count;
@@ -543,6 +550,7 @@ void feckless_box_calls_end(void)
 {
     box_storage_end();
     box_audio_end();
+    box_rtos_end();
     memset(s_err_name, 0, sizeof s_err_name);   /* the box goes with the app */
     s_err_names = 0;
     s_fb_granted = 0;                       /* the grant goes with the app */

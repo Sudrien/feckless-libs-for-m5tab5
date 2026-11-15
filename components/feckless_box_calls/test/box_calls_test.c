@@ -17,6 +17,8 @@
 #include "feckless_box_calls.h"
 #include "audio_out.h"   /* u-feckless-0021: ESP_OK, the capture sources */
 #include "feckless_umode.h"   /* u-feckless-0022: FECKLESS_UMODE_R, _W */
+#include "esp_heap_caps.h"   /* u-feckless-0045: MALLOC_CAP_SPIRAM */
+#include "freertos/task.h"
 
 extern int calls, last_i[8], log_kind;
 extern char last_fn[32], last_str[700], log_tag[80];
@@ -377,7 +379,7 @@ static void test_threads(void)
     CHECK(s_fn == fn && s_arg == 0x1234 && s_stack == 6144 && s_prio == 5 && s_core == 1);
     CHECK(*h == 3);
     CHECK(call("xTaskCreatePinnedToCore", fn, 0, 6144, 0, 5, 0, 0x7fffffff, 0) == 1);   /* no handle, any core */
-    CHECK(s_core == 0x7fffffff);
+    CHECK(s_core == 1);                     /* u-feckless-0045: the caller's core (the stand-in's 1) */
     const uint32_t before = s_calls;
     CHECK(call("xTaskCreatePinnedToCore", fn, 0, 6144, 0, 5, 0x1000, 0, 0) == (uint32_t)-1);
     CHECK(s_calls == before);                                       /* a host handle pointer: not asked */
@@ -397,6 +399,232 @@ static void test_threads(void)
                              "uac_mic_close", "xTaskCreatePinnedToCore", "audio_out_capture_begin" };
     for (unsigned i = 0; i < sizeof locked / sizeof *locked; i++)
         CHECK(flags_of(locked[i]) == 0);
+}
+
+/* u-feckless-0045: FreeRTOS, against the single-threaded stand-in
+ * (fake_rtos.c), whose calls never wait and abort() where FreeRTOS would
+ * configASSERT(). */
+extern void *fake_task, *fake_thread_task[16];
+extern int fake_take_tries, fake_live, fake_crit_depth;
+extern TickType_t fake_last_ticks;
+extern unsigned fake_caps_last;
+extern uint32_t fake_thread_id, fake_stack_lo[16], fake_stack_hi[16];
+extern bool fake_stopping;
+extern UBaseType_t fake_prio;
+extern TaskHandle_t fake_prio_task;
+
+#define TOK 0x52540000u
+
+static void test_rtos(void)
+{
+    static int t1, t2, t3;
+    const int live0 = fake_live;
+    fake_task = &t1;
+    fake_thread_id = 9;
+
+    /* a mutex: given only by its holder */
+    const uint32_t m = C1("xQueueCreateMutex", 1);
+    CHECK(m >= TOK && m < TOK + 64);
+    CHECK(C2("xQueueSemaphoreTake", m, 0) == 1);
+    fake_task = &t2;
+    CHECK(C4("xQueueGenericSend", m, 0, 0, 0) == 0);              /* not the holder: refused, no assert */
+    fake_task = &t1;
+    CHECK(C4("xQueueGenericSend", m, 0, 0, 0) == 1);
+    CHECK(C4("xQueueGenericSend", m, 0, 0, 0) == 0);              /* not held any more */
+    CHECK(C2("xQueueTakeMutexRecursive", m, 0) == 0);             /* the wrong kind */
+
+    /* a recursive mutex */
+    const uint32_t r = C1("xQueueCreateMutex", 4);
+    CHECK(r && r != m);
+    CHECK(C2("xQueueSemaphoreTake", r, 0) == 0);                  /* xSemaphoreTakeRecursive, not this */
+    CHECK(C2("xQueueTakeMutexRecursive", r, 0) == 1 && C2("xQueueTakeMutexRecursive", r, 0) == 1);
+    CHECK(C4("xQueueGenericSend", r, 0, 0, 0) == 0);
+    fake_task = &t2;
+    CHECK(C1("xQueueGiveMutexRecursive", r) == 0);
+    fake_task = &t1;
+    CHECK(C1("xQueueGiveMutexRecursive", r) == 1 && C1("xQueueGiveMutexRecursive", r) == 1);
+    CHECK(C1("xQueueGiveMutexRecursive", r) == 0);
+    CHECK(C1("xQueueCreateMutex", 0) == 0 && C1("xQueueCreateMutex", 3) == 0);
+
+    /* a binary semaphore; a wait in slices of 100 ms */
+    const uint32_t b = C4("xQueueGenericCreate", 1, 0, 3, 0);
+    CHECK(b != 0);
+    fake_take_tries = 0;
+    CHECK(C2("xQueueSemaphoreTake", b, 250) == 0);
+    CHECK(fake_take_tries == 3 && fake_last_ticks == 50);         /* 100, 100, 50 */
+    CHECK(C4("xQueueGenericSend", b, 0, 0, 0) == 1);
+    fake_take_tries = 0;
+    CHECK(C4("xQueueGenericSend", b, 0, 0, 0) == 0 && fake_take_tries == 1);   /* full; no wait asked */
+    CHECK(C2("xQueueSemaphoreTake", b, 0) == 1);
+    fake_stopping = true;                                          /* forever, but the app stops */
+    fake_take_tries = 0;
+    CHECK(C2("xQueueSemaphoreTake", b, 0xffffffffu) == 0 && fake_take_tries == 1);
+    fake_stopping = false;
+    CHECK(C4("xQueueGenericCreate", 1, 4, 3, 0) == 0);            /* a semaphore with items */
+    CHECK(C4("xQueueGenericCreate", 1, 0, 1, 0) == 0);            /* a mutex is not made so */
+
+    /* a counting semaphore */
+    const uint32_t c = C2("xQueueCreateCountingSemaphore", 5, 2);
+    CHECK(c && C2("xQueueSemaphoreTake", c, 0) == 1 && C2("xQueueSemaphoreTake", c, 0) == 1);
+    CHECK(C2("xQueueSemaphoreTake", c, 0) == 0);
+    CHECK(C2("xQueueCreateCountingSemaphore", 2, 3) == 0 && C2("xQueueCreateCountingSemaphore", 0, 0) == 0);
+
+    /* a queue of 8-byte items: copied in and out of the box only */
+    const uint32_t q = C4("xQueueGenericCreate", 3, 8, 0, 0);
+    CHECK(q && (fake_caps_last & MALLOC_CAP_SPIRAM));             /* the storage in PSRAM */
+    uint8_t *it = (uint8_t *)(uintptr_t)feckless_box_alloc(&box, 16);
+    memcpy(it, "ABCDEFGH", 8);
+    CHECK(C4("xQueueGenericSend", q, P(it), 0, 0) == 1);
+    memcpy(it, "12345678", 8);
+    CHECK(C4("xQueueGenericSend", q, P(it), 0, 1) == 1);          /* to the front */
+    CHECK(C4("xQueueGenericSend", q, 0x1000, 0, 0) == 0);         /* the host's memory */
+    CHECK(C4("xQueueGenericSend", q, P(it), 0, 2) == 0);          /* overwrite: a queue of one only */
+    CHECK(C4("xQueueGenericSend", q, P(it), 0, 3) == 0);
+    CHECK(C1("uxQueueMessagesWaiting", q) == 2);
+    CHECK(C2("xQueueSemaphoreTake", q, 0) == 0);                  /* items: not a semaphore */
+    memset(it, 0, 16);
+    CHECK(C4("xQueuePeek", q, P(it), 0, 0) == 1 && !memcmp(it, "12345678", 8));
+    CHECK(C4("xQueueReceive", q, P(it), 0, 0) == 1 && !memcmp(it, "12345678", 8));
+    CHECK(C4("xQueueReceive", q, 0x1000, 0, 0) == 0);
+    CHECK(C1("uxQueueMessagesWaiting", q) <= 1);
+    CHECK(C2("xQueueGenericReset", q, 0) == 1 && C1("uxQueueMessagesWaiting", q) == 0);
+    CHECK(C2("xQueueGenericReset", m, 0) == 0);                   /* not a mutex */
+    CHECK(C4("xQueueGenericCreate", 65536, 2, 0, 0) == 0 && C4("xQueueGenericCreate", 0, 4, 0, 0) == 0);
+    CHECK(C4("xQueueReceive", b, P(it), 0, 0) == 0);              /* a semaphore has nothing to receive */
+
+    /* tokens the box did not give */
+    CHECK(C2("xQueueSemaphoreTake", 0, 0) == 0 && C2("xQueueSemaphoreTake", TOK + 64, 0) == 0);
+    CHECK(C2("xQueueSemaphoreTake", 0x12345678, 0) == 0 && C1("uxQueueMessagesWaiting", TOK - 1) == 0);
+    const int before = fake_live;
+    C1("vQueueDelete", c);
+    CHECK(fake_live == before - 1 && C2("xQueueSemaphoreTake", c, 0) == 0);
+    C1("vQueueDelete", c);                                         /* twice: nothing */
+    CHECK(fake_live == before - 1);
+
+    /* stream buffers: the app's storage and control block are not used */
+    uint8_t *sb_store = (uint8_t *)(uintptr_t)feckless_box_alloc(&box, 64);
+    memset(sb_store, 0, 64);
+    const uint32_t sb = call("xStreamBufferGenericCreateStatic", 64, 1, 0, P(sb_store), P(sb_store), 0, 0, 0);
+    CHECK(sb && sb != q);
+    CHECK(call("xStreamBufferGenericCreateStatic", 64, 1, 0, 0, 0, 0x100, 0, 0) == 0);   /* a callback */
+    CHECK(call("xStreamBufferGenericCreateStatic", 64, 65, 0, 0, 0, 0, 0, 0) == 0);      /* trigger past size */
+    CHECK(call("xStreamBufferGenericCreateStatic", 4, 1, 1, 0, 0, 0, 0, 0) == 0);        /* a message buffer of 4 */
+    CHECK(call("xStreamBufferGenericCreateStatic", 0, 0, 0, 0, 0, 0, 0, 0) == 0);
+    memcpy(it, "0123456789", 10);
+    CHECK(C4("xStreamBufferSend", sb, P(it), 10, 0) == 10);
+    CHECK(sb_store[0] == 0);                                       /* not the app's storage */
+    CHECK(C4("xStreamBufferSend", sb, 0x1000, 10, 0) == 0);
+    CHECK(C1("xStreamBufferBytesAvailable", sb) == 10 && C1("xStreamBufferSpacesAvailable", sb) == 54);
+    memset(it, 0, 16);
+    CHECK(C4("xStreamBufferReceive", sb, P(it), 4, 0) == 4 && !memcmp(it, "0123", 4));
+    CHECK(C4("xStreamBufferReceive", sb, 0x1000, 4, 0) == 0);
+    CHECK(C1("xStreamBufferIsEmpty", sb) == 0 && C1("xStreamBufferIsFull", sb) == 0);
+    CHECK(C1("xStreamBufferReset", sb) == 1 && C1("xStreamBufferIsEmpty", sb) == 1);
+    fake_take_tries = 0;
+    CHECK(C4("xStreamBufferReceive", sb, P(it), 4, 150) == 0 && fake_take_tries == 2);
+    CHECK(C1("xStreamBufferBytesAvailable", q) == 0);              /* a queue is not a stream buffer */
+    const uint32_t sb2 = call("xStreamBufferGenericCreate", 32, 0, 1, 0, 0, 0, 0, 0);
+    CHECK(sb2 != 0);
+    C1("vStreamBufferDelete", sb2);
+    C1("vQueueDelete", sb);                                        /* the wrong kind: nothing */
+    CHECK(C1("xStreamBufferIsEmpty", sb) == 1);
+
+    /* notifications: a value and a state per thread, not the host task's */
+    uint32_t *prev = (uint32_t *)(uintptr_t)feckless_box_alloc(&box, 4);
+    fake_thread_task[3] = &t3;
+    CHECK(call("xTaskGenericNotify", 3, 0, 0, 2, 0, 0, 0, 0) == 1);           /* eIncrement */
+    CHECK(call("xTaskGenericNotify", 3, 0, 0, 2, 0, 0, 0, 0) == 1);
+    fake_thread_id = 3;
+    CHECK(C4("ulTaskGenericNotifyTake", 0, 0, 0, 0) == 2);        /* not cleared: down by one */
+    CHECK(C4("ulTaskGenericNotifyTake", 0, 1, 0, 0) == 1);
+    fake_take_tries = 0;
+    CHECK(C4("ulTaskGenericNotifyTake", 0, 1, 120, 0) == 0);
+    fake_thread_id = 9;
+    CHECK(call("xTaskGenericNotify", 3, 0, 0x55, 3, P(prev), 0, 0, 0) == 1 && *prev == 0);
+    CHECK(call("xTaskGenericNotify", 3, 0, 0x66, 4, P(prev), 0, 0, 0) == 0 && *prev == 0x55);   /* pending */
+    CHECK(call("xTaskGenericNotify", 3, 0, 0x0f, 1, 0, 0, 0, 0) == 1);        /* eSetBits */
+    fake_thread_id = 3;
+    CHECK(call("xTaskGenericNotifyWait", 0, 0, 0xffffffffu, P(prev), 0, 0, 0, 0) == 1 && *prev == 0x5f);
+    CHECK(call("xTaskGenericNotifyWait", 0, 0, 0, P(prev), 0, 0, 0, 0) == 0);  /* nothing pending */
+    CHECK(call("xTaskGenericNotifyWait", 0, 0, 0, 0x1000, 0, 0, 0, 0) == 0);
+    fake_thread_id = 9;
+    CHECK(call("xTaskGenericNotify", 5, 0, 1, 2, 0, 0, 0, 0) == 0);           /* not running */
+    CHECK(call("xTaskGenericNotify", 3, 1, 1, 2, 0, 0, 0, 0) == 0);           /* index 1 */
+    CHECK(call("xTaskGenericNotify", 0x1234, 0, 1, 2, 0, 0, 0, 0) == 0);
+    CHECK(call("xTaskGenericNotify", 3, 0, 1, 9, 0, 0, 0, 0) == 0);           /* no such action */
+    CHECK(call("xTaskGenericNotify", 3, 0, 1, 2, 0x1000, 0, 0, 0) == 0);
+
+    /* critical sections: one recursive mutex for the app */
+    CHECK(C2("xPortEnterCriticalTimeout", P(it), 0xffffffffu) == 1);
+    CHECK(C2("xPortEnterCriticalTimeout", P(it), 0xffffffffu) == 1);          /* nested */
+    fake_task = &t2;
+    CHECK(C2("xPortEnterCriticalTimeout", 0x1000, 0) == 0);                   /* held: one try */
+    C1("vPortExitCriticalMultiCore", 0);                                       /* not its: nothing */
+    fake_task = &t1;
+    C1("vPortExitCriticalMultiCore", P(it));
+    C0("vPortExitCritical");
+    fake_task = &t2;
+    CHECK(C2("xPortEnterCriticalTimeout", 0, 0) == 1);
+    C1("vPortExitCriticalMultiCore", 0);
+    fake_task = &t1;
+    CHECK(fake_crit_depth == 0);
+
+    /* tasks */
+    CHECK(C0("xPortInIsrContext") == 0 && C0("xTaskGetTickCount") == 4242);
+    CHECK(C0("xTaskGetCurrentTaskHandle") == 9);
+    const uint32_t nm = C1("pcTaskGetName", 0);
+    CHECK(nm >= P(mem) && nm < P(mem) + MEM && !strcmp((char *)(uintptr_t)nm, "main"));
+    const uint32_t fn = P(mem) + 0x100;
+    char *name = put_str("media-and-a-long-name");
+    CHECK(call("xTaskCreateStaticPinnedToCore", fn, P(name), 16384, 0x77, 1, 0x1000, 0x1000, 0x7fffffff) == 3);
+    CHECK(s_fn == fn && s_arg == 0x77 && s_stack == 16384 && s_prio == 1 && s_core == 1);
+    CHECK(!strcmp((char *)(uintptr_t)C1("pcTaskGetName", 3), "media-and-a-lon"));
+    CHECK(C1("pcTaskGetName", 0x99) == 0);
+    s_result = ESP_ERR_NO_MEM;
+    CHECK(call("xTaskCreateStaticPinnedToCore", fn, 0, 16384, 0, 1, 0, 0, 0) == 0);
+    s_result = ESP_OK;
+    uint8_t *stk = (uint8_t *)(uintptr_t)feckless_box_alloc(&box, 256);
+    memset(stk, 0xa5, 100);
+    memset(stk + 100, 0, 156);
+    fake_thread_task[9] = &t1;
+    fake_stack_lo[9] = P(stk);
+    fake_stack_hi[9] = P(stk) + 256;
+    CHECK(C1("uxTaskGetStackHighWaterMark", 0) == 100 && C1("xTaskGetStackStart", 0) == P(stk));
+    memset(stk, 0xa5, 256);
+    CHECK(C1("uxTaskGetStackHighWaterMark", 9) == 256);            /* never past the top */
+    CHECK(C1("uxTaskGetStackHighWaterMark", 5) == 0 && C1("xTaskGetStackStart", 5) == 0);
+    C2("vTaskPrioritySet", 3, 99);
+    CHECK(fake_prio_task == &t3 && fake_prio == 23 && C1("uxTaskPriorityGet", 3) == 23);
+    C2("vTaskPrioritySet", 0, 0);
+    CHECK(fake_prio_task == &t1 && fake_prio == 1);
+    C2("vTaskPrioritySet", 5, 3);                                   /* not running: nothing */
+    CHECK(fake_prio_task == &t1 && C1("uxTaskPriorityGet", 5) == 0);
+    CHECK(C1("eTaskGetState", 0) == 0 && C1("eTaskGetState", 5) == 4 && C1("eTaskGetState", 3) == 2);
+    const int delays = calls;
+    C1("vTaskSuspend", 3);                                          /* another thread: ignored */
+    CHECK(calls == delays + 1);                                     /* only the log line */
+    fake_stopping = true;
+    C1("vTaskSuspend", 0);                                          /* itself: until the app stops */
+    CHECK(!strcmp(last_fn, "vTaskDelay"));
+    fake_stopping = false;
+
+    const char *unl[] = { "xQueueGenericSend", "xQueueSemaphoreTake", "xQueueReceive",
+                          "xQueueTakeMutexRecursive", "xStreamBufferSend", "xStreamBufferReceive",
+                          "ulTaskGenericNotifyTake", "xTaskGenericNotifyWait",
+                          "xPortEnterCriticalTimeout", "vPortExitCriticalMultiCore", "vTaskSuspend",
+                          "xTaskGetTickCount" };
+    for (unsigned i = 0; i < sizeof unl / sizeof *unl; i++) CHECK(flags_of(unl[i]) == FECKLESS_UMODE_CALL_UNLOCKED);
+    const char *lck[] = { "xQueueGenericCreate", "xQueueCreateMutex", "vQueueDelete",
+                          "xStreamBufferGenericCreateStatic", "xTaskGenericNotify", "pcTaskGetName",
+                          "uxTaskGetStackHighWaterMark", "vTaskPrioritySet", "eTaskGetState",
+                          "xTaskCreateStaticPinnedToCore" };
+    for (unsigned i = 0; i < sizeof lck / sizeof *lck; i++) CHECK(flags_of(lck[i]) == 0);
+
+    /* the box goes: every object, wake semaphore and the critical mutex with it */
+    feckless_box_calls_end();
+    CHECK(fake_live == live0);
+    CHECK(C2("xQueueSemaphoreTake", m, 0) == 0);
+    fake_thread_task[3] = fake_thread_task[9] = NULL;
 }
 
 /* u-feckless-0026: the table's names are feckless_box_libc's
@@ -449,6 +677,7 @@ int main(int argc, char **argv)
     test_audio();
     test_fb();
     test_threads();
+    test_rtos();
     printf(failed ? "%d FAILED\n" : "box_calls: all passed (%u calls)\n", failed ? failed : (int)ncalls);
     return failed != 0;
 }
