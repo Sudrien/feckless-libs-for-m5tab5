@@ -4156,3 +4156,33 @@ unchanged: no call is added.
 
 *Not checked:* compiled for the P4; a launcher setting a filter (Jinxed's
 boxlog will); a board.
+
+### u-feckless-0056 -- the host tests' binaries out of the tree
+
+*(A patch file named `u-feckless-0054-test-the-host-tests-binaries-out-of-the-tree`
+was handed over for this, and did not apply: 0054 and 0055 had been taken
+by OWN_CALLS and the write filter, and its ARCHITECTURE.md hunk no longer
+fitted. That file is void; this is the change.)*
+
+u-feckless-0045 to 0049, 0052 and 0053 were committed with `git add -A`
+after their host tests had been built, so each carried the tests'
+executables with it (0050, 0051, 0054 and 0055, from another session, did
+not): `box_calls_test` and `box_storage_test` (feckless_box_calls),
+`libc48_test`, `printf_test` and `strto_test` (feckless_box_libc),
+`umode_box_test`, `umode_plan_test`, `umode_run_test` and `stubs.bin`
+(feckless_umode) -- x86-64 Linux builds of a session's scratch tree, about
+5 MB, and rewritten by every patch after. Worse than the size: `make` in
+a fresh checkout can find one of them as new as its sources and run it
+instead of building the test from them.
+
+They are no longer tracked, and `.gitignore` names them. Three older
+ones, from before the umode work, go the same way: `fittest`
+(feckless_image_handler, 0f97931), `smtptest` (feckless_mail, f44a1dc)
+and `redirecttest` (feckless_network_handler, 6d9b43f). Nothing else
+changes; every test builds from its sources as its Makefile says.
+
+*Checked:* in a clean worktree of the umode branch (at u-feckless-0055)
+with this applied, no tracked file under `components/` is an ELF;
+`make -C components/feckless_box_calls/test` and
+`make -C components/feckless_umode/test` build from source and pass, and
+leave `git status` clean.

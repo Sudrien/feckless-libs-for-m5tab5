@@ -4,3 +4,14 @@ components/feckless_storage_handler/test/listtest
 components/feckless_chooser/test/choosertest
 components/feckless_chooser/test/render
 components/feckless_chooser/test/chooser_*.ppm
+# u-feckless-0056: the host tests' builds and outputs, which u-feckless-0045
+# to 0049, 0052 and 0053 committed (and three earlier commits before them).
+components/feckless_box_calls/test/box_calls_test
+components/feckless_box_calls/test/box_storage_test
+components/feckless_box_libc/test/*_test
+components/feckless_umode/test/umode_*_test
+components/feckless_umode/test/*.bin
+components/feckless_umode/test/*.o
+components/feckless_image_handler/test/fittest
+components/feckless_mail/test/smtptest
+components/feckless_network_handler/test/redirecttest
