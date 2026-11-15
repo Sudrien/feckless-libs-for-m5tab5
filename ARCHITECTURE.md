@@ -3666,3 +3666,55 @@ against ESP-IDF 6.1.1's headers at -Wall -Wextra -Werror.
 `boxcalls_names.txt` regenerated (214 names).
 
 *Not checked:* an ESP-IDF build of a launcher with it; a board.
+
+### u-feckless-0047 -- writing, the paths and the rest of storage in a box
+
+Step 3 for Defeatist's player in a box: the 40 storage names its ELF
+imports that a box did not answer, less the storage list's five.
+
+- **Writes go through the staging buffer**, as reads have since
+  u-feckless-0015. stdio passes a request at least its buffer's size
+  straight to FatFs, which would DMA it out of the box in PSRAM while
+  the panel scans the framebuffer there; so `fwrite` copies 8 KB at a
+  time into the internal staging buffer and writes from that. `fflush`,
+  `rewind`, `remove`, `rename`, `mkdir`, `rmdir`, `stat` and `utime`
+  (one picolibc on both sides, so one `struct stat`), `rewinddir`. Paths
+  are whatever the app names, for writing as for reading: the box keeps
+  the app out of the host's memory, not out of the card's files.
+- **storage_io's files.** `storage_io_open` is `fopen` with a DMA-capable
+  buffer from storage_io's pool; the app gets a FILE number like
+  `fopen`'s, and either close gives the pool slot back. `_fread` and
+  `_read_at` (its 64-bit offset in a1/a2) go through the staging buffer a
+  slice at a time, each under storage_io's lease for the class asked --
+  the decoders' playback reads among them.
+- **FatFs's directories**, as a `FIL`: the real `FF_DIR` is the host's (it
+  points at the volume's `FATFS`), found by the address of the app's;
+  a `FILINFO` holds no pointer and is copied whole. `f_chmod` for
+  `storage_mark_hidden`'s callers.
+- **The rest of the storage handler**: the label (copied into the box),
+  the hidden test and mark, the SD and USB info snapshots, USB power and
+  busy, and the background, readers and brief holds -- each given back at
+  the end if the app left it taken, and a brief release never one the app
+  did not take, since that count is the volume's and shared.
+- **The storage list is not here.** `storage_list_read` calls the app's
+  filter for every entry, and the host does not run the app's code; an
+  app links feckless_storage_handler's `storage_list.c` into itself,
+  where it runs over `f_opendir`, `stat` and the rest of these.
+
+Sixteen FILEs now (eight before; Defeatist keeps more open), four FatFs
+directories.
+
+*Checked, on a host:* `make -C components/feckless_box_calls/test`: 246
+calls; box_storage's own test writes a file of 20012 bytes in slices and
+reads it back, stats, renames, `utime`s and removes it, makes and removes
+a directory, rewinds one, reads through storage_io at an offset across
+slices with no read landing in the box, refuses a negative offset and a
+short read, closes a storage_io file with `fclose`, walks a FatFs
+directory and rewinds it, and checks the end gives back every new hold,
+pool slot and directory. `box_storage.c` compiled with riscv32-esp-elf
+15.2.0 against ESP-IDF 6.1.1's FatFs and VFS headers at -Wall -Wextra
+-Werror. `boxcalls_names.txt` regenerated (246 names).
+
+*Not checked:* an ESP-IDF build of a launcher with it; a board; writes on
+an exFAT card past 2 GB (`fwrite` is stdio's, `stat`'s size is
+`off_t`).

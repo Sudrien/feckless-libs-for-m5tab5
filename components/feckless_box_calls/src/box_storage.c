@@ -24,6 +24,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <utime.h>
 
 #include "esp_heap_caps.h"
 #include "ff.h"
@@ -33,8 +36,9 @@
 #include "box_calls_priv.h"
 
 #define MAX_FIL   8
-#define MAX_FILE  8
+#define MAX_FILE  16                        /* u-feckless-0047: was 8; Defeatist keeps more open */
 #define MAX_DIR   4
+#define MAX_FFDIR 4                         /* u-feckless-0047: FatFs's own directories */
 #define CLMT_MAX  16384u                    /* items; Spurious asks for at most this */
 #define PATH_MAX_BOX 1024u
 #define TOKEN_FILE 0x46494c00u              /* "FIL\0" + slot: a FILE * */
@@ -78,6 +82,12 @@ typedef struct {
 
 static fil_slot_t *s_fil[MAX_FIL];
 static FILE *s_file[MAX_FILE];
+static bool s_file_io[MAX_FILE];            /* u-feckless-0047: storage_io_open()'s, closed by its close */
+static struct { uint32_t app; FF_DIR dir; } *s_ffdir[MAX_FFDIR];   /* by the app's FF_DIR, as a FIL is */
+static uint32_t s_label[STORAGE_COUNT];     /* the box copy of each label */
+static int s_brief[STORAGE_COUNT];          /* the app's storage_hold_brief()s not released */
+static bool s_held_bg;
+static uint32_t s_readers;
 static DIR *s_dir[MAX_DIR];
 static uint32_t s_dirent[MAX_DIR];          /* the box buffer readdir() fills, per slot */
 static uint32_t s_mount[STORAGE_COUNT];     /* the box copy of each mount path */
@@ -372,8 +382,224 @@ H(c_fclose)
         *ret = (uint32_t)EOF;
         return true;
     }
-    s_file[a[0] - TOKEN_FILE] = NULL;
-    *ret = (uint32_t)fclose(f);
+    const uint32_t i = a[0] - TOKEN_FILE;
+    s_file[i] = NULL;
+    *ret = (uint32_t)(s_file_io[i] ? storage_io_close(f) : fclose(f));
+    s_file_io[i] = false;
+    return true;
+}
+
+/* ---- u-feckless-0047: writing, and the rest of stdio and the paths -------
+ * A write reaches the card from internal RAM, as a read does (0015): stdio
+ * hands a request at least its buffer's size straight to FatFs, which
+ * would DMA it out of the box in PSRAM while the panel scans the
+ * framebuffer there. So it is copied into the staging buffer a slice at a
+ * time and written from that.
+ *
+ * Paths are anything the app names, for writing as for reading: the box
+ * keeps the app out of the host's memory, not out of the card's files. */
+
+H(c_fwrite)
+{
+    FILE *f = file_of(a[3]);
+    const uint64_t len = (uint64_t)a[1] * a[2];
+    *ret = 0;
+    if (!f || len == 0 || len > UINT32_MAX || !ok_ptr(w, a[0], (uint32_t)len)) {
+        return true;
+    }
+    uint8_t *const st = stage();
+    if (!st) {
+        *ret = (uint32_t)fwrite((const void *)(uintptr_t)a[0], a[1], a[2], f);
+        return true;
+    }
+    uint32_t done = 0;
+    while (done < (uint32_t)len) {
+        const uint32_t n = (uint32_t)len - done > READ_SLICE ? READ_SLICE : (uint32_t)len - done;
+        memcpy(st, (const uint8_t *)(uintptr_t)a[0] + done, n);
+        const size_t put = fwrite(st, 1, n, f);
+        done += (uint32_t)put;
+        if (put < n) {
+            break;
+        }
+    }
+    *ret = done / a[1];
+    return true;
+}
+
+/* fflush(NULL) flushes the app's own files, not every stream the host has. */
+H(c_fflush)
+{
+    (void)w;
+    if (a[0] == 0) {
+        int r = 0;
+        for (int i = 0; i < MAX_FILE; i++) {
+            if (s_file[i] && fflush(s_file[i]) != 0) r = EOF;
+        }
+        *ret = (uint32_t)r;
+        return true;
+    }
+    FILE *f = file_of(a[0]);
+    *ret = f ? (uint32_t)fflush(f) : (uint32_t)EOF;
+    return true;
+}
+
+H(c_rewind)
+{
+    (void)w;
+    FILE *f = file_of(a[0]);
+    if (f) rewind(f);
+    *ret = 0;
+    return true;
+}
+
+H(c_remove)
+{
+    const char *p = str(w, a[0], PATH_MAX_BOX);
+    *ret = p ? (uint32_t)remove(p) : (uint32_t)-1;
+    return true;
+}
+H(c_rename)
+{
+    const char *from = str(w, a[0], PATH_MAX_BOX), *to = str(w, a[1], PATH_MAX_BOX);
+    *ret = (from && to) ? (uint32_t)rename(from, to) : (uint32_t)-1;
+    return true;
+}
+H(c_mkdir)
+{
+    const char *p = str(w, a[0], PATH_MAX_BOX);
+    *ret = p ? (uint32_t)mkdir(p, (mode_t)a[1]) : (uint32_t)-1;
+    return true;
+}
+H(c_rmdir)
+{
+    const char *p = str(w, a[0], PATH_MAX_BOX);
+    *ret = p ? (uint32_t)rmdir(p) : (uint32_t)-1;
+    return true;
+}
+/* (path, struct stat *): one picolibc on both sides, so one layout */
+H(c_stat)
+{
+    const char *p = str(w, a[0], PATH_MAX_BOX);
+    struct stat st;
+    if (!p || !ok_ptr(w, a[1], sizeof st)) {
+        *ret = (uint32_t)-1;
+        return true;
+    }
+    const int r = stat(p, &st);
+    if (r == 0) memcpy((void *)(uintptr_t)a[1], &st, sizeof st);
+    *ret = (uint32_t)r;
+    return true;
+}
+/* (path, const struct utimbuf * or NULL for now) */
+H(c_utime)
+{
+    const char *p = str(w, a[0], PATH_MAX_BOX);
+    struct utimbuf t;
+    if (!p || (a[1] && !ok_ptr(w, a[1], sizeof t))) {
+        *ret = (uint32_t)-1;
+        return true;
+    }
+    if (a[1]) memcpy(&t, (const void *)(uintptr_t)a[1], sizeof t);
+    *ret = (uint32_t)utime(p, a[1] ? &t : NULL);
+    return true;
+}
+
+/* ---- u-feckless-0047: storage_io's files --------------------------------
+ * storage_io_open() is fopen() with a large DMA-capable buffer from its
+ * pool; the app gets a FILE number like fopen()'s, and either close
+ * gives the pool slot back. The reads go through the staging buffer, a
+ * slice at a time, each under storage_io's lease for the class asked. */
+
+H(c_storage_io_open)
+{
+    const char *path = str(w, a[0], PATH_MAX_BOX);
+    const char *mode = str(w, a[1], 8);
+    *ret = 0;
+    if (!path || !mode) {
+        return true;
+    }
+    int i = 0;
+    while (i < MAX_FILE && s_file[i]) i++;
+    if (i == MAX_FILE) {
+        return true;
+    }
+    s_file[i] = storage_io_open(path, mode);
+    if (s_file[i]) {
+        s_file_io[i] = true;
+        *ret = TOKEN_FILE + (uint32_t)i;
+    }
+    return true;
+}
+H(c_storage_io_close) { return c_fclose(w, a, ret); }
+
+/* Into the box's dst from the stream's position, through the staging
+ * buffer; the bytes read. */
+static uint32_t io_read(FILE *f, uint8_t *dst, uint32_t len, storage_io_class_t cls)
+{
+    uint8_t *const st = stage();
+    if (!st) {
+        return (uint32_t)storage_io_fread(dst, len, f, cls);
+    }
+    uint32_t done = 0;
+    while (done < len) {
+        const uint32_t want = len - done > READ_SLICE ? READ_SLICE : len - done;
+        const size_t g = storage_io_fread(st, want, f, cls);
+        memcpy(dst + done, st, g);
+        done += (uint32_t)g;
+        if (g < want) {
+            break;
+        }
+    }
+    return done;
+}
+
+/* (dst, len, f, class) */
+H(c_storage_io_fread)
+{
+    FILE *f = file_of(a[2]);
+    *ret = 0;
+    if (!f || a[1] == 0 || !ok_ptr(w, a[0], a[1])) {
+        return true;
+    }
+    *ret = io_read(f, (uint8_t *)(uintptr_t)a[0], a[1], (storage_io_class_t)a[3]);
+    return true;
+}
+
+/* (f, int64_t off in a1/a2, dst, len, class): all of it, or false */
+H(c_storage_io_read_at)
+{
+    FILE *f = file_of(a[0]);
+    const int64_t off = (int64_t)((uint64_t)a[2] << 32 | a[1]);
+    *ret = false;
+    if (!f || off < 0 || !ok_ptr(w, a[3], a[4])) {
+        return true;
+    }
+    if (a[4] == 0) {
+        *ret = true;
+        return true;
+    }
+    uint8_t *const st = stage();
+    uint8_t *const dst = (uint8_t *)(uintptr_t)a[3];
+    const storage_io_class_t cls = (storage_io_class_t)a[5];
+    if (!st) {
+        *ret = storage_io_read_at(f, off, dst, a[4], cls);
+        return true;
+    }
+    /* The first slice where asked, the rest on from it. */
+    const uint32_t first = a[4] > READ_SLICE ? READ_SLICE : a[4];
+    if (!storage_io_read_at(f, off, st, first, cls)) {
+        return true;
+    }
+    memcpy(dst, st, first);
+    *ret = first == a[4] || io_read(f, dst + first, a[4] - first, cls) == a[4] - first;
+    return true;
+}
+H(c_storage_io_phase_ms) { (void)w; (void)a; *ret = storage_io_phase_ms(); return true; }
+H(c_storage_io_report)
+{
+    const char *phase = str(w, a[0], 64);
+    storage_io_report(phase ? phase : "app");
+    *ret = 0;
     return true;
 }
 
@@ -436,6 +662,108 @@ H(c_closedir)
     }
     *ret = (uint32_t)closedir(s_dir[i]);
     s_dir[i] = NULL;                        /* the dirent buffer stays the slot's */
+    return true;
+}
+
+H(c_rewinddir)                              /* u-feckless-0047 */
+{
+    (void)w;
+    const uint32_t i = a[0] - TOKEN_DIR;
+    if (a[0] >= TOKEN_DIR && i < MAX_DIR && s_dir[i]) rewinddir(s_dir[i]);
+    *ret = 0;
+    return true;
+}
+
+/* ---- u-feckless-0047: FatFs's directories ---------------------------------
+ * As a FIL: the real FF_DIR is the host's (it points at the volume's FATFS),
+ * found by the address of the app's, and nothing of it is copied back. A
+ * FILINFO holds no pointer and is copied into the box whole. */
+
+static int ffdir_of(uint32_t app)
+{
+    for (int i = 0; i < MAX_FFDIR; i++) {
+        if (s_ffdir[i] && s_ffdir[i]->app == app) return i;
+    }
+    return -1;
+}
+
+H(c_f_opendir)
+{
+    const char *path = str(w, a[1], PATH_MAX_BOX);
+    if (!ok_ptr(w, a[0], sizeof(FF_DIR)) || !path) {
+        *ret = FR_INVALID_PARAMETER;
+        return true;
+    }
+    if (ffdir_of(a[0]) >= 0) {
+        *ret = FR_INVALID_OBJECT;           /* that FF_DIR is open: close it first */
+        return true;
+    }
+    int i = 0;
+    while (i < MAX_FFDIR && s_ffdir[i]) i++;
+    if (i == MAX_FFDIR) {
+        *ret = FR_TOO_MANY_OPEN_FILES;
+        return true;
+    }
+    s_ffdir[i] = calloc(1, sizeof *s_ffdir[i]);
+    if (!s_ffdir[i]) {
+        *ret = FR_NOT_ENOUGH_CORE;
+        return true;
+    }
+    const FRESULT r = f_opendir(&s_ffdir[i]->dir, path);
+    if (r != FR_OK) {
+        free(s_ffdir[i]);
+        s_ffdir[i] = NULL;
+    } else {
+        s_ffdir[i]->app = a[0];
+    }
+    *ret = r;
+    return true;
+}
+/* (dp, fno or NULL to rewind) */
+H(c_f_readdir)
+{
+    const int i = ffdir_of(a[0]);
+    if (i < 0) {
+        *ret = FR_INVALID_OBJECT;
+        return true;
+    }
+    if (!a[1]) {
+        *ret = f_readdir(&s_ffdir[i]->dir, NULL);
+        return true;
+    }
+    if (!ok_ptr(w, a[1], sizeof(FILINFO))) {
+        *ret = FR_INVALID_PARAMETER;
+        return true;
+    }
+    FILINFO fi;
+    const FRESULT r = f_readdir(&s_ffdir[i]->dir, &fi);
+    if (r == FR_OK) memcpy((void *)(uintptr_t)a[1], &fi, sizeof fi);
+    *ret = r;
+    return true;
+}
+static void ffdir_close(int i)
+{
+    f_closedir(&s_ffdir[i]->dir);
+    free(s_ffdir[i]);
+    s_ffdir[i] = NULL;
+}
+H(c_f_closedir)
+{
+    (void)w;
+    const int i = ffdir_of(a[0]);
+    if (i < 0) {
+        *ret = FR_INVALID_OBJECT;
+        return true;
+    }
+    ffdir_close(i);
+    *ret = FR_OK;
+    return true;
+}
+/* (path, attr, mask) */
+H(c_f_chmod)
+{
+    const char *path = str(w, a[0], PATH_MAX_BOX);
+    *ret = path ? f_chmod(path, (BYTE)a[1], (BYTE)a[2]) : FR_INVALID_PARAMETER;
     return true;
 }
 
@@ -512,6 +840,102 @@ H(c_storage_hold)
     return true;
 }
 
+/* ---- u-feckless-0047: the rest of the storage handler -------------------- */
+
+H(c_storage_label)
+{
+    *ret = 0;
+    if (a[0] >= STORAGE_COUNT) {
+        return true;
+    }
+    const char *l = storage_label((storage_id_t)a[0]);
+    if (!l) {
+        return true;
+    }
+    const uint32_t len = (uint32_t)strlen(l) + 1;
+    const uint32_t p = box_buf(w, &s_label[a[0]], len);
+    if (p) {
+        memcpy((void *)(uintptr_t)p, l, len);
+        *ret = p;
+    }
+    return true;
+}
+H(c_storage_is_hidden)
+{
+    const char *n = str(w, a[0], PATH_MAX_BOX);
+    *ret = n && storage_is_hidden(n);
+    return true;
+}
+H(c_storage_mark_hidden)
+{
+    const char *p = str(w, a[0], PATH_MAX_BOX);
+    if (p) storage_mark_hidden(p);
+    *ret = 0;
+    return true;
+}
+H(c_storage_sd_info)
+{
+    storage_sd_info_t i;
+    if (ok_ptr(w, a[0], sizeof i)) {
+        storage_sd_info(&i);
+        memcpy((void *)(uintptr_t)a[0], &i, sizeof i);
+    }
+    *ret = 0;
+    return true;
+}
+H(c_storage_usb_info)
+{
+    storage_usb_info_t i;
+    if (ok_ptr(w, a[0], sizeof i)) {
+        storage_usb_info(&i);
+        memcpy((void *)(uintptr_t)a[0], &i, sizeof i);
+    }
+    *ret = 0;
+    return true;
+}
+H(c_storage_usb_busy) { (void)w; (void)a; *ret = storage_usb_busy(); return true; }
+H(c_storage_usb_power) { (void)w; *ret = storage_usb_power(a[0] != 0); return true; }
+H(c_storage_usb_powered) { (void)w; (void)a; *ret = storage_usb_powered(); return true; }
+/* The holds are given back at the end if the app left them taken, as
+ * storage_hold()'s is. */
+H(c_storage_hold_background)
+{
+    (void)w;
+    storage_hold_background(a[0] < STORAGE_COUNT ? (storage_id_t)a[0] : STORAGE_COUNT);
+    s_held_bg = a[0] < STORAGE_COUNT;
+    *ret = 0;
+    return true;
+}
+H(c_storage_hold_readers)
+{
+    (void)w;
+    s_readers = a[0] & ((1u << STORAGE_COUNT) - 1u);
+    storage_hold_readers(s_readers);
+    *ret = 0;
+    return true;
+}
+H(c_storage_hold_brief)
+{
+    (void)w;
+    if (a[0] < STORAGE_COUNT) {
+        storage_hold_brief((storage_id_t)a[0]);
+        s_brief[a[0]]++;
+    }
+    *ret = 0;
+    return true;
+}
+/* never one the app did not take: the count is per volume, and shared */
+H(c_storage_release_brief)
+{
+    (void)w;
+    if (a[0] < STORAGE_COUNT && s_brief[a[0]] > 0) {
+        s_brief[a[0]]--;
+        storage_release_brief((storage_id_t)a[0]);
+    }
+    *ret = 0;
+    return true;
+}
+
 static const uint32_t s_storage_v2 = 2;
 
 const feckless_umode_call_t box_storage_calls[] = {
@@ -522,6 +946,15 @@ const feckless_umode_call_t box_storage_calls[] = {
     FN(storage_present), FN(storage_ff_drive), FN(storage_generation), FN(storage_of_path),
     FN(storage_mount_path), FN(storage_join_path), FN(storage_io_acquire), FN(storage_io_release),
     FN(storage_hold),
+    /* u-feckless-0047 */
+    FN(fwrite), FN(fflush), FN(rewind), FN(remove), FN(rename), FN(mkdir), FN(rmdir), FN(stat),
+    FN(utime), FN(rewinddir), FN(f_opendir), FN(f_readdir), FN(f_closedir), FN(f_chmod),
+    FN(storage_io_open), FN(storage_io_close), FN(storage_io_fread), FN(storage_io_read_at),
+    FN(storage_io_phase_ms), FN(storage_io_report),
+    FN(storage_label), FN(storage_is_hidden), FN(storage_mark_hidden), FN(storage_sd_info),
+    FN(storage_usb_info), FN(storage_usb_busy), FN(storage_usb_power), FN(storage_usb_powered),
+    FN(storage_hold_background), FN(storage_hold_readers), FN(storage_hold_brief),
+    FN(storage_release_brief),
 };
 const uint32_t box_storage_calls_n = sizeof box_storage_calls / sizeof box_storage_calls[0];
 
@@ -533,9 +966,29 @@ void box_storage_end(void)
     }
     for (int i = 0; i < MAX_FILE; i++) {
         if (s_file[i]) {
-            fclose(s_file[i]);
+            if (s_file_io[i]) storage_io_close(s_file[i]);
+            else fclose(s_file[i]);
             s_file[i] = NULL;
         }
+        s_file_io[i] = false;
+    }
+    for (int i = 0; i < MAX_FFDIR; i++) {
+        if (s_ffdir[i]) ffdir_close(i);
+    }
+    memset(s_label, 0, sizeof s_label);
+    for (int v = 0; v < STORAGE_COUNT; v++) {
+        while (s_brief[v] > 0) {
+            s_brief[v]--;
+            storage_release_brief((storage_id_t)v);
+        }
+    }
+    if (s_held_bg) {
+        storage_hold_background(STORAGE_COUNT);
+        s_held_bg = false;
+    }
+    if (s_readers) {
+        storage_hold_readers(0);
+        s_readers = 0;
     }
     for (int i = 0; i < MAX_DIR; i++) {
         if (s_dir[i]) {

@@ -33,3 +33,11 @@ FRESULT f_open(FIL *fp, const char *path, BYTE mode);
 FRESULT f_read(FIL *fp, void *buff, UINT btr, UINT *br);
 FRESULT f_lseek(FIL *fp, FSIZE_t ofs);
 FRESULT f_close(FIL *fp);
+/* u-feckless-0047: FatFs's directories and attributes */
+typedef struct { FFOBJID obj; DWORD dptr; void *host_dir; } FF_DIR;
+typedef struct { FSIZE_t fsize; uint16_t fdate, ftime; BYTE fattrib; char altname[13]; char fname[256]; } FILINFO;
+#define AM_HID 0x02
+FRESULT f_opendir(FF_DIR *dp, const char *path);
+FRESULT f_readdir(FF_DIR *dp, FILINFO *fno);
+FRESULT f_closedir(FF_DIR *dp);
+FRESULT f_chmod(const char *path, BYTE attr, BYTE mask);

@@ -66,3 +66,61 @@ uint32_t storage_generation(void) { return 7; }
 void storage_hold(storage_id_t id) { hold_id = (int)id; }
 void storage_io_acquire(storage_io_class_t c) { (void)c; io_depth++; }
 void storage_io_release(void) { io_depth--; }
+
+/* u-feckless-0047: the rest, over the host's own files and directories. */
+#include <dirent.h>
+int io_open, io_cls = -1, io_into_box, brief[2], bg = -1, readers_mask, ffdir_open;
+BYTE chmod_attr, chmod_mask;
+char hidden_path[300], report_phase[64];
+FILE *storage_io_open(const char *path, const char *mode)
+{
+    FILE *f = fopen(path, mode);
+    if (f) io_open++;
+    return f;
+}
+int storage_io_close(FILE *f) { io_open--; return fclose(f); }
+size_t storage_io_fread(void *dst, size_t len, FILE *f, storage_io_class_t cls)
+{
+    io_cls = (int)cls;
+    if ((uintptr_t)dst < box_hi && (uintptr_t)dst + len > box_lo) io_into_box++;
+    return fread(dst, 1, len, f);
+}
+bool storage_io_read_at(FILE *f, int64_t off, void *dst, size_t len, storage_io_class_t cls)
+{
+    if (fseek(f, (long)off, SEEK_SET) != 0) return false;
+    return storage_io_fread(dst, len, f, cls) == len;
+}
+uint32_t storage_io_phase_ms(void) { return 1500; }
+void storage_io_report(const char *phase) { snprintf(report_phase, sizeof report_phase, "%s", phase); }
+const char *storage_label(storage_id_t id) { return id == STORAGE_SD ? "SD card" : "USB drive"; }
+bool storage_is_hidden(const char *name) { return name[0] == '.'; }
+void storage_mark_hidden(const char *path) { snprintf(hidden_path, sizeof hidden_path, "%s", path); }
+bool storage_usb_power(bool on) { return on; }
+bool storage_usb_busy(void) { return false; }
+bool storage_usb_powered(void) { return true; }
+void storage_sd_info(storage_sd_info_t *o) { memset(o, 0, sizeof *o); o->present = true; strcpy(o->type, "SDHC/SDXC"); o->capacity_mb = 30436; }
+void storage_usb_info(storage_usb_info_t *o) { memset(o, 0, sizeof *o); o->vid = 0x0781; }
+void storage_hold_background(storage_id_t id) { bg = (int)id; }
+void storage_hold_readers(uint32_t m) { readers_mask = (int)m; }
+void storage_hold_brief(storage_id_t id) { brief[id]++; }
+void storage_release_brief(storage_id_t id) { brief[id]--; }
+FRESULT f_opendir(FF_DIR *dp, const char *path)
+{
+    DIR *d = opendir(path);
+    if (!d) return FR_NO_PATH;
+    memset(dp, 0, sizeof *dp);
+    dp->obj.fs = (void *)0x4ff00000;
+    dp->host_dir = d;
+    ffdir_open++;
+    return FR_OK;
+}
+FRESULT f_readdir(FF_DIR *dp, FILINFO *fno)
+{
+    if (!fno) { rewinddir(dp->host_dir); return FR_OK; }
+    const struct dirent *e = readdir(dp->host_dir);
+    memset(fno, 0, sizeof *fno);
+    if (e) snprintf(fno->fname, sizeof fno->fname, "%s", e->d_name);
+    return FR_OK;
+}
+FRESULT f_closedir(FF_DIR *dp) { closedir(dp->host_dir); ffdir_open--; return FR_OK; }
+FRESULT f_chmod(const char *path, BYTE attr, BYTE mask) { (void)path; chmod_attr = attr; chmod_mask = mask; return FR_OK; }

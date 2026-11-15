@@ -69,8 +69,19 @@ feckless_umode_load(image, size, calls, n, 4 << 20, 64 << 10, &app);
     the app left open and gives back its I/O lease and volume hold, which
     the launcher's own storage would otherwise wait on.
 
-  Not yet: writing (`f_write`, `fwrite`), `f_stat`, `f_opendir`, `open`/`read`,
-  `access`, `fseeko`, the storage list; the storage section's other names.
+  - u-feckless-0047, as Defeatist uses it: `fwrite` (through the staging
+    buffer, as reads are), `fflush`, `rewind`, `remove`, `rename`, `mkdir`,
+    `rmdir`, `stat`, `utime`, `rewinddir`; FatFs's `f_opendir`,
+    `f_readdir`, `f_closedir` (the host's `FF_DIR`, found by the app's)
+    and `f_chmod`; `storage_io_open`, `_close`, `_fread`, `_read_at`
+    (staged, under storage_io's lease), `_phase_ms`, `_report`;
+    `storage_label`, `_is_hidden`, `_mark_hidden`, `_sd_info`, `_usb_info`,
+    `_usb_busy`, `_usb_power`, `_usb_powered`, `_hold_background`,
+    `_hold_readers`, `_hold_brief`, `_release_brief`. Sixteen FILEs, four
+    FatFs directories. The storage list is not here: it calls the app's
+    filter, so an app links `storage_list.c` into itself, over these.
+
+  Not yet: `f_write`, `f_stat`, `open`/`read`, `access`, `fseeko`.
 
 - **Audio and USB** (u-feckless-0021, `src/box_audio.c`), as Lothesome
   uses them:

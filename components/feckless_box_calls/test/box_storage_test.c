@@ -19,6 +19,8 @@
 
 #include "feckless_box_calls.h"
 #include "ff.h"
+#include "storage.h"   /* u-feckless-0047: the info structs */
+#include <utime.h>
 
 extern int io_depth, hold_id, fat_open;
 extern DWORD *last_cltbl;
@@ -51,6 +53,11 @@ static uint32_t call(const char *name, uint32_t a0, uint32_t a1, uint32_t a2, ui
     uint32_t ret = 0xdeadbeef;
     CHECK(feckless_umode_calls_ext(&w, nr_of(name), &w.ctx.x[10], &ret));
     return ret;
+}
+static uint32_t call6(const char *name, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5)
+{
+    w.ctx.x[14] = a4; w.ctx.x[15] = a5;
+    return call(name, a0, a1, a2, a3);
 }
 static uint32_t P(const void *p) { return (uint32_t)(uintptr_t)p; }
 static void *box_alloc(uint32_t n) { void *p = (void *)(uintptr_t)feckless_box_alloc(&box, n); memset(p, 0, n); return p; }
@@ -239,6 +246,149 @@ static void test_storage_handler(void)
     CHECK(hold_id == 0);
 }
 
+/* u-feckless-0047: writing, through the staging buffer; the paths. */
+extern int io_open, io_cls, io_into_box, brief[2], bg, readers_mask, ffdir_open;
+extern BYTE chmod_attr, chmod_mask;
+extern char hidden_path[300], report_phase[64];
+
+static void test_writes(void)
+{
+    char pbuf[128];
+    snprintf(pbuf, sizeof pbuf, "%s/out.bin", dir);
+    char *path = put_str(pbuf), *wb = put_str("wb"), *rb = put_str("rb");
+    const uint32_t f = call("fopen", P(path), P(wb), 0, 0);
+    CHECK(f != 0);
+    uint8_t *b = box_alloc(20000);
+    for (int i = 0; i < 20000; i++) b[i] = (uint8_t)(i * 7);
+    CHECK(call("fwrite", P(b), 1, 20000, f) == 20000);              /* three slices */
+    CHECK(call("fwrite", P(b), 4, 3, f) == 3);
+    CHECK(call("fwrite", P(b), 0x10000, 0x10000, f) == 0);          /* size * n overflows */
+    CHECK(call("fwrite", P(b), 1, 1u << 20, f) == 0);               /* past the box */
+    CHECK(call("fwrite", 0x1000, 1, 16, f) == 0);
+    CHECK(call("fflush", f, 0, 0, 0) == 0 && call("fflush", 0, 0, 0, 0) == 0);
+    CHECK(call("fflush", f + 1, 0, 0, 0) == (uint32_t)EOF);
+    CHECK(call("fclose", f, 0, 0, 0) == 0);
+    struct stat *st = box_alloc(sizeof(struct stat));
+    CHECK(call("stat", P(path), P(st), 0, 0) == 0 && st->st_size == 20012);
+    CHECK(call("stat", P(path), 0x1000, 0, 0) == (uint32_t)-1);
+    const uint32_t g = call("fopen", P(path), P(rb), 0, 0);
+    uint8_t *back = box_alloc(20012);
+    CHECK(call("fread", P(back), 1, 20012, g) == 20012 && !memcmp(back, b, 20000) && !memcmp(back + 20000, b, 12));
+    call("rewind", g, 0, 0, 0);
+    CHECK(call("ftell", g, 0, 0, 0) == 0);
+    CHECK(call("fclose", g, 0, 0, 0) == 0);
+
+    snprintf(pbuf, sizeof pbuf, "%s/moved.bin", dir);
+    char *to = put_str(pbuf);
+    CHECK(call("rename", P(path), P(to), 0, 0) == 0 && call("stat", P(path), P(st), 0, 0) == (uint32_t)-1);
+    struct utimbuf *ut = box_alloc(sizeof(struct utimbuf));
+    ut->actime = ut->modtime = 1000000000;
+    CHECK(call("utime", P(to), P(ut), 0, 0) == 0);
+    CHECK(call("stat", P(to), P(st), 0, 0) == 0 && st->st_mtime == 1000000000);
+    CHECK(call("utime", P(to), 0x1000, 0, 0) == (uint32_t)-1);
+    CHECK(call("remove", P(to), 0, 0, 0) == 0 && call("remove", P(to), 0, 0, 0) == (uint32_t)-1);
+    snprintf(pbuf, sizeof pbuf, "%s/sub", dir);
+    char *sub = put_str(pbuf);
+    CHECK(call("mkdir", P(sub), 0777, 0, 0) == 0 && call("mkdir", P(sub), 0777, 0, 0) == (uint32_t)-1);
+    CHECK(call("rmdir", P(sub), 0, 0, 0) == 0);
+    CHECK(call("rename", P(sub), 0x1000, 0, 0) == (uint32_t)-1 && call("remove", 0x1000, 0, 0, 0) == (uint32_t)-1);
+
+    /* rewinddir */
+    const uint32_t d = call("opendir", P(put_str(dir)), 0, 0, 0);
+    int n1 = 0, n2 = 0;
+    while (call("readdir", d, 0, 0, 0)) n1++;
+    call("rewinddir", d, 0, 0, 0);
+    while (call("readdir", d, 0, 0, 0)) n2++;
+    CHECK(n1 > 0 && n1 == n2);
+    call("closedir", d, 0, 0, 0);
+}
+
+/* storage_io's files: a FILE number, reads through the staging buffer */
+static void test_storage_io(void)
+{
+    char pbuf[128];
+    snprintf(pbuf, sizeof pbuf, "%s/words.dict", dir);
+    char *path = put_str(pbuf), *rb = put_str("rb");
+    const uint32_t f = call("storage_io_open", P(path), P(rb), 0, 0);
+    CHECK(f != 0 && io_open == 1);
+    uint8_t *b = box_alloc(20000);
+    io_into_box = 0;
+    CHECK(call("storage_io_fread", P(b), 20000, f, 1) == 20000 && io_cls == 1 && io_into_box == 0);
+    CHECK(b[19999] == 'a' + 19999 % 26);
+    CHECK(call("storage_io_fread", P(b), 16, f, 0) == 0);            /* at the end */
+    memset(b, 0, 20000);
+    CHECK(call6("storage_io_read_at", f, 9000, 0, P(b), 11000, 0) == 1 && io_into_box == 0);
+    CHECK(b[0] == 'a' + 9000 % 26 && b[10999] == 'a' + 19999 % 26);
+    CHECK(call6("storage_io_read_at", f, 19990, 0, P(b), 11, 0) == 0);    /* one short */
+    CHECK(call6("storage_io_read_at", f, 0, 0x80000000u, P(b), 4, 0) == 0); /* a negative offset */
+    CHECK(call6("storage_io_read_at", f, 0, 0, 0x1000, 4, 0) == 0);
+    CHECK(call6("storage_io_read_at", f, 5, 0, P(b), 0, 0) == 1);           /* nothing asked */
+    CHECK(call("storage_io_close", f, 0, 0, 0) == 0 && io_open == 0);
+    CHECK(call("storage_io_close", f, 0, 0, 0) == (uint32_t)EOF);
+    const uint32_t g = call("storage_io_open", P(path), P(rb), 0, 0);
+    CHECK(call("fclose", g, 0, 0, 0) == 0 && io_open == 0);              /* fclose gives the pool slot back too */
+    CHECK(call("storage_io_phase_ms", 0, 0, 0, 0) == 1500);
+    call("storage_io_report", P(put_str("open")), 0, 0, 0);
+    CHECK(!strcmp(report_phase, "open"));
+    call("storage_io_report", 0x1000, 0, 0, 0);
+    CHECK(!strcmp(report_phase, "app"));
+}
+
+/* FatFs's directories: the host's FF_DIR, found by the app's */
+static void test_ffdir(void)
+{
+    FF_DIR *dp = box_alloc(sizeof(FF_DIR));
+    FILINFO *fi = box_alloc(sizeof(FILINFO));
+    CHECK(call("f_opendir", P(dp), P(put_str(dir)), 0, 0) == FR_OK && ffdir_open == 1);
+    CHECK(dp->obj.fs == NULL);                                       /* nothing of the host's copied back */
+    CHECK(call("f_opendir", P(dp), P(put_str(dir)), 0, 0) == FR_INVALID_OBJECT);
+    int n = 0, dict = 0;
+    while (call("f_readdir", P(dp), P(fi), 0, 0) == FR_OK && fi->fname[0]) {
+        n++;
+        if (!strcmp(fi->fname, "words.dict")) dict++;
+    }
+    CHECK(n >= 2 && dict == 1);
+    CHECK(call("f_readdir", P(dp), 0, 0, 0) == FR_OK);              /* rewind */
+    CHECK(call("f_readdir", P(dp), P(fi), 0, 0) == FR_OK && fi->fname[0]);
+    CHECK(call("f_readdir", P(dp), 0x1000, 0, 0) == FR_INVALID_PARAMETER);
+    CHECK(call("f_readdir", P(fi), P(fi), 0, 0) == FR_INVALID_OBJECT);
+    CHECK(call("f_closedir", P(dp), 0, 0, 0) == FR_OK && ffdir_open == 0);
+    CHECK(call("f_closedir", P(dp), 0, 0, 0) == FR_INVALID_OBJECT);
+    CHECK(call("f_opendir", P(dp), P(put_str("/nonexistent")), 0, 0) == FR_NO_PATH);
+    CHECK(call("f_opendir", 0x1000, P(put_str(dir)), 0, 0) == FR_INVALID_PARAMETER);
+    CHECK(call("f_chmod", P(put_str("/sd/x")), 0x02, 0x02, 0) == FR_OK && chmod_attr == 2 && chmod_mask == 2);
+    CHECK(call("f_chmod", 0x1000, 2, 2, 0) == FR_INVALID_PARAMETER);
+}
+
+static void test_more_handler(void)
+{
+    const uint32_t l = call("storage_label", 1, 0, 0, 0);
+    CHECK(l >= w.lo && l < w.hi && !strcmp((char *)(uintptr_t)l, "USB drive"));
+    CHECK(call("storage_label", 7, 0, 0, 0) == 0);
+    CHECK(call("storage_is_hidden", P(put_str(".settings")), 0, 0, 0) == 1);
+    CHECK(call("storage_is_hidden", P(put_str("a.mp3")), 0, 0, 0) == 0 && call("storage_is_hidden", 0x1000, 0, 0, 0) == 0);
+    call("storage_mark_hidden", P(put_str("/sd/.x")), 0, 0, 0);
+    CHECK(!strcmp(hidden_path, "/sd/.x"));
+    storage_sd_info_t *si = box_alloc(sizeof *si);
+    call("storage_sd_info", P(si), 0, 0, 0);
+    CHECK(si->present && !strcmp(si->type, "SDHC/SDXC") && si->capacity_mb == 30436);
+    storage_usb_info_t *ui = box_alloc(sizeof *ui);
+    call("storage_usb_info", P(ui), 0, 0, 0);
+    CHECK(ui->vid == 0x0781);
+    call("storage_usb_info", 0x1000, 0, 0, 0);                      /* refused, quietly */
+    CHECK(call("storage_usb_busy", 0, 0, 0, 0) == 0 && call("storage_usb_powered", 0, 0, 0, 0) == 1);
+    CHECK(call("storage_usb_power", 1, 0, 0, 0) == 1 && call("storage_usb_power", 0, 0, 0, 0) == 0);
+    call("storage_hold_brief", 0, 0, 0, 0);
+    call("storage_hold_brief", 0, 0, 0, 0);
+    call("storage_release_brief", 0, 0, 0, 0);
+    call("storage_release_brief", 1, 0, 0, 0);                      /* not taken: not given */
+    call("storage_hold_brief", 9, 0, 0, 0);
+    CHECK(brief[0] == 1 && brief[1] == 0);
+    call("storage_hold_background", 1, 0, 0, 0);
+    call("storage_hold_readers", 0xff, 0, 0, 0);
+    CHECK(bg == 1 && readers_mask == 3);
+}
+
 /* The app ends with everything open: the host closes and releases it all. */
 static void test_end(void)
 {
@@ -252,8 +402,12 @@ static void test_end(void)
     call("storage_io_acquire", 0, 0, 0, 0);
     call("storage_io_acquire", 0, 0, 0, 0);
     call("storage_hold", 0, 0, 0, 0);
+    CHECK(call("storage_io_open", P(path), P(r), 0, 0) != 0 && io_open == 1);   /* u-feckless-0047 */
+    FF_DIR *dp = box_alloc(sizeof(FF_DIR));
+    CHECK(call("f_opendir", P(dp), P(put_str(dir)), 0, 0) == FR_OK && ffdir_open == 1);
     feckless_box_calls_end();
     CHECK(fat_open == 0 && io_depth == 0 && hold_id == 2);          /* hold released: STORAGE_COUNT */
+    CHECK(io_open == 0 && ffdir_open == 0 && brief[0] == 0 && bg == 2 && readers_mask == 0);
     CHECK(call("f_read", P(fp), 0, 0, 0) == FR_INVALID_OBJECT);
     /* every slot free again */
     for (int i = 0; i < 8; i++) {
@@ -284,6 +438,10 @@ int main(void)
     test_stdio();
     test_dirs();
     test_storage_handler();
+    test_writes();
+    test_storage_io();
+    test_ffdir();
+    test_more_handler();
     test_end();
     char cmd[160];
     snprintf(cmd, sizeof cmd, "rm -rf %s", dir);

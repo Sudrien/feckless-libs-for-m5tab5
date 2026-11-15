@@ -608,7 +608,7 @@ static const feckless_umode_call_t s_own[] = {
 
 #define OWN_N (sizeof s_own / sizeof s_own[0])
 #define HEAP_MAX 8
-#define STORAGE_MAX 32
+#define STORAGE_MAX 64
 #define AUDIO_MAX 64
 #define RTOS_MAX 48
 
