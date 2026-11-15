@@ -3622,3 +3622,47 @@ riscv32-esp-elf 15.2.0 against ESP-IDF 6.1.1's headers at -Wall -Wextra
 *Not checked:* an ESP-IDF build of a launcher with it; the waits, the
 deferred delete and the spinlock with real threads (the stand-in is
 single-threaded); `umode_load.c`'s new functions run; a board.
+
+### u-feckless-0046 -- playback, the battery, the clock and the rest of gfx in a box
+
+Step 2 for Defeatist's player in a box: the drivers and drawing calls its
+local playback needs, 43 names.
+
+- **Playback.** `audio_out_write` reads the app's PCM in place: the driver
+  copies it into its DMA buffers with the CPU (or hands it to
+  `uac_write`, which copies), so a buffer in PSRAM is not a second bus
+  master on the framebuffer's memory, the hazard u-feckless-0015 stages
+  storage reads for. It is unlocked -- the writer task waits on the DMA
+  there -- and takes at most 64 KB a call (370 ms at 44.1 kHz stereo), so
+  no write outlasts the stop wait. Format, rate, mute, idle and the route
+  besides; the route's name is copied into the box.
+- **The battery and the clock**, the bus's number in place of the handle
+  as for `audio_out_init`. `battery_trace_arm`'s reason is logged later
+  from the trace's own task, so it gets a copy of the host's, never the
+  app's pointer, which may be gone by then with the box.
+- **polyrsp**, the resampler Defeatist's rateconv uses. Its history and
+  coefficients and the pointers to them are the host's, so the app holds a
+  number (four at most). It runs on the calling thread's host task in
+  M-mode, where interrupts are not held off as they would be in a window.
+  Locked: two threads in one resampler could walk its history out of its
+  buffer. A call's output is checked to hold the input's exact share
+  rounded up and one more, which is what polyrsp may write.
+- **gfx**, the screens' other primitives: the filter, the rotation, the
+  error-returning blit, polygons (at most `GFX_POLY_MAX_PTS`, copied out
+  of the box before gfx sees them), stars, the spinner, the time text,
+  tail- and window-clipped text, the right-to-left test, a paragraph's
+  rows; the backlight in counts, and `touch_swallow`.
+
+`feckless_box_calls_end()` also closes what resamplers the app left open
+and, if it played anything, puts the amplifier back to idle.
+
+*Checked, on a host:* `make -C components/feckless_box_calls/test`, 214
+calls: each new call against a recording stand-in, every pointer refused
+at the box's edge (a write, a polygon and a resampler's output one frame
+past it), the write's 64 KB bound, a resampler past its `max_in`, a closed
+one, the box's end closing them and idling the amplifier, which calls are
+unlocked. The three changed files compiled with riscv32-esp-elf 15.2.0
+against ESP-IDF 6.1.1's headers at -Wall -Wextra -Werror.
+`boxcalls_names.txt` regenerated (214 names).
+
+*Not checked:* an ESP-IDF build of a launcher with it; a board.

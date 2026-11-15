@@ -90,6 +90,28 @@ feckless_umode_load(image, size, calls, n, 4 << 20, 64 << 10, &app);
   characters at most. `feckless_box_calls_end()` closes a microphone the
   app left open and stops its stream and capture.
 
+- **Playback, the battery, the clock, more gfx** (u-feckless-0046), as
+  Defeatist's player uses them:
+  - `audio_out_write` (at most 64 KB a call, the buffer read in place),
+    `audio_out_set_format`, `_rate_supported`, `_rate`, `_set_mute`,
+    `_muted`, `_set_idle`, `_route`, `_route_name` (copied into the box);
+  - `battery_init` (the bus's number), `_start`, `_pct`, `_mv`,
+    `_charging`, `_external`, `_trace_arm` (the reason copied);
+  - `rtc8130_init` (the bus's number), `_read`, `_write`, `_write_forward`;
+  - `polyrsp_open`, `_close`, `_reset`, `_max_out`, `_process`: a number
+    for each resampler (four at most), run on the host in M-mode, the
+    output checked to hold what the input can make;
+  - `usbhost_running`, `usbhost_vbus_on`;
+  - `gfx_set_filter`, `gfx_filter`, `gfx_blit_err`, `gfx_set_rotation`,
+    `gfx_fill_poly` (16 points, copied), `gfx_fill_star`,
+    `gfx_draw_spinner`, `gfx_time_text`, `gfx_time_text_w`,
+    `gfx_draw_time_text`, `gfx_draw_text_tail`, `gfx_draw_text_clipped`,
+    `gfx_text_rtl`, `gfx_para_rows`; `lcd_backlight_set_counts`,
+    `touch_swallow`.
+
+  `feckless_box_calls_end()` closes the app's resamplers and, if it played
+  anything, puts the amplifier back to idle.
+
 - **FreeRTOS** (u-feckless-0045, `src/box_rtos.c`), as Defeatist uses it:
   - mutexes, recursive mutexes, binary and counting semaphores and queues
     (`xQueueGenericCreate`, `xQueueCreateMutex`,

@@ -471,6 +471,93 @@ H(c_gfx_draw_para)
     return true;
 }
 
+/* ---- more of gfx, the backlight, touch (u-feckless-0046) -----------------
+ * The rest of what Defeatist's screens draw with. Strings are the app's,
+ * checked to end inside the box, as gfx_draw_text()'s are; the polygon's
+ * points are copied out first, so the app cannot change them under gfx. */
+
+H(c_gfx_set_filter) { (void)w; gfx_set_filter((int)a[0]); *ret = 0; return true; }
+H(c_gfx_filter) { (void)w; (void)a; *ret = (uint32_t)gfx_filter(); return true; }
+H(c_gfx_blit_err) { (void)w; *ret = (uint32_t)gfx_blit_err((int)a[0], (int)a[1]); return true; }
+H(c_gfx_set_rotation) { (void)w; gfx_set_rotation((int)a[0]); *ret = 0; return true; }
+/* (xy *, n points, colour): at most GFX_POLY_MAX_PTS */
+H(c_gfx_fill_poly)
+{
+    int xy[2 * GFX_POLY_MAX_PTS];
+    const uint32_t n = a[1];
+    *ret = 0;
+    if (n == 0 || n > GFX_POLY_MAX_PTS || !ok_ptr(w, a[0], n * 2u * (uint32_t)sizeof(int))) {
+        return true;
+    }
+    memcpy(xy, (const void *)(uintptr_t)a[0], n * 2u * sizeof(int));
+    gfx_fill_poly(xy, (int)n, (uint16_t)a[2]);
+    return true;
+}
+H(c_gfx_fill_star) { (void)w; gfx_fill_star((int)a[0], (int)a[1], (int)a[2], (uint16_t)a[3]); *ret = 0; return true; }
+H(c_gfx_draw_spinner)
+{
+    (void)w;
+    gfx_draw_spinner((int)a[0], (int)a[1], (int)a[2], a[3], (uint16_t)a[4], (uint16_t)a[5]);
+    *ret = 0;
+    return true;
+}
+/* (out *, out_len, seconds, negative): formatted here, copied into out */
+H(c_gfx_time_text)
+{
+    char t[GFX_TIME_TEXT_MAX];
+    const uint32_t len = a[1] < sizeof t ? a[1] : (uint32_t)sizeof t;
+    if (len == 0 || !ok_ptr(w, a[0], len)) {
+        *ret = 0;
+        return true;
+    }
+    gfx_time_text(t, len, a[2], a[3] != 0);
+    memcpy((void *)(uintptr_t)a[0], t, strnlen(t, len - 1) + 1);
+    *ret = a[0];
+    return true;
+}
+H(c_gfx_time_text_w)
+{
+    const char *s = str(w, a[0], FECKLESS_BOX_STR_MAX);
+    *ret = s ? (uint32_t)gfx_time_text_w(s, (int)a[1]) : 0;
+    return true;
+}
+H(c_gfx_draw_time_text)
+{
+    const char *s = str(w, a[2], FECKLESS_BOX_STR_MAX);
+    if (s) gfx_draw_time_text((int)a[0], (int)a[1], s, (int)a[3], (uint16_t)a[4]);
+    *ret = 0;
+    return true;
+}
+H(c_gfx_draw_text_tail)
+{
+    const char *s = str(w, a[2], FECKLESS_BOX_STR_MAX);
+    if (s) gfx_draw_text_tail((int)a[0], (int)a[1], s, (int)a[3], (int)a[4], (uint16_t)a[5]);
+    *ret = 0;
+    return true;
+}
+/* (x, y, win_x, win_w, s, scale, colour) */
+H(c_gfx_draw_text_clipped)
+{
+    const char *s = str(w, a[4], FECKLESS_BOX_STR_MAX);
+    if (s) gfx_draw_text_clipped((int)a[0], (int)a[1], (int)a[2], (int)a[3], s, (int)a[5], (uint16_t)a[6]);
+    *ret = 0;
+    return true;
+}
+H(c_gfx_text_rtl)
+{
+    const char *s = str(w, a[0], FECKLESS_BOX_STR_MAX);
+    *ret = s ? gfx_text_rtl(s) : false;
+    return true;
+}
+H(c_gfx_para_rows)
+{
+    const char *s = str(w, a[0], FECKLESS_BOX_STR_MAX);
+    *ret = s ? (uint32_t)gfx_para_rows(s, (int)a[1], (int)a[2]) : 0;
+    return true;
+}
+H(c_lcd_backlight_set_counts) { (void)w; *ret = (uint32_t)lcd_backlight_set_counts(a[0]); return true; }
+H(c_touch_swallow) { (void)w; (void)a; touch_swallow(); *ret = 0; return true; }
+
 /* ---- the table ----------------------------------------------------------- */
 
 static const uint32_t s_abi_v1 = FECKLESS_ABI_VERSION;
@@ -511,12 +598,18 @@ static const feckless_umode_call_t s_own[] = {
      * that asks for them per column (Lothesome did, 49 000 a second) then
      * pays the trap and not the lock. */
     FNU(gfx_fb), FNU(gfx_w), FNU(gfx_h),
+    /* u-feckless-0046 */
+    FN(gfx_set_filter), FNU(gfx_filter), FNU(gfx_blit_err), FN(gfx_set_rotation),
+    FN(gfx_fill_poly), FN(gfx_fill_star), FN(gfx_draw_spinner), FN(gfx_time_text),
+    FN(gfx_time_text_w), FN(gfx_draw_time_text), FN(gfx_draw_text_tail),
+    FN(gfx_draw_text_clipped), FN(gfx_text_rtl), FN(gfx_para_rows),
+    FN(lcd_backlight_set_counts), FN(touch_swallow),
 };
 
 #define OWN_N (sizeof s_own / sizeof s_own[0])
 #define HEAP_MAX 8
 #define STORAGE_MAX 32
-#define AUDIO_MAX 32
+#define AUDIO_MAX 64
 #define RTOS_MAX 48
 
 const feckless_umode_call_t *feckless_box_calls_v1(uint32_t *n)

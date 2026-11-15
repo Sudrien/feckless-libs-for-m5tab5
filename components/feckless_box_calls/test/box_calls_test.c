@@ -627,6 +627,127 @@ static void test_rtos(void)
     fake_thread_task[3] = fake_thread_task[9] = NULL;
 }
 
+/* u-feckless-0046: playback, the battery, the clock, polyrsp, the rest of gfx */
+extern int d_calls, d_idle, d_mute, d_filter, d_rot, d_poly_n, d_poly_xy[32], d_swallow, d_rsp_live, d_args[8];
+extern size_t d_len;
+extern const void *d_ptr;
+extern uint32_t d_rate, d_duty;
+extern uint8_t d_ch;
+extern int64_t d_epoch;
+extern char d_str[256], d_why[64];
+
+static void test_drivers(void)
+{
+    uint8_t *pcm = (uint8_t *)(uintptr_t)feckless_box_alloc(&box, 4096);
+    d_calls = 0;
+    CHECK(C2("audio_out_write", P(pcm), 4096) == ESP_OK && d_ptr == pcm && d_len == 4096);
+    CHECK(C2("audio_out_write", P(mem) + MEM - 16, 4096) == (uint32_t)ESP_ERR_INVALID_ARG);   /* past the box */
+    CHECK(C2("audio_out_write", P(mem), 65537) == (uint32_t)ESP_ERR_INVALID_ARG);          /* past WRITE_MAX */
+    CHECK(C2("audio_out_write", 0x1000, 16) == (uint32_t)ESP_ERR_INVALID_ARG);
+    CHECK(C2("audio_out_write", P(pcm), 0) == ESP_OK && d_calls == 1);               /* nothing to send */
+    CHECK(C2("audio_out_set_format", 48000, 2) == ESP_OK && d_rate == 48000 && d_ch == 2);
+    CHECK(C1("audio_out_rate_supported", 44100) == 1 && C1("audio_out_rate_supported", 22050) == 0);
+    CHECK(C0("audio_out_rate") == 44100);
+    C1("audio_out_set_mute", 1);
+    CHECK(d_mute == 1 && C0("audio_out_muted") == 1);
+    C1("audio_out_set_idle", 0);
+    CHECK(d_idle == 0 && C0("audio_out_route") == AUDIO_OUT_HEADPHONES);
+    const uint32_t rn = C0("audio_out_route_name");
+    CHECK(rn >= P(mem) && rn < P(mem) + MEM && !strcmp((char *)(uintptr_t)rn, "headphones"));
+
+    CHECK(C1("battery_init", 0x42555331u) == ESP_OK && C1("battery_init", 7) == (uint32_t)ESP_ERR_INVALID_ARG);
+    CHECK(C0("battery_start") == ESP_OK && C0("battery_pct") == 87 && C0("battery_mv") == 7712);
+    CHECK(C0("battery_charging") == 1 && C0("battery_external") == 0);
+    char *why = put_str("seek");
+    C1("battery_trace_arm", P(why));
+    CHECK(!strcmp(d_why, "seek"));
+    C1("battery_trace_arm", 0x1000);
+    CHECK(!strcmp(d_why, "app"));
+
+    CHECK(C1("rtc8130_init", 0x42555331u) == 1 && C1("rtc8130_init", 0) == 0);
+    int64_t *ep = (int64_t *)(uintptr_t)feckless_box_alloc(&box, 8);
+    CHECK(C1("rtc8130_read", P(ep)) == 1 && *ep == 0x123456789LL);
+    CHECK(C1("rtc8130_read", 0x1000) == 0);
+    CHECK(C2("rtc8130_write", 0x9abcdef0u, 0x12) == 1 && d_epoch == 0x129abcdef0LL);
+    CHECK(C2("rtc8130_write_forward", 5, 0) == 1 && d_epoch == -5);
+
+    /* polyrsp: a number, and an output checked against what the input can make */
+    const uint32_t r = C4("polyrsp_open", 44100, 48000, 256, 0);
+    CHECK(r == 0x52535000u);
+    CHECK(C4("polyrsp_open", 48000, 48000, 256, 0) == 0);             /* refused by polyrsp */
+    CHECK(C4("polyrsp_open", 44100, 48000, 0, 0) == 0);
+    CHECK(C1("polyrsp_max_out", r) == 280);
+    int16_t *in = (int16_t *)(uintptr_t)feckless_box_alloc(&box, 256 * 4);
+    const uint32_t most = (100u * 48000u + 44099u) / 44100u + 1u;      /* 110 */
+    int16_t *out = (int16_t *)(uintptr_t)feckless_box_alloc(&box, most * 4);
+    in[0] = 77;
+    CHECK(C4("polyrsp_process", r, P(in), 100, P(out)) == most && out[2 * most - 1] == 77);
+    CHECK(C4("polyrsp_process", r, P(in), 100, P(mem) + MEM - (most - 1) * 4) == 0);   /* one frame short of the box's end */
+    CHECK(C4("polyrsp_process", r, P(in), 100, P(mem) + MEM - most * 4) == most);
+    CHECK(C4("polyrsp_process", r, P(in), 257, P(out)) == 0);          /* past max_in */
+    CHECK(C4("polyrsp_process", r, 0x1000, 100, P(out)) == 0);
+    CHECK(C4("polyrsp_process", r + 1, P(in), 100, P(out)) == 0);      /* not open */
+    C1("polyrsp_reset", r);
+    const uint32_t r2 = C4("polyrsp_open", 48000, 44100, 64, 0);
+    CHECK(r2 && r2 != r && d_rsp_live == 2);
+    C1("polyrsp_close", r);
+    CHECK(d_rsp_live == 1 && C1("polyrsp_max_out", r) == 0);
+
+    /* gfx */
+    C1("gfx_set_filter", 3);
+    CHECK(d_filter == 3 && C0("gfx_filter") == 3);
+    CHECK(C2("gfx_blit_err", 10, 20) == ESP_OK && d_args[0] == 10 && d_args[1] == 20);
+    C1("gfx_set_rotation", 1);
+    CHECK(d_rot == 1);
+    int *xy = (int *)(uintptr_t)feckless_box_alloc(&box, 32 * sizeof(int));
+    for (int i = 0; i < 20; i++) xy[i] = i * 3;
+    C4("gfx_fill_poly", P(xy), 10, 0xffff, 0);
+    CHECK(d_poly_n == 10 && d_poly_xy[19] == 57);
+    d_poly_n = 0;
+    C4("gfx_fill_poly", P(xy), 17, 0xffff, 0);                          /* more than 16 points */
+    C4("gfx_fill_poly", P(xy), 0, 0xffff, 0);
+    C4("gfx_fill_poly", P(mem) + MEM - 8 * sizeof(int), 10, 0xffff, 0);    /* runs past the box */
+    C4("gfx_fill_poly", 0x1000, 3, 0, 0);
+    CHECK(d_poly_n == 0);
+    C4("gfx_fill_star", 1, 2, 3, 4);
+    CHECK(d_args[0] == 1 && d_args[3] == 4);
+    call("gfx_draw_spinner", 5, 6, 7, 1234, 0xf800, 0x07e0, 0, 0);
+    CHECK(d_args[3] == 1234 && d_args[5] == 0x07e0);
+    char *tt = (char *)(uintptr_t)feckless_box_alloc(&box, 16);
+    CHECK(C4("gfx_time_text", P(tt), 16, 161, 1) == P(tt) && !strcmp(tt, "-2:41"));
+    CHECK(C4("gfx_time_text", P(tt), 3, 161, 0) == P(tt) && !strcmp(tt, "2:"));
+    CHECK(C4("gfx_time_text", P(tt), 64, 6061, 0) == P(tt) && !strcmp(tt, "101:01"));   /* capped to 16 */
+    CHECK(C4("gfx_time_text", 0x1000, 16, 1, 0) == 0 && C4("gfx_time_text", P(tt), 0, 1, 0) == 0);
+    CHECK(C2("gfx_time_text_w", P(tt), 2) == 6 * 12);
+    char *s = put_str("Long title, kept at its end");
+    call("gfx_draw_time_text", 1, 2, P(tt), 3, 4, 0, 0, 0);
+    CHECK(!strcmp(d_str, "101:01") && d_args[3] == 4);
+    call("gfx_draw_text_tail", 1, 2, P(s), 2, 300, 0xbeef, 0, 0);
+    CHECK(!strcmp(d_str, s) && d_args[3] == 300 && d_args[4] == 0xbeef);
+    call("gfx_draw_text_clipped", -40, 2, 10, 200, P(s), 2, 0x1234, 0);
+    CHECK(d_args[0] == -40 && d_args[3] == 200 && d_args[5] == 0x1234);
+    d_str[0] = 0;
+    call("gfx_draw_text_clipped", 0, 0, 0, 10, 0x1000, 1, 0, 0);
+    CHECK(d_str[0] == 0);
+    char *ar = put_str("\xd8\xa7");
+    CHECK(C1("gfx_text_rtl", P(ar)) == 1 && C1("gfx_text_rtl", P(s)) == 0 && C1("gfx_text_rtl", 0x1000) == 0);
+    CHECK(C4("gfx_para_rows", P(s), 1, 100, 0) == 3);
+    CHECK(C1("lcd_backlight_set_counts", 4095) == ESP_OK && d_duty == 4095);
+    C0("touch_swallow");
+    CHECK(d_swallow == 1);
+    CHECK(C0("usbhost_running") == 1 && C0("usbhost_vbus_on") == 0);
+
+    const char *unl[] = { "audio_out_write", "battery_pct", "audio_out_rate", "gfx_blit_err", "usbhost_running" };
+    for (unsigned i = 0; i < sizeof unl / sizeof *unl; i++) CHECK(flags_of(unl[i]) == FECKLESS_UMODE_CALL_UNLOCKED);
+    const char *lck[] = { "polyrsp_process", "polyrsp_open", "audio_out_set_format", "gfx_fill_poly", "rtc8130_read" };
+    for (unsigned i = 0; i < sizeof lck / sizeof *lck; i++) CHECK(flags_of(lck[i]) == 0);
+
+    /* the box goes: resamplers closed, the amplifier idle again */
+    d_idle = 0;
+    feckless_box_calls_end();
+    CHECK(d_rsp_live == 0 && d_idle == 1);
+}
+
 /* u-feckless-0026: the table's names are feckless_box_libc's
  * boxcalls_names.txt, which boxcheck holds every import of a boxed ELF to:
  * the same set, one name a line. */
@@ -678,6 +799,7 @@ int main(int argc, char **argv)
     test_fb();
     test_threads();
     test_rtos();
+    test_drivers();
     printf(failed ? "%d FAILED\n" : "box_calls: all passed (%u calls)\n", failed ? failed : (int)ncalls);
     return failed != 0;
 }
