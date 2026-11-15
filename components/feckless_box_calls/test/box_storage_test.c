@@ -418,6 +418,144 @@ static void test_writer(void)
     w.ctx.x[4] = 0;
 }
 
+/* u-feckless-0055: every path copied into the host before use, and the
+ * launcher's write filter on that copy. */
+static char ok_prefix[96];
+static int filter_calls;
+static const char *filter_saw;
+static char *race_target;                       /* rewritten in the box mid-call */
+static bool filter_ok(const char *path)
+{
+    filter_calls++;
+    filter_saw = path;
+    if (race_target) memcpy(race_target, "bad", 3);   /* another thread, as it were */
+    return strncmp(path, ok_prefix, strlen(ok_prefix)) == 0;
+}
+
+static void test_filter(void)
+{
+    int *eno = box_alloc(sizeof(int));
+    w.ctx.x[4] = P(eno);
+    char pbuf[160];
+    snprintf(ok_prefix, sizeof ok_prefix, "%s/ok", dir);
+    snprintf(pbuf, sizeof pbuf, "%s/ok", dir);
+    mkdir(pbuf, 0777);
+    snprintf(pbuf, sizeof pbuf, "%s/bad", dir);
+    mkdir(pbuf, 0777);
+    snprintf(pbuf, sizeof pbuf, "%s/bad/kept.txt", dir);
+    FILE *k = fopen(pbuf, "w");
+    fputs("kept\n", k);
+    fclose(k);
+    feckless_box_calls_write_filter(filter_ok);
+
+    char *wb = put_str("wb"), *rb = put_str("rb"), *ab = put_str("ab"), *rpb = put_str("r+b");
+    snprintf(pbuf, sizeof pbuf, "%s/ok/a.txt", dir);
+    char *ok_a = put_str(pbuf);
+    snprintf(pbuf, sizeof pbuf, "%s/bad/new.txt", dir);
+    char *bad_new = put_str(pbuf);
+    snprintf(pbuf, sizeof pbuf, "%s/bad/kept.txt", dir);
+    char *bad_kept = put_str(pbuf);
+    snprintf(pbuf, sizeof pbuf, "%s/bad/d", dir);
+    char *bad_d = put_str(pbuf);
+
+    /* allowed: through, and the filter saw the host's copy, not the box */
+    filter_calls = 0;
+    const uint32_t f = call("fopen", P(ok_a), P(wb), 0, 0);
+    CHECK(f != 0 && filter_calls == 1);
+    CHECK(filter_saw && ((uintptr_t)filter_saw < w.lo || (uintptr_t)filter_saw >= w.hi));
+    CHECK(filter_saw && !strcmp(filter_saw, ok_a));
+    CHECK(call("fclose", f, 0, 0, 0) == 0);
+
+    /* refused: every way of writing outside, EACCES, nothing done */
+    static const char *const wmodes[] = { "w", "wb", "a", "ab", "r+", "rb+", "w+", "x" };
+    for (size_t i = 0; i < sizeof wmodes / sizeof *wmodes; i++) {
+        char *m = put_str(wmodes[i]);
+        *eno = 0;
+        CHECK(call("fopen", P(bad_new), P(m), 0, 0) == 0 && *eno == EACCES);
+        CHECK(call("fopen", P(bad_kept), P(m), 0, 0) == 0);
+        *eno = 0;
+        CHECK(call("storage_io_open", P(bad_new), P(m), 0, 0) == 0 && *eno == EACCES);
+    }
+    struct stat hs;
+    CHECK(stat(bad_new, &hs) != 0);                              /* not made */
+    CHECK(stat(bad_kept, &hs) == 0 && hs.st_size == 5);          /* not truncated */
+    *eno = 0;
+    CHECK(call("remove", P(bad_kept), 0, 0, 0) == (uint32_t)-1 && *eno == EACCES);
+    *eno = 0;
+    CHECK(call("unlink", P(bad_kept), 0, 0, 0) == (uint32_t)-1 && *eno == EACCES);
+    *eno = 0;
+    CHECK(call("mkdir", P(bad_d), 0777, 0, 0) == (uint32_t)-1 && *eno == EACCES && stat(bad_d, &hs) != 0);
+    mkdir(bad_d, 0777);
+    *eno = 0;
+    CHECK(call("rmdir", P(bad_d), 0, 0, 0) == (uint32_t)-1 && *eno == EACCES && stat(bad_d, &hs) == 0);
+    *eno = 0;
+    CHECK(call("utime", P(bad_kept), 0, 0, 0) == (uint32_t)-1 && *eno == EACCES);
+    *eno = 0;
+    CHECK(call("rename", P(bad_kept), P(ok_a), 0, 0) == (uint32_t)-1 && *eno == EACCES);
+    *eno = 0;
+    CHECK(call("rename", P(ok_a), P(bad_new), 0, 0) == (uint32_t)-1 && *eno == EACCES);
+    CHECK(stat(ok_a, &hs) == 0 && stat(bad_kept, &hs) == 0 && stat(bad_new, &hs) != 0);
+    hidden_path[0] = '\0';
+    call("storage_mark_hidden", P(bad_kept), 0, 0, 0);
+    CHECK(hidden_path[0] == '\0');
+    call("storage_mark_hidden", P(ok_a), 0, 0, 0);
+    CHECK(!strcmp(hidden_path, ok_a));
+    chmod_attr = 0;
+    CHECK(call("f_chmod", P(bad_kept), 0x02, 0x02, 0) == FR_DENIED && chmod_attr == 0);
+    FIL *fp = box_alloc(sizeof(FIL));
+    for (uint32_t bit = 0x02; bit <= 0x10; bit <<= 1)
+        CHECK(call("f_open", P(fp), P(bad_kept), FA_READ | bit, 0) == FR_DENIED && fat_open == 0);
+
+    /* reads are not filtered */
+    filter_calls = 0;
+    const uint32_t r = call("fopen", P(bad_kept), P(rb), 0, 0);
+    CHECK(r != 0 && call("fclose", r, 0, 0, 0) == 0);
+    struct stat *st = box_alloc(sizeof *st);
+    CHECK(call("stat", P(bad_kept), P(st), 0, 0) == 0);
+    CHECK(call("f_open", P(fp), P(bad_kept), FA_READ, 0) == FR_OK && call("f_close", P(fp), 0, 0, 0) == FR_OK);
+    CHECK(filter_calls == 0);
+
+    /* allowed writes inside, every kind */
+    const uint32_t g = call("fopen", P(ok_a), P(ab), 0, 0);
+    CHECK(g != 0 && call("fclose", g, 0, 0, 0) == 0);
+    const uint32_t h = call("fopen", P(ok_a), P(rpb), 0, 0);
+    CHECK(h != 0 && call("fclose", h, 0, 0, 0) == 0);
+    snprintf(pbuf, sizeof pbuf, "%s/ok/b.txt", dir);
+    char *ok_b = put_str(pbuf);
+    CHECK(call("rename", P(ok_a), P(ok_b), 0, 0) == 0 && stat(ok_b, &hs) == 0);
+    CHECK(call("unlink", P(ok_b), 0, 0, 0) == 0);
+
+    /* the race: the filter's call rewrites the app's string to "bad..." in
+     * the box; the call must still do what was allowed, on the copy. */
+    snprintf(pbuf, sizeof pbuf, "%s/okk.txt", dir);             /* "<dir>/ok" + "k.txt": allowed */
+    char *racy = put_str(pbuf);
+    race_target = racy + strlen(dir) + 1;                       /* the "okk" */
+    const uint32_t x = call("fopen", P(racy), P(wb), 0, 0);
+    race_target = NULL;
+    CHECK(x != 0 && call("fclose", x, 0, 0, 0) == 0);
+    snprintf(pbuf, sizeof pbuf, "%s/okk.txt", dir);
+    CHECK(stat(pbuf, &hs) == 0);                                /* what was allowed */
+    snprintf(pbuf, sizeof pbuf, "%s/bad.txt", dir);
+    CHECK(stat(pbuf, &hs) != 0);                                /* not what the box says now */
+    CHECK(!strncmp(racy + strlen(dir) + 1, "bad", 3));
+
+    /* two paths at once keep their own slots */
+    snprintf(pbuf, sizeof pbuf, "%s/ok/c.txt", dir);
+    char *ok_c = put_str(pbuf);
+    const uint32_t c = call("fopen", P(ok_c), P(wb), 0, 0);
+    CHECK(c != 0 && call("fclose", c, 0, 0, 0) == 0);
+    snprintf(pbuf, sizeof pbuf, "%s/ok/d.txt", dir);
+    char *ok_d = put_str(pbuf);
+    CHECK(call("rename", P(ok_c), P(ok_d), 0, 0) == 0 && stat(ok_d, &hs) == 0 && stat(ok_c, &hs) != 0);
+
+    /* the app's end forgets the filter */
+    feckless_box_calls_end();
+    *eno = 0;
+    const uint32_t y = call("fopen", P(bad_new), P(wb), 0, 0);
+    CHECK(y != 0 && call("fclose", y, 0, 0, 0) == 0 && stat(bad_new, &hs) == 0);
+    w.ctx.x[4] = 0;
+}
+
 /* storage_io's files: a FILE number, reads through the staging buffer */
 static void test_storage_io(void)
 {
@@ -555,6 +693,7 @@ int main(void)
     test_storage_handler();
     test_writes();
     test_writer();
+    test_filter();
     test_storage_io();
     test_ffdir();
     test_more_handler();

@@ -42,6 +42,73 @@
 #define MAX_FFDIR 4                         /* u-feckless-0047: FatFs's own directories */
 #define CLMT_MAX  16384u                    /* items; Spurious asks for at most this */
 #define PATH_MAX_BOX 1024u
+
+/* ---- u-feckless-0055: paths copied once, and the launcher's write filter --
+ * A path was read where the app keeps it, in the box, and used there: a
+ * second thread of the app could rewrite it between a check and the use.
+ * Every path a call takes is now copied into the host first (path_of(),
+ * two slots: rename and storage_join_path take two), and the call uses
+ * only the copy. Every call here is locked, so one app thread at a time
+ * is in them and two slots are enough. A mode is copied the same way.
+ *
+ * feckless_box_calls_write_filter(): a launcher's test of a path the app
+ * would write -- create, open to write, remove, rename either end, make
+ * or remove a directory, touch, mark hidden, chmod -- made on that copy,
+ * so what was allowed is what is done. Refused: EACCES (FR_DENIED for
+ * FatFs) and nothing done. None, the default, allows all, as before. */
+static char *s_pathbuf;                     /* 2 x PATH_MAX_BOX, kept */
+static feckless_box_write_filter_t s_write_filter;
+
+static const char *path_of(const win_t *w, uint32_t p, int slot)
+{
+    const int n = feckless_umode_strlen(w, (uintptr_t)p, PATH_MAX_BOX);
+    if (n < 0) return NULL;
+    if (!s_pathbuf) {
+        s_pathbuf = heap_caps_malloc(2 * PATH_MAX_BOX, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        if (!s_pathbuf) s_pathbuf = heap_caps_malloc(2 * PATH_MAX_BOX, MALLOC_CAP_8BIT);
+        if (!s_pathbuf) return NULL;
+    }
+    char *b = s_pathbuf + (size_t)slot * PATH_MAX_BOX;
+    memcpy(b, (const void *)(uintptr_t)p, (size_t)n);
+    b[n] = '\0';
+    return b;
+}
+
+#define MODE_MAX_BOX 8u
+static const char *mode_of(const win_t *w, uint32_t p, char out[MODE_MAX_BOX])
+{
+    const int n = feckless_umode_strlen(w, (uintptr_t)p, MODE_MAX_BOX);
+    if (n < 0) return NULL;
+    memcpy(out, (const void *)(uintptr_t)p, (size_t)n);
+    out[n] = '\0';
+    return out;
+}
+
+/* A stdio mode that writes: w, a, + -- or anything not starting with r. */
+static bool mode_writes(const char *m)
+{
+    return m[0] != 'r' || strchr(m, '+') != NULL;
+}
+
+void feckless_box_calls_write_filter(feckless_box_write_filter_t f)
+{
+    s_write_filter = f;
+}
+
+/* May the app write path (a host copy)? If not, its errno is EACCES. */
+static bool writable(win_t *w, const char *path)
+{
+    if (!s_write_filter || s_write_filter(path)) return true;
+    box_set_errno(w, EACCES);
+    return false;
+}
+
+/* FatFs's mode bits that write or create: FA_WRITE, FA_CREATE_NEW,
+ * FA_CREATE_ALWAYS, FA_OPEN_ALWAYS (and so FA_OPEN_APPEND). */
+#define FA_WRITES_BOX 0x1Eu
+#if defined(FA_WRITE) && defined(FA_OPEN_ALWAYS)
+_Static_assert((FA_WRITE | FA_CREATE_NEW | FA_CREATE_ALWAYS | FA_OPEN_ALWAYS) == FA_WRITES_BOX, "FatFs's mode bits");
+#endif
 #define TOKEN_FILE 0x46494c00u              /* "FIL\0" + slot: a FILE * */
 #define TOKEN_DIR  0x44495200u              /* "DIR\0" + slot: a DIR * */
 #define TOKEN_FD   0x46440000u              /* "FD\0\0" + slot: fileno() of a FILE, u-feckless-0050 */
@@ -130,9 +197,13 @@ static void fil_cltbl(win_t *w, fil_slot_t *s)
 
 H(c_f_open)
 {
-    const char *path = str(w, a[1], PATH_MAX_BOX);
+    const char *path = path_of(w, a[1], 0);
     if (!ok_ptr(w, a[0], sizeof(FIL)) || !path) {
         *ret = FR_INVALID_PARAMETER;
+        return true;
+    }
+    if ((a[2] & FA_WRITES_BOX) && !writable(w, path)) {
+        *ret = FR_DENIED;                   /* u-feckless-0055 */
         return true;
     }
     if (fil_of(a[0])) {
@@ -310,12 +381,16 @@ static uint32_t refuse(win_t *w, int e, uint32_t r)
 
 H(c_fopen)
 {
-    const char *path = str(w, a[0], PATH_MAX_BOX);
-    const char *mode = str(w, a[1], 8);
+    const char *path = path_of(w, a[0], 0);
+    char mbuf[MODE_MAX_BOX];
+    const char *mode = mode_of(w, a[1], mbuf);
     *ret = 0;
     if (!path || !mode) {
         refuse(w, EFAULT, 0);
         return true;
+    }
+    if (mode_writes(mode) && !writable(w, path)) {
+        return true;                        /* u-feckless-0055 */
     }
     int i = 0;
     while (i < MAX_FILE && s_file[i]) i++;
@@ -475,32 +550,33 @@ H(c_rewind)
 
 H(c_remove)
 {
-    const char *p = str(w, a[0], PATH_MAX_BOX);
-    *ret = p ? rc(w, remove(p)) : refuse(w, EFAULT, (uint32_t)-1);
+    const char *p = path_of(w, a[0], 0);
+    *ret = !p ? refuse(w, EFAULT, (uint32_t)-1) : !writable(w, p) ? (uint32_t)-1 : rc(w, remove(p));
     return true;
 }
 H(c_rename)
 {
-    const char *from = str(w, a[0], PATH_MAX_BOX), *to = str(w, a[1], PATH_MAX_BOX);
-    *ret = (from && to) ? rc(w, rename(from, to)) : refuse(w, EFAULT, (uint32_t)-1);
+    const char *from = path_of(w, a[0], 0), *to = path_of(w, a[1], 1);
+    *ret = !(from && to) ? refuse(w, EFAULT, (uint32_t)-1)
+         : !writable(w, from) || !writable(w, to) ? (uint32_t)-1 : rc(w, rename(from, to));
     return true;
 }
 H(c_mkdir)
 {
-    const char *p = str(w, a[0], PATH_MAX_BOX);
-    *ret = p ? rc(w, mkdir(p, (mode_t)a[1])) : refuse(w, EFAULT, (uint32_t)-1);
+    const char *p = path_of(w, a[0], 0);
+    *ret = !p ? refuse(w, EFAULT, (uint32_t)-1) : !writable(w, p) ? (uint32_t)-1 : rc(w, mkdir(p, (mode_t)a[1]));
     return true;
 }
 H(c_rmdir)
 {
-    const char *p = str(w, a[0], PATH_MAX_BOX);
-    *ret = p ? rc(w, rmdir(p)) : refuse(w, EFAULT, (uint32_t)-1);
+    const char *p = path_of(w, a[0], 0);
+    *ret = !p ? refuse(w, EFAULT, (uint32_t)-1) : !writable(w, p) ? (uint32_t)-1 : rc(w, rmdir(p));
     return true;
 }
 /* (path, struct stat *): one picolibc on both sides, so one layout */
 H(c_stat)
 {
-    const char *p = str(w, a[0], PATH_MAX_BOX);
+    const char *p = path_of(w, a[0], 0);
     struct stat st;
     if (!p || !ok_ptr(w, a[1], sizeof st)) {
         *ret = refuse(w, EFAULT, (uint32_t)-1);
@@ -514,10 +590,14 @@ H(c_stat)
 /* (path, const struct utimbuf * or NULL for now) */
 H(c_utime)
 {
-    const char *p = str(w, a[0], PATH_MAX_BOX);
+    const char *p = path_of(w, a[0], 0);
     struct utimbuf t;
     if (!p || (a[1] && !ok_ptr(w, a[1], sizeof t))) {
         *ret = refuse(w, EFAULT, (uint32_t)-1);
+        return true;
+    }
+    if (!writable(w, p)) {
+        *ret = (uint32_t)-1;
         return true;
     }
     if (a[1]) memcpy(&t, (const void *)(uintptr_t)a[1], sizeof t);
@@ -568,8 +648,8 @@ H(c_fsync)
 }
 H(c_unlink)
 {
-    const char *p = str(w, a[0], PATH_MAX_BOX);
-    *ret = p ? rc(w, unlink(p)) : refuse(w, EFAULT, (uint32_t)-1);
+    const char *p = path_of(w, a[0], 0);
+    *ret = !p ? refuse(w, EFAULT, (uint32_t)-1) : !writable(w, p) ? (uint32_t)-1 : rc(w, unlink(p));
     return true;
 }
 
@@ -581,11 +661,15 @@ H(c_unlink)
 
 H(c_storage_io_open)
 {
-    const char *path = str(w, a[0], PATH_MAX_BOX);
-    const char *mode = str(w, a[1], 8);
+    const char *path = path_of(w, a[0], 0);
+    char mbuf[MODE_MAX_BOX];
+    const char *mode = mode_of(w, a[1], mbuf);
     *ret = 0;
     if (!path || !mode) {
         return true;
+    }
+    if (mode_writes(mode) && !writable(w, path)) {
+        return true;                        /* u-feckless-0055 */
     }
     int i = 0;
     while (i < MAX_FILE && s_file[i]) i++;
@@ -688,7 +772,7 @@ static uint32_t box_buf(win_t *w, uint32_t *slot, uint32_t len)
 
 H(c_opendir)
 {
-    const char *path = str(w, a[0], PATH_MAX_BOX);
+    const char *path = path_of(w, a[0], 0);
     *ret = 0;
     if (!path) {
         return true;
@@ -758,7 +842,7 @@ static int ffdir_of(uint32_t app)
 
 H(c_f_opendir)
 {
-    const char *path = str(w, a[1], PATH_MAX_BOX);
+    const char *path = path_of(w, a[1], 0);
     if (!ok_ptr(w, a[0], sizeof(FF_DIR)) || !path) {
         *ret = FR_INVALID_PARAMETER;
         return true;
@@ -831,8 +915,8 @@ H(c_f_closedir)
 /* (path, attr, mask) */
 H(c_f_chmod)
 {
-    const char *path = str(w, a[0], PATH_MAX_BOX);
-    *ret = path ? f_chmod(path, (BYTE)a[1], (BYTE)a[2]) : FR_INVALID_PARAMETER;
+    const char *path = path_of(w, a[0], 0);
+    *ret = !path ? FR_INVALID_PARAMETER : !writable(w, path) ? FR_DENIED : f_chmod(path, (BYTE)a[1], (BYTE)a[2]);
     return true;
 }
 
@@ -843,7 +927,7 @@ H(c_storage_ff_drive) { (void)w; *ret = a[0] < STORAGE_COUNT ? (uint32_t)storage
 H(c_storage_generation) { (void)w; (void)a; *ret = storage_generation(); return true; }
 H(c_storage_of_path)
 {
-    const char *p = str(w, a[0], PATH_MAX_BOX);
+    const char *p = path_of(w, a[0], 0);
     *ret = p ? (uint32_t)storage_of_path(p) : (uint32_t)STORAGE_COUNT;
     return true;
 }
@@ -868,8 +952,8 @@ H(c_storage_mount_path)
 }
 H(c_storage_join_path)
 {
-    const char *dir = str(w, a[2], PATH_MAX_BOX);
-    const char *name = str(w, a[3], PATH_MAX_BOX);
+    const char *dir = path_of(w, a[2], 0);
+    const char *name = path_of(w, a[3], 1);
     *ret = 0;
     if (!dir || !name || a[1] == 0 || a[1] > PATH_MAX_BOX || !ok_ptr(w, a[0], a[1])) {
         return true;
@@ -931,14 +1015,14 @@ H(c_storage_label)
 }
 H(c_storage_is_hidden)
 {
-    const char *n = str(w, a[0], PATH_MAX_BOX);
+    const char *n = path_of(w, a[0], 0);
     *ret = n && storage_is_hidden(n);
     return true;
 }
 H(c_storage_mark_hidden)
 {
-    const char *p = str(w, a[0], PATH_MAX_BOX);
-    if (p) storage_mark_hidden(p);
+    const char *p = path_of(w, a[0], 0);
+    if (p && writable(w, p)) storage_mark_hidden(p);
     *ret = 0;
     return true;
 }
@@ -1031,6 +1115,7 @@ const uint32_t box_storage_calls_n = sizeof box_storage_calls / sizeof box_stora
 
 void box_storage_end(void)
 {
+    s_write_filter = NULL;                  /* u-feckless-0055: the launcher names one per app */
     /* s_stage is kept: the next app reads through it too. */
     for (int i = 0; i < MAX_FIL; i++) {
         if (s_fil[i]) fil_close(i);

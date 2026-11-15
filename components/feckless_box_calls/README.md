@@ -87,6 +87,14 @@ feckless_umode_load(image, size, calls, n, 4 << 20, 64 << 10, &app);
     `errno` -- the word at the thread's `tp` -- from the host's, or
     `EFAULT`, `EBADF` or `EMFILE` for a refusal before any call.
 
+  - u-feckless-0055: every path is copied into the host before it is
+    used, so a second thread of the app cannot change it under the call.
+    `feckless_box_calls_write_filter(fn)`, set before the load and
+    forgotten at the app's end, is the launcher's test of each path the
+    app would write. It is given the host's copy, which the call then
+    uses. A refusal is `EACCES`, or `FR_DENIED` for FatFs, with nothing
+    done. Reads are not filtered.
+
   Not yet: `f_write`, `f_stat`, `open`/`read`, `access`, `fseeko`.
 
 - **Audio and USB** (u-feckless-0021, `src/box_audio.c`), as Lothesome

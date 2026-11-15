@@ -44,6 +44,17 @@ void feckless_box_calls_end(void);
  * of its reach. false, and nothing changed, for a bad list. */
 bool feckless_box_calls_nvs(const char *const *ns, uint32_t n);
 
+/* u-feckless-0055: a launcher's test of each path the app would write --
+ * fopen and storage_io_open in a mode that writes, remove, unlink, rename
+ * (each end), mkdir, rmdir, utime, storage_mark_hidden, and FatFs's f_open
+ * with a write or create bit and f_chmod (their paths are FatFs's, "0:/").
+ * Given the host's copy of the path, which is what the call then uses;
+ * false refuses it with EACCES (FR_DENIED for FatFs) and nothing done.
+ * Set before feckless_umode_load(); NULL, the default and what
+ * feckless_box_calls_end() leaves, allows all. Reads are not filtered. */
+typedef bool (*feckless_box_write_filter_t)(const char *path);
+void feckless_box_calls_write_filter(feckless_box_write_filter_t f);
+
 /* The longest string the table reads from an app (a gfx paragraph). */
 #define FECKLESS_BOX_STR_MAX  65536u
 

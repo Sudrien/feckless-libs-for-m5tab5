@@ -4089,3 +4089,70 @@ boxcheck `-DANSWERS=.../boxcalls_names.txt|/abs/own.txt`. Without it,
 `EXTRA_SECTIONS` was empty and `ANSWERS` unchanged.
 
 *Not checked:* an ESP-IDF build with `OWN_CALLS`; a board.
+
+### u-feckless-0055 -- paths copied into the host; a launcher's write filter
+
+Two things, one change.
+
+**A path was used where the app keeps it.** `str()` checked that an
+app's string was terminated inside the box and handed back the app's own
+pointer, which the host call then read. Another thread of the app,
+running in its own window on the other core, could rewrite the string
+after the check: past its end, after a launcher's own test of it, or
+mid-way through `fopen()`'s reading of it. In `box_storage.c` every path
+is now copied once into a host buffer (`path_of()`), and the call uses
+only the copy. There are two slots, since `rename` and
+`storage_join_path` take two paths. Every call in `box_storage.c` is
+locked, so one of the app's threads is in them at a time. The 2 KB
+buffer is allocated on first use, in PSRAM if it can be, and kept. Modes
+are copied into the handler's stack (`mode_of()`, 8 bytes).
+
+**A box guards the host's memory, not the card's files.** Jinxed keeps
+its editor's writes to `/sd/jinxed` (u-jinxed-0004). It did that with
+wrappers in front of these handlers, which checked a copy and then
+passed on the app's pointer, so the race above went straight past them.
+`feckless_box_calls_write_filter(bool (*)(const char *path))` puts the
+test where the copy is. It is called on the host's copy of every path
+the app would write:
+- `fopen` and `storage_io_open` in a mode that writes (`w`, `a`, `+`, or
+  anything not starting with `r`);
+- `remove`, `unlink`, `rename` (each end), `mkdir`, `rmdir`, `utime` and
+  `storage_mark_hidden`;
+- FatFs's `f_open` with `FA_WRITE`, `FA_CREATE_NEW`, `FA_CREATE_ALWAYS`
+  or `FA_OPEN_ALWAYS`, and `f_chmod`. Their paths are FatFs's
+  (`0:/...`), and the filter sees them as such.
+
+A refusal sets errno to `EACCES` (u-feckless-0050), or returns
+`FR_DENIED`, with nothing done. Reads are not filtered. There is one
+filter per app, as there is one set of NVS namespaces (0053). The
+launcher sets it before `feckless_umode_load()`, and
+`feckless_box_calls_end()` forgets it. None, the default, allows all.
+
+*Checked, on a host:* `make -C components/feckless_box_calls/test` (280
+calls; box_storage all passing). A new `test_filter`, with a filter that
+allows `<dir>/ok...`:
+- the filter is given a copy outside the box, equal to the app's string;
+- eight writing modes refused for fopen and storage_io_open, with the
+  file neither made nor truncated;
+- remove, unlink, mkdir, rmdir, utime and rename either way refused with
+  `EACCES` and nothing done;
+- the hidden mark and chmod not reaching storage, and every FatFs write
+  bit `FR_DENIED`;
+- reads (fopen `rb`, stat, f_open `FA_READ`) not filtered at all;
+- every kind of write inside allowed.
+
+The race: the filter rewrites the app's string from `okk.txt` to
+`bad.txt` in the box while it runs. The file made is `okk.txt`, what was
+allowed, and `bad.txt` does not exist. Two paths keep their own slots
+through a rename, and after the app's end the filter is gone.
+
+Eight changes are each caught: the path used in the box (the race and
+the copy checks), the filter ignored, only `w` counted as writing,
+rename filtering one end, the filter kept past the app, one slot for two
+paths, `f_open` filtering `FA_WRITE` alone, and the hidden mark
+unfiltered. `box_storage.c` compiles at `-O2 -Wall -Werror=all -Wextra
+-Werror=extra` against the test's stand-ins. `boxcalls_names.txt` is
+unchanged: no call is added.
+
+*Not checked:* compiled for the P4; a launcher setting a filter (Jinxed's
+boxlog will); a board.
