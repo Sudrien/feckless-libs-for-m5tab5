@@ -265,3 +265,10 @@ vTaskPrioritySet
 eTaskGetState
 vTaskSuspend
 xTaskCreateStaticPinnedToCore
+feckless_abi_audio_v1
+esp_audio_dec_register_default
+esp_audio_simple_dec_register_default
+esp_audio_simple_dec_open
+esp_audio_simple_dec_process
+esp_audio_simple_dec_get_info
+esp_audio_simple_dec_close

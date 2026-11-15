@@ -129,6 +129,16 @@ feckless_umode_load(image, size, calls, n, 4 << 20, 64 << 10, &app);
   `feckless_box_calls_end()` closes the app's resamplers and, if it played
   anything, puts the amplifier back to idle.
 
+- **esp_audio_codec's simple decoder** (u-feckless-0052, `src/box_codec.c`),
+  where the launcher links the codec: `esp_audio_dec_register_default`,
+  `esp_audio_simple_dec_register_default` (once each, ALREADY_EXIST taken
+  as success), `esp_audio_simple_dec_open`, `_process`, `_get_info`,
+  `_close`, and `feckless_abi_audio_v1`. Four decoders at once, a number
+  each; the decode runs on the host in M-mode, unlocked, one call per
+  decoder at a time. The configuration is copied in (ALAC's cookie too);
+  Vorbis's raw headers are refused. Without the codec in the launcher, or
+  with `FECKLESS_BOX_NO_CODEC`, the table is empty.
+
 - **FreeRTOS** (u-feckless-0045, `src/box_rtos.c`), as Defeatist uses it:
   - mutexes, recursive mutexes, binary and counting semaphores and queues
     (`xQueueGenericCreate`, `xQueueCreateMutex`,

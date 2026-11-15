@@ -66,3 +66,9 @@ extern const uint32_t box_rtos_calls_n;
 void box_rtos_end(void);
 int box_rtos_core(int asked);
 void box_rtos_named(win_t *w, uint32_t id, uint32_t name);
+
+/* u-feckless-0052: esp_audio_codec's simple decoder (box_codec.c); an
+ * empty table where the launcher does not link the codec. */
+extern const feckless_umode_call_t box_codec_calls[];
+extern const uint32_t box_codec_calls_n;
+void box_codec_end(void);

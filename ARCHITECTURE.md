@@ -3910,3 +3910,65 @@ the style dropped, from the draw and from the width.
 
 *Not checked:* compiled for the P4; an ESP-IDF build of a launcher
 generating its table with the two names; a board.
+
+### u-feckless-0052 -- esp_audio_codec's simple decoder in a box
+
+Defeatist's boxed player (u-defeatist-0022) plays its own decoders' formats
+and defines esp_audio_codec's six calls in the app as "not supported", so
+FLAC, AAC, Vorbis, Opus and ALAC do not play. The codec is precompiled
+without -fPIC and cannot link into an app (Defeatist's 8093); a box is the
+only way a boxed app can reach it. `src/box_codec.c` answers the simple
+decoder Defeatist uses, where the launcher links the codec.
+
+- **Only where the codec is.** `idf_component_optional_requires()` names
+  it (by the manager's name and the bare one), and `box_codec.c` builds
+  its table under `__has_include("esp_audio_simple_dec.h")`; without the
+  codec, or with `FECKLESS_BOX_NO_CODEC`, the table is empty and an app
+  that imports these is refused at load by name, as before. Where it is,
+  `feckless_abi_audio_v1` is answered too, so a boxed app can require the
+  audio section and pass abicheck.
+- **A decoder is the host's**, its state and pointers with it; the app
+  holds a number, four at once.
+- **The decode runs on the host**, on the calling thread's host task in
+  M-mode: a FLAC frame is milliseconds of work, which in a window would be
+  milliseconds with interrupts off on the core. `_process`, `_get_info`
+  and `_close` are unlocked, so a decode does not hold up the app's other
+  threads' host calls; each decoder is busy while one call is inside it,
+  a second call waits (giving up when the app stops), and a close of a
+  busy one is done by the call inside it as it leaves.
+- **The structs are copied in and the results out.** The input bytes and
+  the PCM buffer are the app's, checked to lie in the box for their whole
+  length, and read and written there by the CPU. Only `consumed`,
+  `needed_size` and `decoded_size` are written back -- clamped to the
+  lengths the app gave -- never a pointer.
+- **A decoder's configuration** is copied into the host, 64 bytes at most,
+  and kept for the decoder's life. Of the codec's decoder configurations
+  only two hold pointers: ALAC's magic cookie, copied too (4 KB at most),
+  and Vorbis's two headers, refused -- an app gives Vorbis in Ogg, which
+  needs neither.
+- **Registration is the host's and lasts.** The two register calls run
+  once each, and a launcher that registered them itself answers
+  ALREADY_EXIST, which is success.
+
+The headers this was compiled against are esp_audio_codec's at esp-adf-libs
+HEAD, whose include/ is unchanged since 2.5.0 (a791bb9), the version
+Defeatist and the launchers pin; so the structs copied are the ones both
+sides have.
+
+*Checked, on a host:* `make -C components/feckless_box_calls/test`, 266
+calls, against a stand-in codec: registration once, ALREADY_EXIST as
+success; a decode in place with the results copied back and the app's
+pointers left alone; a short output buffer's `needed_size`; input, output
+and structs outside the box refused before the codec is reached; ALAC's
+cookie copied out of the box, and refused outside it, too long, or with a
+configuration too short for its struct; Vorbis's raw configuration, one
+past 64 bytes and a type the codec does not have refused; four decoders
+and no fifth; close twice; the box's end closing the rest. Three
+deliberate breaks -- the cookie handed over in place, the input's range
+check, a close of a busy decoder -- each fail it. `-DFECKLESS_BOX_NO_CODEC`
+compiles the empty table. `box_codec.c` compiled for the P4 against the
+codec's real headers at -Wall -Wextra -Werror. `boxcalls_names.txt`
+regenerated.
+
+*Not checked:* concurrent calls into one decoder (the stand-in is single
+threaded); a launcher built with it; a board.

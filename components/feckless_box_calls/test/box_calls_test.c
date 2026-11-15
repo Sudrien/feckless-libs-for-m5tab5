@@ -80,7 +80,7 @@ static void test_table(void)
             CHECK(strcmp(calls_tab[i].name, calls_tab[j].name) != 0);       /* no name twice */
     int data = 0;
     for (uint32_t i = 0; i < ncalls; i++) if (!calls_tab[i].fn) { data++; CHECK(calls_tab[i].data && calls_tab[i].data_len >= 4); }
-    CHECK(data == 9);       /* abi_v1, box_v1, storage_v2; Ark12's six tables (u-feckless-0021) */
+    CHECK(data == 10);       /* abi_v1, box_v1, storage_v2; Ark12's six tables (u-feckless-0021); audio_v1 (u-feckless-0052) */
     for (uint32_t i = 0; i < ncalls; i++) {
         if (!strcmp(calls_tab[i].name, "ark12_lit")) CHECK(calls_tab[i].data_len == 10);
         if (!strcmp(calls_tab[i].name, "ark12_tiles")) CHECK(calls_tab[i].data_len == 12);
@@ -776,6 +776,106 @@ static void test_drivers(void)
     CHECK(d_rsp_live == 0 && d_idle == 1);
 }
 
+/* u-feckless-0052: esp_audio_codec's simple decoder, against fake_codec.c */
+#include "esp_audio_simple_dec.h"
+#include "esp_alac_dec.h"
+extern int c_live, c_regs, c_simple_regs, c_cfg_size;
+extern esp_audio_err_t c_reg_result;
+extern uint8_t c_cookie[64];
+extern uint32_t c_cookie_len;
+extern const void *c_cookie_ptr, *c_raw_ptr, *c_out_ptr;
+
+static void test_codec(void)
+{
+    const int live0 = c_live;
+    CHECK(C0("esp_audio_dec_register_default") == ESP_AUDIO_ERR_OK);       /* ALREADY_EXIST is success */
+    CHECK(C0("esp_audio_dec_register_default") == ESP_AUDIO_ERR_OK && c_regs == 1);   /* once */
+    CHECK(C0("esp_audio_simple_dec_register_default") == ESP_AUDIO_ERR_OK && c_simple_regs == 1);
+    nr_of("feckless_abi_audio_v1");
+
+    esp_audio_simple_dec_cfg_t *cfg = (void *)(uintptr_t)feckless_box_alloc(&box, sizeof *cfg);
+    uint32_t *h = (uint32_t *)(uintptr_t)feckless_box_alloc(&box, 4);
+    memset(cfg, 0, sizeof *cfg);
+    cfg->dec_type = ESP_AUDIO_SIMPLE_DEC_TYPE_FLAC;
+    CHECK(C2("esp_audio_simple_dec_open", P(cfg), P(h)) == ESP_AUDIO_ERR_OK);
+    const uint32_t flac = *h;
+    CHECK(flac == 0x41444500u && c_live == live0 + 1);
+
+    /* a decode: the app's buffers, read and written in place; results back */
+    esp_audio_simple_dec_raw_t *raw = (void *)(uintptr_t)feckless_box_alloc(&box, sizeof *raw);
+    esp_audio_simple_dec_out_t *out = (void *)(uintptr_t)feckless_box_alloc(&box, sizeof *out);
+    uint8_t *in = (uint8_t *)(uintptr_t)feckless_box_alloc(&box, 64), *pcm = (uint8_t *)(uintptr_t)feckless_box_alloc(&box, 128);
+    for (int i = 0; i < 64; i++) in[i] = (uint8_t)(i + 1);
+    *raw = (esp_audio_simple_dec_raw_t){ in, 64, false, 999, 0 };
+    *out = (esp_audio_simple_dec_out_t){ pcm, 128, 7, 7 };
+    CHECK(C4("esp_audio_simple_dec_process", flac, P(raw), P(out), 0) == ESP_AUDIO_ERR_OK);
+    CHECK(c_raw_ptr == in && c_out_ptr == pcm);
+    CHECK(raw->consumed == 32 && out->decoded_size == 64 && out->needed_size == 0);
+    CHECK(raw->buffer == in && out->buffer == pcm);                 /* the app's pointers left as they were */
+    CHECK(pcm[0] == 1 && pcm[1] == 1 && pcm[63] == 32);
+    *out = (esp_audio_simple_dec_out_t){ pcm, 16, 0, 0 };
+    CHECK(C4("esp_audio_simple_dec_process", flac, P(raw), P(out), 0) == (uint32_t)ESP_AUDIO_ERR_BUFF_NOT_ENOUGH);
+    CHECK(out->needed_size == 64);
+    *raw = (esp_audio_simple_dec_raw_t){ (uint8_t *)(uintptr_t)(P(mem) + MEM - 8), 64, false, 0, 0 };
+    c_raw_ptr = NULL;
+    CHECK(C4("esp_audio_simple_dec_process", flac, P(raw), P(out), 0) == (uint32_t)ESP_AUDIO_ERR_INVALID_PARAMETER);
+    CHECK(c_raw_ptr == NULL);                                       /* never reached the codec */
+    *raw = (esp_audio_simple_dec_raw_t){ in, 64, false, 0, 0 };
+    *out = (esp_audio_simple_dec_out_t){ (uint8_t *)(uintptr_t)0x1000, 128, 0, 0 };
+    CHECK(C4("esp_audio_simple_dec_process", flac, P(raw), P(out), 0) == (uint32_t)ESP_AUDIO_ERR_INVALID_PARAMETER);
+    CHECK(C4("esp_audio_simple_dec_process", flac, 0x1000, P(out), 0) == (uint32_t)ESP_AUDIO_ERR_INVALID_PARAMETER);
+    *out = (esp_audio_simple_dec_out_t){ pcm, 128, 0, 0 };
+    CHECK(C4("esp_audio_simple_dec_process", flac + 1, P(raw), P(out), 0) == (uint32_t)ESP_AUDIO_ERR_INVALID_PARAMETER);
+    esp_audio_simple_dec_info_t *info = (void *)(uintptr_t)feckless_box_alloc(&box, sizeof *info);
+    CHECK(C2("esp_audio_simple_dec_get_info", flac, P(info)) == ESP_AUDIO_ERR_OK && info->sample_rate == 96000 &&
+          info->bits_per_sample == 24 && info->channel == 2);
+    CHECK(C2("esp_audio_simple_dec_get_info", flac, 0x1000) == (uint32_t)ESP_AUDIO_ERR_INVALID_PARAMETER);
+
+    /* ALAC: the configuration and its cookie copied into the host */
+    esp_alac_dec_cfg_t *al = (void *)(uintptr_t)feckless_box_alloc(&box, sizeof *al);
+    uint8_t *cookie = (uint8_t *)(uintptr_t)feckless_box_alloc(&box, 24);
+    for (int i = 0; i < 24; i++) cookie[i] = (uint8_t)(0xa0 + i);
+    *al = (esp_alac_dec_cfg_t){ cookie, 24 };
+    *cfg = (esp_audio_simple_dec_cfg_t){ ESP_AUDIO_SIMPLE_DEC_TYPE_ALAC, al, (int)sizeof *al, true };
+    CHECK(C2("esp_audio_simple_dec_open", P(cfg), P(h)) == ESP_AUDIO_ERR_OK);
+    const uint32_t alac = *h;
+    CHECK(alac != flac && c_cookie_len == 24 && c_cookie[23] == 0xa0 + 23);
+    CHECK(c_cookie_ptr != cookie && ((uintptr_t)c_cookie_ptr < P(mem) || (uintptr_t)c_cookie_ptr >= P(mem) + MEM));
+    CHECK(cfg->dec_cfg == al && al->codec_spec_info == cookie);     /* the app's left alone */
+    *al = (esp_alac_dec_cfg_t){ (uint8_t *)(uintptr_t)0x1000, 24 };
+    CHECK(C2("esp_audio_simple_dec_open", P(cfg), P(h)) == (uint32_t)ESP_AUDIO_ERR_INVALID_PARAMETER && *h == 0);
+    *al = (esp_alac_dec_cfg_t){ cookie, 100000 };
+    CHECK(C2("esp_audio_simple_dec_open", P(cfg), P(h)) == (uint32_t)ESP_AUDIO_ERR_INVALID_PARAMETER);
+    *cfg = (esp_audio_simple_dec_cfg_t){ ESP_AUDIO_SIMPLE_DEC_TYPE_ALAC, al, 4, true };     /* too short for its struct */
+    CHECK(C2("esp_audio_simple_dec_open", P(cfg), P(h)) == (uint32_t)ESP_AUDIO_ERR_INVALID_PARAMETER);
+    *cfg = (esp_audio_simple_dec_cfg_t){ ESP_AUDIO_SIMPLE_DEC_TYPE_VORBIS, al, (int)sizeof *al, false };
+    CHECK(C2("esp_audio_simple_dec_open", P(cfg), P(h)) == (uint32_t)ESP_AUDIO_ERR_NOT_SUPPORT);
+    *cfg = (esp_audio_simple_dec_cfg_t){ ESP_AUDIO_SIMPLE_DEC_TYPE_FLAC, al, 65, false };   /* past CFG_MAX */
+    CHECK(C2("esp_audio_simple_dec_open", P(cfg), P(h)) == (uint32_t)ESP_AUDIO_ERR_INVALID_PARAMETER);
+    *cfg = (esp_audio_simple_dec_cfg_t){ ESP_AUDIO_SIMPLE_DEC_TYPE_NONE, NULL, 0, false };
+    CHECK(C2("esp_audio_simple_dec_open", P(cfg), P(h)) == (uint32_t)ESP_AUDIO_ERR_NOT_SUPPORT && *h == 0);
+    CHECK(C2("esp_audio_simple_dec_open", 0x1000, P(h)) == (uint32_t)ESP_AUDIO_ERR_INVALID_PARAMETER);
+    CHECK(c_live == live0 + 2);
+
+    /* four at once */
+    *cfg = (esp_audio_simple_dec_cfg_t){ ESP_AUDIO_SIMPLE_DEC_TYPE_FLAC, NULL, 0, false };
+    CHECK(C2("esp_audio_simple_dec_open", P(cfg), P(h)) == ESP_AUDIO_ERR_OK);
+    CHECK(C2("esp_audio_simple_dec_open", P(cfg), P(h)) == ESP_AUDIO_ERR_OK);
+    CHECK(C2("esp_audio_simple_dec_open", P(cfg), P(h)) == (uint32_t)ESP_AUDIO_ERR_MEM_LACK);
+    C1("esp_audio_simple_dec_close", flac);
+    CHECK(c_live == live0 + 3);
+    CHECK(C2("esp_audio_simple_dec_get_info", flac, P(info)) == (uint32_t)ESP_AUDIO_ERR_INVALID_PARAMETER);
+    C1("esp_audio_simple_dec_close", flac);                          /* twice: nothing */
+    C1("esp_audio_simple_dec_close", 0x12345);
+    CHECK(c_live == live0 + 3);
+
+    CHECK(flags_of("esp_audio_simple_dec_process") == FECKLESS_UMODE_CALL_UNLOCKED);
+    CHECK(flags_of("esp_audio_simple_dec_open") == 0);
+    feckless_box_calls_end();                                        /* the rest closed */
+    CHECK(c_live == live0);
+    (void)alac;
+}
+
 /* u-feckless-0026: the table's names are feckless_box_libc's
  * boxcalls_names.txt, which boxcheck holds every import of a boxed ELF to:
  * the same set, one name a line. */
@@ -828,6 +928,7 @@ int main(int argc, char **argv)
     test_threads();
     test_rtos();
     test_drivers();
+    test_codec();
     printf(failed ? "%d FAILED\n" : "box_calls: all passed (%u calls)\n", failed ? failed : (int)ncalls);
     return failed != 0;
 }

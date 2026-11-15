@@ -668,10 +668,11 @@ static const feckless_umode_call_t s_own[] = {
 #define STORAGE_MAX 64
 #define AUDIO_MAX 64
 #define RTOS_MAX 48
+#define CODEC_MAX 8                         /* u-feckless-0052 */
 
 const feckless_umode_call_t *feckless_box_calls_v1(uint32_t *n)
 {
-    static feckless_umode_call_t table[HEAP_MAX + OWN_N + STORAGE_MAX + AUDIO_MAX + RTOS_MAX];
+    static feckless_umode_call_t table[HEAP_MAX + OWN_N + STORAGE_MAX + AUDIO_MAX + RTOS_MAX + CODEC_MAX];
     static uint32_t count;
     if (!count) {
         uint32_t k = 0;
@@ -690,6 +691,9 @@ const feckless_umode_call_t *feckless_box_calls_v1(uint32_t *n)
         for (uint32_t i = 0; i < box_rtos_calls_n && i < RTOS_MAX; i++) {
             table[k++] = box_rtos_calls[i];
         }
+        for (uint32_t i = 0; i < box_codec_calls_n && i < CODEC_MAX; i++) {
+            table[k++] = box_codec_calls[i];
+        }
         count = k;
     }
     *n = count;
@@ -701,6 +705,7 @@ void feckless_box_calls_end(void)
     box_storage_end();
     box_audio_end();
     box_rtos_end();
+    box_codec_end();
     memset(s_err_name, 0, sizeof s_err_name);   /* the box goes with the app */
     s_err_names = 0;
     s_fb_granted = 0;                       /* the grant goes with the app */
