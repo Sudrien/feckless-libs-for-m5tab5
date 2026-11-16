@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT
  *
- * strdup, strndup, strerror and strftime for a boxed app (u-feckless-0048):
+ * strdup, strndup, strerror and strftime for a boxed app (u-feckless-0048),
+ * and stpcpy (u-feckless-0058):
  * pure functions, so the app's own, as strcpy is. picolibc's either reach
  * absolute tables (strftime's locale, strerror's messages) or are not among
  * the members of libc.a that link into a shared object.
@@ -29,6 +30,15 @@ char *BOX_NAME(strdup)(const char *s)
     const size_t n = strlen(s) + 1;
     char *d = malloc(n);
     if (d) memcpy(d, s, n);
+    return d;
+}
+
+/* u-feckless-0058: GCC makes a chain of strcpy()/strcat() into stpcpy()
+ * at -O2, so an app that never names it needs it. A plain loop; this file
+ * is built with -fno-builtin-stpcpy so it is not made a call to itself. */
+char *BOX_NAME(stpcpy)(char *d, const char *s)
+{
+    while ((*d = *s++) != '\0') d++;
     return d;
 }
 

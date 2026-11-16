@@ -165,6 +165,9 @@ strtod
 strtof
 atof
 strdup
+# u-feckless-0058: stpcpy (src/box_string.c), which GCC makes of a chain of
+# strcpy() and strcat() at -O2
+stpcpy
 strndup
 strerror
 strftime

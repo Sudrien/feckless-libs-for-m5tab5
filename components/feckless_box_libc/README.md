@@ -82,7 +82,7 @@ it (`cmake/boxcheck.cmake`):
 
 - **strtod, the strings, sscanf, the rest of stdio, the heap's figures**
   (u-feckless-0048, this component's own): `strtod`, `strtof`, `atof`
-  (double-double scaling, within an ulp); `strdup`, `strndup`, `strerror`,
+  (double-double scaling, within an ulp); `strdup`, `strndup`, `stpcpy` (u-feckless-0058), `strerror`,
   `strftime` (the C locale, UTC); `sscanf`, `vsscanf` (C11's conversions
   but `L`); `fputc`, `putc`, `fputs`, `fprintf`, `vfprintf`, `fgetc`,
   `getc` over the host's `fwrite` and `fread`, and `stdin`, `stdout`,

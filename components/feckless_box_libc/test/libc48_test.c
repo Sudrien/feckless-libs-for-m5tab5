@@ -21,6 +21,7 @@ double box_strtod(const char *, char **);
 float box_strtof(const char *, char **);
 double box_atof(const char *);
 char *box_strdup(const char *);
+char *box_stpcpy(char *, const char *);
 char *box_strndup(const char *, size_t);
 char *box_strerror(int);
 size_t box_strftime(char *, size_t, const char *, const struct tm *);
@@ -146,6 +147,14 @@ static void test_strings(void)
     free(d);
     CHECK(!strcmp(box_strerror(ENOENT), "No such file or directory") && !strcmp(box_strerror(12345), "Unknown error"));
     CHECK(!strcmp(box_strerror(0), "Success"));
+
+    /* u-feckless-0058: stpcpy returns the terminator's place */
+    char b[16];
+    char *e = box_stpcpy(b, "ab");
+    CHECK(e == b + 2 && *e == '\0' && !strcmp(b, "ab"));
+    e = box_stpcpy(box_stpcpy(e, "cd"), "");
+    CHECK(e == b + 4 && !strcmp(b, "abcd"));
+    CHECK(box_stpcpy(b, "") == b && b[0] == '\0');
 
     /* strftime against the host's, in the C locale */
     const char *fmts[] = { "%Y-%m-%d %H.%M.%S", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%d %H:%MZ", "%a %A %b %B %d %e %j",

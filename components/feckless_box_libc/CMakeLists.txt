@@ -35,3 +35,6 @@ foreach(_f ${_newlib_math})
 endforeach()
 # printf.c is eyalroz/printf as released; its warnings are its own.
 set_source_files_properties("src/box_printf.c" PROPERTIES COMPILE_OPTIONS "-w")
+# u-feckless-0058: box_string.c defines stpcpy, which GCC would otherwise
+# turn its own loop -- or a strcpy and a strlen -- back into a call to.
+set_source_files_properties("src/box_string.c" PROPERTIES COMPILE_OPTIONS "-fno-builtin-stpcpy")

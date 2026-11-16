@@ -4267,3 +4267,27 @@ real fields.
 Jinxed's call stats with `gfx_blit` well under 84 ms, the picture the
 right way round at 90 and 270 (and 180), no cyan frames while typing,
 and no `PPA turn ... failed` line.
+
+### u-feckless-0058 -- stpcpy in the app
+
+GCC turns a chain of `strcpy()` and `strcat()` into `stpcpy()` at -O2:
+each call's end is the next call's start. An app that never names
+`stpcpy` imports it. It was in neither the box's table nor inapp.txt, so
+boxcheck failed the ELF. Jinxed Writer's F1 legend hit this
+(u-jinxed-0018), and Jinxed builds its editor with
+`-fno-builtin-stpcpy` to step round it.
+
+- **`stpcpy`** is in `src/box_string.c`, beside `strdup`. It is a plain
+  loop, and listed in inapp.txt. picolibc's member is not copied in: it
+  could not be checked here for position-independence, and the loop is
+  four lines.
+- **box_string.c is built with `-fno-builtin-stpcpy`** (CMakeLists.txt),
+  so GCC cannot make the function a call to itself.
+- **No host call:** the box's table never had one, and an ELF built
+  before this one never imported it, since boxcheck refused that ELF.
+
+*Checked:* `test/libc48_test.c` checks the returned end, chained calls,
+and the empty string: 109 checks, all passing. box_string.c at -O2,
+with and without the flag, on the host (x86-64 GCC): no call in
+`stpcpy`. *Not checked:* the RISC-V build; Jinxed without its flag (that
+is u-jinxed-0028).
