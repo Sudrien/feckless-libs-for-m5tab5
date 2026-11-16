@@ -22,7 +22,7 @@ LDFLAGS := -fsanitize=address,undefined -lm
 SRCS := main.c shim.c ../src/gfx.c ../fonts/ark12/ark12.c \
         ../fonts/arabixel/arabixel_tab.c ../fonts/arabixel/arabixel_shape.c
 
-all: run run-bidi run-logcut run-bright
+all: run run-bidi run-logcut run-bright run-blit
 
 texttest: $(SRCS) shim.h ../include/gfx.h ../include/bidiline.h \
           ../fonts/ark12/ark12.h ../fonts/arabixel/arabixel.h
@@ -52,7 +52,22 @@ brightnesstest: brightnesstest.c ../include/brightness.h
 run-bright: brightnesstest
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=0 ./brightnesstest
 
-clean:
-	rm -f texttest bidilinetest logcuttest brightnesstest
+# u-feckless-0057: gfx_blit() at every angle, with CONFIG_FECKLESS_GFX_PPA
+# on: the CPU's turn (the PPA refuses its client) and the PPA's (a model
+# pinned to IDF's own SRM test vector), against the documented map.
+BLITSRCS := blittest.c ../src/gfx.c ../fonts/ark12/ark12.c \
+            ../fonts/arabixel/arabixel_tab.c ../fonts/arabixel/arabixel_shape.c
 
-.PHONY: all run run-bidi run-logcut run-bright clean
+blittest: $(BLITSRCS) shim.h fake/driver/ppa.h ../include/gfx.h ../include/brightness.h
+	$(CC) $(WARNCFLAGS) -DCONFIG_FECKLESS_GFX_PPA=1 -c ../src/gfx.c -o /dev/null
+	$(CC) $(WARNCFLAGS) -DCONFIG_FECKLESS_GFX_PPA=1 -c blittest.c -o /dev/null
+	$(CC) $(CFLAGS) -DCONFIG_FECKLESS_GFX_PPA=1 -o $@ $(BLITSRCS) $(LDFLAGS)
+
+run-blit: blittest
+	ASAN_OPTIONS=detect_leaks=1:abort_on_error=0 ./blittest cpu
+	ASAN_OPTIONS=detect_leaks=1:abort_on_error=0 ./blittest ppa
+
+clean:
+	rm -f texttest bidilinetest logcuttest brightnesstest blittest
+
+.PHONY: all run run-bidi run-logcut run-bright run-blit clean

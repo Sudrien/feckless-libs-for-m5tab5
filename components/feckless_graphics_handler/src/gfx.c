@@ -22,6 +22,9 @@
 #if CONFIG_FECKLESS_GFX_BLIT_STATS   /* u-feckless-0032; sdkconfig.h is in by now, from FreeRTOS */
 #include "esp_timer.h"
 #endif
+#if CONFIG_FECKLESS_GFX_PPA
+#include "driver/ppa.h"    /* u-feckless-0057 */
+#endif
 
 #include "ark12.h"
 #include "arabixel.h"
@@ -281,6 +284,15 @@ int gfx_h(void) { return s_h; }
 /* How the scratch is sized. Both angles have to fit in one allocation. */
 #define BLIT_SCRATCH_PX(pw, ph) ((size_t)(pw) * BLIT_BAND_ABOVE)
 
+/* u-feckless-0057: and how it is allocated. The PPA writes it, and its
+ * driver wants an output buffer whose address and size are both on the
+ * cache line -- the L2's, 128 bytes on the P4, as for the shadow buffer
+ * (gfx_init()). Rounded up, so a panel whose band is not a multiple of
+ * 64 pixels still gets a whole number of lines. */
+#define BLIT_ALIGN              (128)
+#define BLIT_SCRATCH_BYTES(pw, ph) \
+    ((BLIT_SCRATCH_PX(pw, ph) * sizeof(uint16_t) + BLIT_ALIGN - 1) / BLIT_ALIGN * BLIT_ALIGN)
+
 /*
  * Gather a logical band into the scratch, transposed for a quarter turn.
  *
@@ -337,6 +349,105 @@ static void gather_rotated(uint16_t *dst, int y0, int y1, int rot, int filter)
         }
     }
 }
+
+/*
+ * u-feckless-0057: the same turn, by the PPA.
+ *
+ * gather_rotated() and the 180 loop below read the shadow a pixel at a
+ * time on the CPU: about 84 ms for a whole 1280x720 frame at 90, which is
+ * every keystroke in an editor turned on its side (Jinxed's call stats).
+ * The P4's PPA does scale-rotate-mirror in hardware, over DMA2D, from
+ * PSRAM to PSRAM; its driver writes the input window back from the cache
+ * before the transfer and invalidates the output window after it, so the
+ * band can go straight to esp_lcd_panel_draw_bitmap() as the CPU's did.
+ *
+ * The angles are the other way round. PPA_SRM_ROTATION_ANGLE_90 is a
+ * quarter turn COUNTER-clockwise (ppa_types.h, and IDF's own SRM test:
+ * the block's top row comes out as its left column). GFX_ROT_90 puts
+ * logical row 0 in the panel's last column, a clockwise turn, so it is
+ * the PPA's 270, and GFX_ROT_270 its 90. 180 is 180 either way. The host
+ * test (test/blittest.c) holds this against the CPU path, with a
+ * stand-in PPA that turns as IDF's test vector says.
+ *
+ * Only an undimmed band: the brightness filter is gfx's own curve
+ * (brightness_dim565()), which the PPA does not have, and it is on only
+ * while a screen fades. A dimmed band is turned on the CPU as before.
+ *
+ * The client is registered at the first turn. If that fails, or any turn
+ * fails, the PPA is given up for good and the CPU does every band from
+ * then on, this one included: a transfer the driver refused has written
+ * nothing worth sending. Logged once. Called under s_blit_lock, so the
+ * one client is never used by two tasks at once.
+ */
+#if CONFIG_FECKLESS_GFX_PPA
+static ppa_client_handle_t s_ppa;
+static bool s_ppa_off;
+
+static ppa_srm_rotation_angle_t ppa_angle(int rot)
+{
+    switch (rot) {
+    case GFX_ROT_90:  return PPA_SRM_ROTATION_ANGLE_270;
+    case GFX_ROT_180: return PPA_SRM_ROTATION_ANGLE_180;
+    default:          return PPA_SRM_ROTATION_ANGLE_90;     /* GFX_ROT_270 */
+    }
+}
+
+/* Logical rows [y0, y1) turned for `rot` into dst, as gather_rotated()
+ * (90, 270) or the 180 loop would leave them. False: not done, do it on
+ * the CPU. */
+static bool ppa_turn(uint16_t *dst, size_t dst_bytes, int y0, int y1, int rot)
+{
+    if (s_ppa_off) return false;
+    if (!s_ppa) {
+        const ppa_client_config_t cfg = {
+            .oper_type = PPA_OPERATION_SRM,
+            .max_pending_trans_num = 1,
+        };
+        const esp_err_t e = ppa_register_client(&cfg, &s_ppa);
+        if (e != ESP_OK) {
+            s_ppa = NULL;
+            s_ppa_off = true;
+            ESP_LOGW(TAG, "no PPA client (%s); turning on the CPU", esp_err_to_name(e));
+            return false;
+        }
+    }
+    const uint32_t rows = (uint32_t)(y1 - y0);
+    const bool swaps = rot_swaps(rot);
+    const ppa_srm_oper_config_t op = {
+        .in = {
+            .buffer = s_fb,
+            .pic_w = (uint32_t)s_w, .pic_h = (uint32_t)s_h,
+            .block_w = (uint32_t)s_w, .block_h = rows,
+            .block_offset_x = 0, .block_offset_y = (uint32_t)y0,
+            .srm_cm = PPA_SRM_COLOR_MODE_RGB565,
+        },
+        .out = {
+            .buffer = dst, .buffer_size = (uint32_t)dst_bytes,
+            .pic_w = swaps ? rows : (uint32_t)s_w,
+            .pic_h = swaps ? (uint32_t)s_w : rows,
+            .block_offset_x = 0, .block_offset_y = 0,
+            .srm_cm = PPA_SRM_COLOR_MODE_RGB565,
+        },
+        .rotation_angle = ppa_angle(rot),
+        .scale_x = 1.0f, .scale_y = 1.0f,
+        .mode = PPA_TRANS_MODE_BLOCKING,
+    };
+    const esp_err_t e = ppa_do_scale_rotate_mirror(s_ppa, &op);
+    if (e != ESP_OK) {
+        s_ppa_off = true;
+        ESP_LOGW(TAG, "PPA turn of rows %d..%d at rot%d failed (%s); turning on the CPU from now",
+                 y0, y1, rot * 90, esp_err_to_name(e));
+        return false;
+    }
+    return true;
+}
+#else
+static inline bool ppa_turn(uint16_t *dst, size_t dst_bytes, int y0, int y1, int rot)
+{
+    (void)dst; (void)dst_bytes; (void)y0; (void)y1; (void)rot;
+    return false;
+}
+#endif
 
 /* u-feckless-0032: where a blit's time goes. */
 #if CONFIG_FECKLESS_GFX_BLIT_STATS
@@ -432,12 +543,16 @@ esp_err_t gfx_blit_err(int y0, int y1)
     BS_T(td);
     if (filter < BRIGHTNESS_FILTER_FULL || flipped || rotated) {
         if (!s_dim) {
-            s_dim = heap_caps_malloc(BLIT_SCRATCH_PX(s_pw, s_ph) * sizeof(uint16_t),
-                                     MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+            /* u-feckless-0057: on the cache line, for the PPA. */
+            s_dim = heap_caps_aligned_alloc(BLIT_ALIGN, BLIT_SCRATCH_BYTES(s_pw, s_ph),
+                                            MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
         }
         if (s_dim) {
             const int rows = y1 - y0;
-            if (rotated) {
+            if ((rotated || flipped) && filter >= BRIGHTNESS_FILTER_FULL &&
+                ppa_turn(s_dim, BLIT_SCRATCH_BYTES(s_pw, s_ph), y0, y1, rot)) {
+                /* u-feckless-0057: turned by the PPA. */
+            } else if (rotated) {
                 /* Transposed into the scratch, dimmed on the way past
                  * if the filter is on. See gather_rotated(). */
                 gather_rotated(s_dim, y0, y1, rot, filter);

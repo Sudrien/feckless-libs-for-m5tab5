@@ -15,3 +15,5 @@ components/feckless_umode/test/*.o
 components/feckless_image_handler/test/fittest
 components/feckless_mail/test/smtptest
 components/feckless_network_handler/test/redirecttest
+# u-feckless-0057
+components/feckless_graphics_handler/test/blittest

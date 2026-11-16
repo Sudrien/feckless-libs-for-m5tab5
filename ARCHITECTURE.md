@@ -4186,3 +4186,84 @@ with this applied, no tracked file under `components/` is an ELF;
 `make -C components/feckless_box_calls/test` and
 `make -C components/feckless_umode/test` build from source and pass, and
 leave `git status` clean.
+
+### u-feckless-0057 -- the rotated blit turned by the PPA
+
+Jinxed Writer runs turned a quarter (GFX_ROT_90), and its first runs in a
+box (u-jinxed-0018, 0019) logged `gfx_blit` at about 84 ms for a whole
+frame, and 124 ms during a fade. Each keystroke redraws, so the editor
+managed about 7 frames a second, and a fast typist filled the keyboard's
+queue. The time is `gather_rotated()`: a CPU loop over all 921,600
+pixels, each read from a logical column of the PSRAM shadow and written
+to the scratch, in 16x16 tiles, three 240-row bands to a frame.
+
+- **`ppa_turn()`** (gfx.c): the band turned by the P4's PPA instead,
+  through IDF's `esp_driver_ppa`. It is one SRM operation per band, RGB565
+  to RGB565 at scale 1, blocking, from `s_fb` (block `s_w` x rows at row
+  `y0`) into the scratch, which is laid out as the CPU leaves it, so
+  `esp_lcd_panel_draw_bitmap()` takes it as before. The driver writes
+  the input window back from the cache and invalidates the output
+  window (ppa_srm.c, IDF 6.1), so nothing here syncs.
+- **The angles are crossed.** `PPA_SRM_ROTATION_ANGLE_90` is
+  counter-clockwise (ppa_types.h; IDF's SRM test puts the block's top row
+  in its left column). `GFX_ROT_90` puts logical row 0 in the panel's
+  last column, which is clockwise, so it is the PPA's 270, and
+  `GFX_ROT_270` the PPA's 90. 180 is the same either way, and is turned
+  too, since it is the same path.
+- **The CPU still does the rest:** a band the brightness filter is
+  dimming (`brightness_dim565()` is gfx's own curve, and is on only
+  during a fade), and every band after the PPA has refused anything. The
+  client is registered at the first turn. A refused registration or a
+  failed turn is logged once, and the CPU turns that band and every band
+  after it. A failed transfer's output is never sent. Each turn is under
+  `s_blit_lock`, so the one client is never used by two tasks at once.
+- **The scratch is on the cache line now:** `heap_caps_aligned_alloc(128,
+  ...)`, with its size rounded up to the line (`BLIT_SCRATCH_BYTES`), as
+  the driver requires of an output buffer in PSRAM. 864000 bytes on this
+  panel, a whole number of lines already. The shadow has been aligned
+  since it was first made for this.
+- **`CONFIG_FECKLESS_GFX_PPA`**, default y, turns it off. The component
+  requires `esp_driver_ppa`. The bands and the gaps between them
+  (`BLIT_BAND_ROT`, u-feckless-0033) are unchanged. The PPA bursts at the
+  driver's default of 128 bytes, and both its read and its write of the
+  band are PSRAM traffic beside the panel's own refresh, as the CPU's
+  were, only shorter. If a board shows cyan frames (an underrun), the
+  next patch lowers the burst (`data_burst_length`), or the option goes
+  off.
+- With `CONFIG_FECKLESS_GFX_BLIT_STATS`, the turn's time is in the
+  "filter" figure, where the CPU's gather was.
+
+*Checked, on a host:* `make -C components/feckless_graphics_handler/test`.
+A new `blittest` compiles gfx.c as it ships, with the option on, and
+replaces the panel with an image that every `draw_bitmap()` is copied
+into. At 0, 90, 180 and 270 degrees it blits a whole frame, a 37-row band
+at 100, the last 5 rows and one row. Every pixel must be where the
+documented map puts it (the one touch.c inverts), and nothing else on
+the glass may change.
+- `blittest cpu`: the PPA refuses its client. This is today's CPU path
+  against the map (26 checks).
+- `blittest ppa`: a model of the SRM, which turns counter-clockwise and
+  first reproduces IDF 6.1's own SRM test vector
+  (`esp_driver_ppa/test_apps`, the 4x4 block at 90) word for word. It
+  refuses what the real driver refuses that gfx could get wrong: an
+  output buffer or size off the 128-byte line, an output picture larger
+  than its buffer, a block outside its picture, a field past DMA2D's 14
+  bits. Every rotated blit goes through it, with no refusal. A rot 0 blit
+  never reaches it. A dimmed band at 90 and 180 is the CPU's and still
+  correct. A failed turn sends the CPU's band, and the PPA is not tried
+  again (30 checks).
+
+Seven changes are each caught: 90 and 270 not crossed (either one), no
+filter test, a failed turn's buffer sent, the PPA not given up after a
+failure, a scratch off the line (the model refuses, and the PPA turns
+nothing), and the model turning clockwise (IDF's vector fails). texttest
+(424048 checks), bidiline, logcut and brightness pass as before. gfx.c
+compiles at `-O2 -Wall -Werror=all -Wextra -Werror=extra` with the option
+on and off, and with it on against IDF 6.1's real `driver/ppa.h` and
+`hal/ppa_types.h` (release/v6.1 at c1d1695), so the initialisers name the
+real fields.
+
+*Not checked:* an ESP-IDF build; a board. What a board should show:
+Jinxed's call stats with `gfx_blit` well under 84 ms, the picture the
+right way round at 90 and 270 (and 180), no cyan frames while typing,
+and no `PPA turn ... failed` line.

@@ -25,4 +25,16 @@ menu "feckless_graphics_handler"
             many microseconds instead, on the CPU. Lower it until the panel
             flashes, then raise it.
 
+    config FECKLESS_GFX_PPA
+        bool "Turn rotated and upside-down blits with the PPA"
+        default y
+        help
+            u-feckless-0057. At 90, 180 and 270 degrees a blit's band is
+            turned into a scratch before it goes to the panel. With this on,
+            the P4's PPA does the turn in hardware; off, the CPU does it a
+            pixel at a time, as before -- about 84 ms for a whole 1280x720
+            frame at 90. A band the brightness filter is dimming (a fade) is
+            turned on the CPU either way. If the PPA cannot be had or a turn
+            fails, gfx logs it once and uses the CPU from then on.
+
 endmenu

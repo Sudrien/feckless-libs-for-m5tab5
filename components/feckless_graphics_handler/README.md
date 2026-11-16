@@ -61,6 +61,14 @@ DSI underrun ISR's log call with a counter (its
 `cmake/dpi_instrument.cmake`). That has to run before `project.cmake`,
 so it is the application's; without it underruns log as stock IDF does.
 
+**At 90, 180 and 270 degrees, the PPA turns each blit** (u-feckless-0057,
+`CONFIG_FECKLESS_GFX_PPA`, on by default): the P4's scale-rotate-mirror
+engine, through IDF's `esp_driver_ppa`, which this component now
+requires. Nothing to call; a band the brightness filter is dimming, or
+any band after the PPA has refused one, is turned on the CPU as before.
+The engine reads PSRAM over DMA2D, so a project with PSRAM ECC or flash
+encryption on gets the driver's refusal and the CPU path.
+
 **Ship the font licences.** Ark Pixel is OFL-1.1: `fonts/ark12/LICENSE-OFL`
 goes with any redistribution of firmware built with it. So does
 `fonts/ark12/LICENSE-OFL-galmuri`: the table's Hangul is Galmuri11 by
