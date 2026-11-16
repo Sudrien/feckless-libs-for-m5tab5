@@ -164,7 +164,10 @@ feckless_umode_load(image, size, calls, n, 4 << 20, 64 << 10, &app);
   -- the host's size, from the camera as started; not started, nothing is
   written. Unlocked, one call inside the camera at a time: a second, from
   another of the app's threads, is ESP_ERR_INVALID_STATE. A camera left
-  streaming is stopped at `feckless_box_calls_end()`. Without the camera
+  streaming is stopped at `feckless_box_calls_end()`. The driver is
+  brought up, started and stopped on core 0, the board's, whichever core
+  the app is on (u-feckless-0060): ESP-IDF adds the CSI's DMA interrupt
+  to the panel's group only from the core that group is on. Without the camera
   in the launcher, or with `FECKLESS_BOX_NO_CAMERA`, the table is empty.
   With it, `gfx_px` and `gfx_rotation` (always answered): a trap a pixel,
   so a camera's view is better written through `gfx_fb()`.

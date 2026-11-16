@@ -43,7 +43,25 @@ struct fake_sb {
     uint8_t *store;
 };
 
-BaseType_t xPortGetCoreID(void) { return 1; }
+/* u-feckless-0060: the core the caller is on -- the app's, 1, unless a test
+ * says otherwise -- and a pinned task run at once, to its end, as if on
+ * its core. */
+int fake_core = 1, fake_tasks, fake_task_core = -1;
+bool fake_task_fail;
+BaseType_t xPortGetCoreID(void) { return fake_core; }
+BaseType_t xTaskCreatePinnedToCore(TaskFunction_t fn, const char *name, uint32_t stack, void *arg,
+                                   UBaseType_t prio, TaskHandle_t *out, BaseType_t core)
+{
+    (void)name; (void)stack; (void)prio; (void)out;
+    if (fake_task_fail) return pdFAIL;
+    const int was = fake_core;
+    fake_tasks++;
+    fake_task_core = fake_core = core;
+    fn(arg);
+    fake_core = was;
+    return pdPASS;
+}
+void vTaskDelete(TaskHandle_t t) { (void)t; }
 TickType_t xTaskGetTickCount(void) { return 4242; }
 TaskHandle_t xTaskGetCurrentTaskHandle(void) { return fake_task; }
 UBaseType_t uxTaskPriorityGet(TaskHandle_t t) { return t == fake_prio_task ? fake_prio : 7; }
@@ -72,6 +90,12 @@ QueueHandle_t xQueueCreateCountingSemaphoreStatic(UBaseType_t max, UBaseType_t i
 {
     if (!ctl || !max || init > max) abort();
     return q_new(max, 0, queueQUEUE_TYPE_COUNTING_SEMAPHORE, init, NULL);
+}
+/* u-feckless-0060: a semaphore of the kernel's own */
+QueueHandle_t xQueueGenericCreate(UBaseType_t len, UBaseType_t item, uint8_t type)
+{
+    if (item) abort();                      /* semaphores only */
+    return q_new(len, 0, type, 0, NULL);
 }
 void vQueueDelete(QueueHandle_t q) { free(q); fake_live--; }
 

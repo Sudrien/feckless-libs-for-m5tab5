@@ -4342,3 +4342,56 @@ the test's table, all passing under ASan and UBSan; `nocamera` compiles
 the empty branch. *Not checked:* an ESP-IDF build; a board; two threads
 at once. What a board should show: Mahjong's Scan a code opening the
 view, once the game drops its `absent.c`.
+
+### u-feckless-0060 -- the camera started on the board's core
+
+u-feckless-0059 on a Tab5, in Unprofitable Mahjong's standalone .bin
+(u-unprofit-0006; ESP-IDF v6.1-829-g9a97f6c54ec): the game's
+`camera_init`, through the box, found the sensor --
+
+    I (2058) sc202cs: Detected Camera sensor PID=0xeb52
+    I (2078) camera: sensor found, /dev/video0
+
+-- and Scan a code's `camera_start` did not start it:
+
+    I (70496) camera: 1280x720 UYVY, 2560 bytes a line
+    E (70496) dw-gdma: dw_gdma_install_channel_interrupt(636): alloc interrupt failed
+    E (70497) CSI: esp_cam_new_csi_ctlr(265): failed to register dwgdma callback
+    E (70499) camera: STREAMON: errno 16
+
+The CSI controller takes a DW-GDMA channel, and in IDF 6.1 every
+channel's interrupt joins one named group (`bind_by.name = "dw_gdma0"`,
+`ESP_INTR_FLAG_SHARED_PRIVATE`). The panel's DSI made that group when
+`lcd_init()` ran, on core 0, where a launcher brings the board up.
+`esp_intr_alloc_info()` puts a later member on the group's core and
+returns ESP_ERR_INVALID_STATE if that is not the core it was called on
+-- with no "No free interrupt inputs" line, as here. The boxed app is
+on core 1 (u-feckless-0031), and its host calls run there.
+
+`box_camera.c` now makes `camera_init`, `camera_start` and
+`camera_stop` on core 0 (`on_board_core()`): in place if the caller is
+on it, else on a task pinned there, 16 KB of stack, at the caller's
+priority, while the caller waits -- the shape of
+`feckless_umode_app_run_on()`. If the task cannot be made the call is
+ESP_ERR_NO_MEM and the driver is not touched. The init goes there too,
+so whatever interrupts the driver takes are core 0's and no window
+holds them off. `camera_grab_luma` stays on the caller's task: it waits
+for a frame and copies it. `box_camera_end()` stops a camera the same
+way.
+
+Core 0 is a constant here, the launcher's convention
+(feckless_umode_load.h). A launcher that brought the panel up on core 1
+would want the other.
+
+*Checked, on a host:* `make -C components/feckless_box_calls/test`. The
+stand-in FreeRTOS runs a pinned task at once, as if on its core, and
+the stand-in camera records the core each call came in on: from an app
+on core 1, init, start and stop arrive on core 0 and a grab on core 1;
+with no task to be had, a start and a stop are ESP_ERR_NO_MEM and
+change nothing, and the app's end still stops the camera; from core 0
+no task is made; every semaphore is deleted. 289 calls, all passing.
+The cause is read from IDF's source (release/v6.1,
+`esp_driver_dma/src/dw_gdma.c` and `esp_hw_support/intr_alloc.c`), not
+seen fixed. *Not checked:* an ESP-IDF build; a board. What a board
+should show: after `camera: 1280x720 UYVY`, no `dw-gdma` error, and
+the view.

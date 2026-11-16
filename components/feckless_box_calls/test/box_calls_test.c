@@ -980,9 +980,14 @@ extern const void *cam_bus, *cam_dst;
 extern esp_err_t cam_grab_result;
 extern void *host_bus;
 extern int d_rot, d_args[8];
+/* u-feckless-0060: the board's core */
+extern int cam_core_init, cam_core_start, cam_core_stop, cam_core_grab;
+extern int fake_core, fake_tasks, fake_task_core;
+extern bool fake_task_fail;
 
 static void test_camera(void)
 {
+    const int live0 = fake_live;
     nr_of("feckless_abi_camera_v1");
     int *wh = (int *)(uintptr_t)feckless_box_alloc(&box, 2 * sizeof(int));
     uint8_t *buf = (uint8_t *)(uintptr_t)feckless_box_alloc(&box, 128);
@@ -998,6 +1003,8 @@ static void test_camera(void)
     CHECK(C0("camera_start") == ESP_ERR_INVALID_STATE);
     cam_sensor = true;
     CHECK(C1("camera_init", C0("tab5io_bus")) == ESP_OK && C0("camera_present") == 1);
+    /* u-feckless-0060: brought up on the board's core, from the app's */
+    CHECK(fake_core == 1 && cam_core_init == 0 && fake_tasks == 3 && fake_task_core == 0);   /* two inits and a refused start */
 
     /* not started: no size, and nothing written wherever dst points */
     wh[0] = wh[1] = 77;
@@ -1007,7 +1014,12 @@ static void test_camera(void)
     CHECK(C4("camera_grab_luma", 0x1000, 1, 0, 0) == ESP_ERR_INVALID_STATE && cam_grabs == 0);
     CHECK(C0("camera_stop") == ESP_OK && cam_stops == 0);
 
+    /* u-feckless-0060: no task for the board's core, no start from this one */
+    fake_task_fail = true;
+    CHECK(C0("camera_start") == ESP_ERR_NO_MEM && cam_starts == 0 && fake_live == live0);
+    fake_task_fail = false;
     CHECK(C0("camera_start") == ESP_OK && cam_starts == 1);
+    CHECK(cam_core_start == 0 && fake_core == 1);
     C4("camera_luma_size", 1, P(&wh[0]), P(&wh[1]), 0);
     CHECK(wh[0] == 12 && wh[1] == 8);
     C4("camera_luma_size", 2, P(&wh[0]), 0, 0);                     /* either may be NULL */
@@ -1024,6 +1036,7 @@ static void test_camera(void)
     /* a frame: 96 bytes at step 1, written in the box and nowhere past it */
     CHECK(C4("camera_grab_luma", P(buf), 1, P(&wh[0]), P(&wh[1])) == ESP_OK && cam_grabs == 1);
     CHECK(cam_dst == buf && wh[0] == 12 && wh[1] == 8);
+    CHECK(cam_core_grab == 1);                                      /* a grab stays on the caller */
     CHECK(buf[0] == 0 && buf[13] == 13 && buf[95] == 95 && buf[96] == 0xee);
     memset(buf, 0xee, 128);
     CHECK(C4("camera_grab_luma", P(buf), 2, 0, 0) == ESP_OK && cam_grabs == 2);     /* w and h may be NULL */
@@ -1044,7 +1057,12 @@ static void test_camera(void)
     CHECK(C4("camera_grab_luma", P(buf), 1, P(&wh[0]), P(&wh[1])) == ESP_ERR_TIMEOUT && wh[0] == 55 && wh[1] == 55);
     cam_grab_result = ESP_OK;
 
-    CHECK(C0("camera_stop") == ESP_OK && cam_stops == 1 && !cam_on);
+    /* u-feckless-0060: a stop that cannot reach the board's core stops nothing,
+     * and the app's end still does */
+    fake_task_fail = true;
+    CHECK(C0("camera_stop") == ESP_ERR_NO_MEM && cam_on && cam_stops == 0);
+    fake_task_fail = false;
+    CHECK(C0("camera_stop") == ESP_OK && cam_stops == 1 && !cam_on && cam_core_stop == 0);
     CHECK(C4("camera_grab_luma", P(buf), 1, 0, 0) == ESP_ERR_INVALID_STATE);
     CHECK(fake_crit_depth == 0);
     CHECK(flags_of("camera_grab_luma") == FECKLESS_UMODE_CALL_UNLOCKED);
@@ -1055,6 +1073,13 @@ static void test_camera(void)
     CHECK(!cam_on && cam_stops == 2);
     feckless_box_calls_end();
     CHECK(cam_stops == 2);
+    /* u-feckless-0060: already on the board's core, the call is made in place */
+    const int tasks = fake_tasks;
+    fake_core = 0;
+    CHECK(C0("camera_start") == ESP_OK && cam_core_start == 0 && fake_tasks == tasks);
+    CHECK(C0("camera_stop") == ESP_OK && fake_tasks == tasks);
+    fake_core = 1;
+    CHECK(fake_live == live0);                                      /* every semaphore deleted */
 
     /* one pixel, and the angle */
     C4("gfx_px", 7, (uint32_t)-3, 0x1f800, 0);

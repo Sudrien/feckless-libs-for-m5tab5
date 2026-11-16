@@ -5,6 +5,11 @@ typedef void *TaskHandle_t;
 typedef enum { eRunning = 0, eReady, eBlocked, eSuspended, eDeleted, eInvalid } eTaskState;
 typedef enum { eNoAction = 0, eSetBits, eIncrement, eSetValueWithOverwrite, eSetValueWithoutOverwrite } eNotifyAction;
 void vTaskDelay(TickType_t t);
+/* u-feckless-0060 */
+typedef void (*TaskFunction_t)(void *);
+BaseType_t xTaskCreatePinnedToCore(TaskFunction_t fn, const char *name, uint32_t stack, void *arg,
+                                   UBaseType_t prio, TaskHandle_t *out, BaseType_t core);
+void vTaskDelete(TaskHandle_t t);
 TickType_t xTaskGetTickCount(void);
 TaskHandle_t xTaskGetCurrentTaskHandle(void);
 UBaseType_t uxTaskPriorityGet(TaskHandle_t t);

@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: MIT
  * u-feckless-0059: a stand-in for feckless_camera. A 12x8 frame once
  * started, each pixel its own index; it records the bus it was given, the
- * buffer it wrote and how often it was started and stopped. */
+ * buffer it wrote and how often it was started and stopped; and, since
+ * u-feckless-0060, the core each call came in on. */
 #include <stddef.h>
 #include "camera.h"
 
@@ -13,10 +14,13 @@ bool cam_sensor = true, cam_on;
 const void *cam_bus, *cam_dst;
 esp_err_t cam_grab_result = ESP_OK;
 static bool s_present;
+extern int fake_core;                       /* fake_rtos.c: the caller's */
+int cam_core_init = -1, cam_core_start = -1, cam_core_stop = -1, cam_core_grab = -1;
 
 esp_err_t camera_init(i2c_master_bus_handle_t bus)
 {
     cam_inits++;
+    cam_core_init = fake_core;
     cam_bus = bus;
     if (!cam_sensor) return ESP_FAIL;
     s_present = true;
@@ -27,6 +31,7 @@ esp_err_t camera_start(void)
 {
     if (!s_present) return ESP_ERR_INVALID_STATE;
     cam_starts++;
+    cam_core_start = fake_core;
     cam_on = true;
     return ESP_OK;
 }
@@ -40,6 +45,7 @@ esp_err_t camera_grab_luma(uint8_t *dst, int step, int *w, int *h)
 {
     if (!cam_on) return ESP_ERR_INVALID_STATE;
     cam_grabs++;
+    cam_core_grab = fake_core;
     cam_dst = dst;
     if (cam_grab_result != ESP_OK) return cam_grab_result;
     if (step < 1) step = 1;
@@ -53,7 +59,7 @@ esp_err_t camera_grab_luma(uint8_t *dst, int step, int *w, int *h)
 }
 esp_err_t camera_stop(void)
 {
-    if (cam_on) cam_stops++;
+    if (cam_on) { cam_stops++; cam_core_stop = fake_core; }
     cam_on = false;
     return ESP_OK;
 }

@@ -25,6 +25,15 @@
  *   calls need not wait behind either.
  * - A camera the app left streaming is stopped when the app ends
  *   (box_camera_end()), so the next app, and the launcher, find it idle.
+ * - u-feckless-0060: the driver is brought up, started and stopped on the
+ *   board's core, core 0, whichever core the app's thread is on
+ *   (on_board_core()). It has to be for a start: the CSI's DMA channel
+ *   joins DW-GDMA's interrupt group, which the panel's DSI made on the
+ *   core lcd_init() ran on, and ESP-IDF refuses to add to a group from
+ *   another core (esp_intr_alloc_info(), ESP_ERR_INVALID_STATE). And it
+ *   keeps the camera's own interrupts off the app's core, where a window
+ *   holds them off (u-feckless-0031). A grab stays on the caller: it
+ *   waits for a frame and copies it, and allocates nothing.
  */
 #include <string.h>
 
@@ -35,7 +44,14 @@
 #include "camera.h"
 #include "esp_err.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "freertos/task.h"
 #include "tab5io.h"
+
+/* u-feckless-0060: where a launcher brings the board up before it runs a
+ * boxed app on the other core (feckless_umode_app_run_on()). */
+#define BOARD_CORE   0
+#define BOARD_STACK  (16 * 1024)
 
 static const uint32_t s_camera_v1 = 1;      /* feckless_abi_camera_v1 */
 static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
@@ -58,6 +74,41 @@ static void leave(void)
     portEXIT_CRITICAL(&s_mux);
 }
 
+/* u-feckless-0060: fn on the board's core -- here, if this is it; else on a
+ * task of its own pinned there, at the caller's priority, while the caller
+ * waits. ESP_ERR_NO_MEM if the task cannot be made: the camera is not
+ * touched from the wrong core. */
+typedef struct {
+    esp_err_t (*fn)(void);
+    esp_err_t e;
+    SemaphoreHandle_t done;
+} board_job_t;
+
+static void board_task(void *arg)
+{
+    board_job_t *j = arg;
+    j->e = j->fn();
+    xSemaphoreGive(j->done);                /* j is the waiter's: not touched again */
+    vTaskDelete(NULL);
+}
+
+static esp_err_t on_board_core(esp_err_t (*fn)(void))
+{
+    if (xPortGetCoreID() == BOARD_CORE) return fn();
+    board_job_t j = { .fn = fn, .e = ESP_FAIL, .done = xSemaphoreCreateBinary() };
+    if (!j.done) return ESP_ERR_NO_MEM;
+    if (xTaskCreatePinnedToCore(board_task, "box_camera", BOARD_STACK, &j, uxTaskPriorityGet(NULL), NULL,
+                                BOARD_CORE) != pdPASS) {
+        vSemaphoreDelete(j.done);
+        return ESP_ERR_NO_MEM;
+    }
+    xSemaphoreTake(j.done, portMAX_DELAY);
+    vSemaphoreDelete(j.done);
+    return j.e;
+}
+
+static esp_err_t init_here(void) { return camera_init(tab5io_bus()); }
+
 /* (bus): the app's number for the bus, as tab5io_bus() gave it */
 H(c_camera_init)
 {
@@ -66,7 +117,7 @@ H(c_camera_init)
     if (a[0] == BOX_TOKEN_BUS) {
         e = ESP_ERR_INVALID_STATE;
         if (enter()) {
-            e = camera_init(tab5io_bus());
+            e = on_board_core(init_here);
             leave();
         }
     }
@@ -81,7 +132,7 @@ H(c_camera_start)
     (void)w; (void)a;
     esp_err_t e = ESP_ERR_INVALID_STATE;
     if (enter()) {
-        e = camera_start();
+        e = on_board_core(camera_start);
         if (e == ESP_OK) s_started = true;
         leave();
     }
@@ -139,8 +190,8 @@ H(c_camera_stop)
     (void)w; (void)a;
     esp_err_t e = ESP_ERR_INVALID_STATE;
     if (enter()) {
-        e = camera_stop();
-        s_started = false;
+        e = on_board_core(camera_stop);
+        if (e != ESP_ERR_NO_MEM) s_started = false;     /* not stopped: box_camera_end() will */
         leave();
     }
     *ret = (uint32_t)e;
@@ -157,7 +208,7 @@ const uint32_t box_camera_calls_n = sizeof box_camera_calls / sizeof box_camera_
 /* After the app is unloaded: no thread is inside the camera. */
 void box_camera_end(void)
 {
-    if (s_started) camera_stop();
+    if (s_started) on_board_core(camera_stop);
     s_started = false;
     s_busy = false;
 }
