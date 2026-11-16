@@ -12,3 +12,5 @@ const char *esp_err_to_name(esp_err_t e);
 #define ESP_ERR_NVS_NOT_FOUND (ESP_ERR_NVS_BASE + 0x02)
 #define ESP_ERR_NVS_TYPE_MISMATCH (ESP_ERR_NVS_BASE + 0x03)
 #define ESP_ERR_NVS_INVALID_LENGTH (ESP_ERR_NVS_BASE + 0x0c)
+/* u-feckless-0059 */
+#define ESP_ERR_TIMEOUT 0x107

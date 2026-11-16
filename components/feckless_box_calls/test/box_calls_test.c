@@ -80,7 +80,7 @@ static void test_table(void)
             CHECK(strcmp(calls_tab[i].name, calls_tab[j].name) != 0);       /* no name twice */
     int data = 0;
     for (uint32_t i = 0; i < ncalls; i++) if (!calls_tab[i].fn) { data++; CHECK(calls_tab[i].data && calls_tab[i].data_len >= 4); }
-    CHECK(data == 11);       /* abi_v1, box_v1, storage_v2; Ark12's six tables (u-feckless-0021); audio_v1 (u-feckless-0052); nvs_v1 (0053) */
+    CHECK(data == 12);       /* abi_v1, box_v1, storage_v2; Ark12's six tables (u-feckless-0021); audio_v1 (u-feckless-0052); nvs_v1 (0053); camera_v1 (0059) */
     for (uint32_t i = 0; i < ncalls; i++) {
         if (!strcmp(calls_tab[i].name, "ark12_lit")) CHECK(calls_tab[i].data_len == 10);
         if (!strcmp(calls_tab[i].name, "ark12_tiles")) CHECK(calls_tab[i].data_len == 12);
@@ -972,6 +972,99 @@ static void test_nvs(void)
     CHECK(C4("nvsh_set_u8", P(mine), P(k2), 1, 0) == ESP_ERR_NOT_ALLOWED);
 }
 
+/* u-feckless-0059: feckless_camera's frames, against fake_camera.c; and
+ * gfx_px and gfx_rotation, which a camera's view is drawn with */
+extern int cam_inits, cam_starts, cam_stops, cam_grabs;
+extern bool cam_sensor, cam_on;
+extern const void *cam_bus, *cam_dst;
+extern esp_err_t cam_grab_result;
+extern void *host_bus;
+extern int d_rot, d_args[8];
+
+static void test_camera(void)
+{
+    nr_of("feckless_abi_camera_v1");
+    int *wh = (int *)(uintptr_t)feckless_box_alloc(&box, 2 * sizeof(int));
+    uint8_t *buf = (uint8_t *)(uintptr_t)feckless_box_alloc(&box, 128);
+    memset(buf, 0xee, 128);
+
+    /* the bus is the app's number for it, and the host's own goes down */
+    CHECK(C0("camera_present") == 0);
+    CHECK(C1("camera_init", P(host_bus)) == ESP_ERR_INVALID_ARG && cam_inits == 0);
+    CHECK(C1("camera_init", 0) == ESP_ERR_INVALID_ARG && cam_inits == 0);
+    cam_sensor = false;
+    CHECK(C1("camera_init", C0("tab5io_bus")) == (uint32_t)ESP_FAIL && cam_inits == 1 && cam_bus == host_bus);
+    CHECK(C0("camera_present") == 0);
+    CHECK(C0("camera_start") == ESP_ERR_INVALID_STATE);
+    cam_sensor = true;
+    CHECK(C1("camera_init", C0("tab5io_bus")) == ESP_OK && C0("camera_present") == 1);
+
+    /* not started: no size, and nothing written wherever dst points */
+    wh[0] = wh[1] = 77;
+    C4("camera_luma_size", 1, P(&wh[0]), P(&wh[1]), 0);
+    CHECK(wh[0] == 0 && wh[1] == 0);
+    CHECK(C4("camera_grab_luma", P(buf), 1, 0, 0) == ESP_ERR_INVALID_STATE && cam_grabs == 0);
+    CHECK(C4("camera_grab_luma", 0x1000, 1, 0, 0) == ESP_ERR_INVALID_STATE && cam_grabs == 0);
+    CHECK(C0("camera_stop") == ESP_OK && cam_stops == 0);
+
+    CHECK(C0("camera_start") == ESP_OK && cam_starts == 1);
+    C4("camera_luma_size", 1, P(&wh[0]), P(&wh[1]), 0);
+    CHECK(wh[0] == 12 && wh[1] == 8);
+    C4("camera_luma_size", 2, P(&wh[0]), 0, 0);                     /* either may be NULL */
+    CHECK(wh[0] == 6 && wh[1] == 8);
+    C4("camera_luma_size", 5, 0, P(&wh[1]), 0);
+    CHECK(wh[0] == 6 && wh[1] == 2);
+    C4("camera_luma_size", 0, P(&wh[0]), P(&wh[1]), 0);             /* a step below 1 is 1 */
+    CHECK(wh[0] == 12 && wh[1] == 8);
+    wh[0] = 77;
+    C4("camera_luma_size", 1, P(&wh[0]), 0x1000, 0);                /* one out of the box: neither written */
+    CHECK(wh[0] == 77);
+    C4("camera_luma_size", 1, P(mem + MEM - 2), 0, 0);              /* an int across the box's end */
+
+    /* a frame: 96 bytes at step 1, written in the box and nowhere past it */
+    CHECK(C4("camera_grab_luma", P(buf), 1, P(&wh[0]), P(&wh[1])) == ESP_OK && cam_grabs == 1);
+    CHECK(cam_dst == buf && wh[0] == 12 && wh[1] == 8);
+    CHECK(buf[0] == 0 && buf[13] == 13 && buf[95] == 95 && buf[96] == 0xee);
+    memset(buf, 0xee, 128);
+    CHECK(C4("camera_grab_luma", P(buf), 2, 0, 0) == ESP_OK && cam_grabs == 2);     /* w and h may be NULL */
+    CHECK(buf[1] == 2 && buf[6] == 24 && buf[23] == 82 && buf[24] == 0xee);
+    /* the buffer must hold the frame at the step asked: the host's size, not the app's */
+    CHECK(C4("camera_grab_luma", P(mem + MEM - 95), 1, 0, 0) == ESP_ERR_INVALID_ARG && cam_grabs == 2);
+    CHECK(C4("camera_grab_luma", P(mem + MEM - 96), 1, 0, 0) == ESP_OK && cam_grabs == 3);       /* to the last byte */
+    CHECK(C4("camera_grab_luma", P(mem + MEM - 24), 2, 0, 0) == ESP_OK && cam_grabs == 4);
+    CHECK(C4("camera_grab_luma", P(mem + MEM - 23), 2, 0, 0) == ESP_ERR_INVALID_ARG && cam_grabs == 4);
+    CHECK(C4("camera_grab_luma", 0, 1, 0, 0) == ESP_ERR_INVALID_ARG);
+    CHECK(C4("camera_grab_luma", 0x1000, 1, 0, 0) == ESP_ERR_INVALID_ARG);
+    CHECK(C4("camera_grab_luma", P(&box), 1, 0, 0) == ESP_ERR_INVALID_ARG);         /* the host's memory */
+    CHECK(C4("camera_grab_luma", P(buf), 1, 0x1000, 0) == ESP_ERR_INVALID_ARG);
+    CHECK(C4("camera_grab_luma", P(buf), 1, 0, P(mem + MEM - 2)) == ESP_ERR_INVALID_ARG && cam_grabs == 4);
+    /* the driver's own failure comes back, and w and h are left */
+    cam_grab_result = ESP_ERR_TIMEOUT;
+    wh[0] = wh[1] = 55;
+    CHECK(C4("camera_grab_luma", P(buf), 1, P(&wh[0]), P(&wh[1])) == ESP_ERR_TIMEOUT && wh[0] == 55 && wh[1] == 55);
+    cam_grab_result = ESP_OK;
+
+    CHECK(C0("camera_stop") == ESP_OK && cam_stops == 1 && !cam_on);
+    CHECK(C4("camera_grab_luma", P(buf), 1, 0, 0) == ESP_ERR_INVALID_STATE);
+    CHECK(fake_crit_depth == 0);
+    CHECK(flags_of("camera_grab_luma") == FECKLESS_UMODE_CALL_UNLOCKED);
+
+    /* left streaming: stopped as the app ends; stopped by the app: left alone */
+    CHECK(C0("camera_start") == ESP_OK && cam_on);
+    feckless_box_calls_end();
+    CHECK(!cam_on && cam_stops == 2);
+    feckless_box_calls_end();
+    CHECK(cam_stops == 2);
+
+    /* one pixel, and the angle */
+    C4("gfx_px", 7, (uint32_t)-3, 0x1f800, 0);
+    CHECK(d_args[0] == 7 && d_args[1] == -3 && d_args[2] == 0xf800);
+    C1("gfx_set_rotation", 3);
+    CHECK(C0("gfx_rotation") == 3 && d_rot == 3);
+    C1("gfx_set_rotation", 0);
+    CHECK(flags_of("gfx_px") == 0 && flags_of("gfx_rotation") == FECKLESS_UMODE_CALL_UNLOCKED);
+}
+
 /* u-feckless-0026: the table's names are feckless_box_libc's
  * boxcalls_names.txt, which boxcheck holds every import of a boxed ELF to:
  * the same set, one name a line. */
@@ -1026,6 +1119,7 @@ int main(int argc, char **argv)
     test_drivers();
     test_codec();
     test_nvs();
+    test_camera();
     printf(failed ? "%d FAILED\n" : "box_calls: all passed (%u calls)\n", failed ? failed : (int)ncalls);
     return failed != 0;
 }

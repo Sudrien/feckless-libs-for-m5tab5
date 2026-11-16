@@ -115,6 +115,8 @@ esp_random
 esp_fill_random
 settimeofday
 esp_restart
+gfx_px
+gfx_rotation
 feckless_abi_storage_v2
 f_open
 f_read
@@ -286,3 +288,10 @@ nvsh_set_blob
 nvsh_erase_key
 nvsh_erase_ns
 nvsh_ready
+feckless_abi_camera_v1
+camera_init
+camera_present
+camera_start
+camera_luma_size
+camera_grab_luma
+camera_stop

@@ -156,6 +156,19 @@ feckless_umode_load(image, size, calls, n, 4 << 20, 64 << 10, &app);
   Vorbis's raw headers are refused. Without the codec in the launcher, or
   with `FECKLESS_BOX_NO_CODEC`, the table is empty.
 
+- **The camera** (u-feckless-0059, `src/box_camera.c`), where the launcher
+  links feckless_camera: `camera_init` (the bus's number), `camera_present`,
+  `camera_start`, `camera_luma_size`, `camera_grab_luma`, `camera_stop`,
+  and `feckless_abi_camera_v1`. A frame is written by the host straight
+  into the app's buffer, which must hold the whole frame at the step asked
+  -- the host's size, from the camera as started; not started, nothing is
+  written. Unlocked, one call inside the camera at a time: a second, from
+  another of the app's threads, is ESP_ERR_INVALID_STATE. A camera left
+  streaming is stopped at `feckless_box_calls_end()`. Without the camera
+  in the launcher, or with `FECKLESS_BOX_NO_CAMERA`, the table is empty.
+  With it, `gfx_px` and `gfx_rotation` (always answered): a trap a pixel,
+  so a camera's view is better written through `gfx_fb()`.
+
 - **FreeRTOS** (u-feckless-0045, `src/box_rtos.c`), as Defeatist uses it:
   - mutexes, recursive mutexes, binary and counting semaphores and queues
     (`xQueueGenericCreate`, `xQueueCreateMutex`,

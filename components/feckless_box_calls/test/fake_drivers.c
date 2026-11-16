@@ -72,6 +72,8 @@ void gfx_set_filter(int f) { d_filter = f; }
 int gfx_filter(void) { return d_filter; }
 esp_err_t gfx_blit_err(int y0, int y1) { d_args[0] = y0; d_args[1] = y1; return ESP_OK; }
 void gfx_set_rotation(int q) { d_rot = q; }
+int gfx_rotation(void) { return d_rot; }    /* u-feckless-0059 */
+void gfx_px(int x, int y, uint16_t c) { d_args[0] = x; d_args[1] = y; d_args[2] = c; }
 void gfx_fill_poly(const int *xy, int n, uint16_t c) { (void)c; d_poly_n = n; memcpy(d_poly_xy, xy, (size_t)n * 2 * sizeof(int)); }
 void gfx_fill_star(int cx, int cy, int r, uint16_t c) { d_args[0] = cx; d_args[1] = cy; d_args[2] = r; d_args[3] = c; }
 void gfx_draw_spinner(int cx, int cy, int r, uint32_t ms, uint16_t on, uint16_t off)

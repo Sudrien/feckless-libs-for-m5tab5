@@ -24,6 +24,8 @@ void gfx_set_filter(int filter);
 int gfx_filter(void);
 esp_err_t gfx_blit_err(int y0, int y1);
 void gfx_set_rotation(int quarter_turns);
+int gfx_rotation(void);                    /* u-feckless-0059 */
+void gfx_px(int x, int y, uint16_t c);
 void gfx_fill_poly(const int *xy, int n, uint16_t c);
 void gfx_fill_star(int cx, int cy, int r, uint16_t c);
 void gfx_draw_spinner(int cx, int cy, int r, uint32_t ms, uint16_t on, uint16_t off);

@@ -77,3 +77,9 @@ void box_codec_end(void);
 extern const feckless_umode_call_t box_nvs_calls[];
 extern const uint32_t box_nvs_calls_n;
 void box_nvs_end(void);
+
+/* u-feckless-0059: feckless_camera's frames (box_camera.c); an empty table
+ * where the launcher does not link the camera. */
+extern const feckless_umode_call_t box_camera_calls[];
+extern const uint32_t box_camera_calls_n;
+void box_camera_end(void);

@@ -498,6 +498,11 @@ H(c_gfx_set_filter) { (void)w; gfx_set_filter((int)a[0]); *ret = 0; return true;
 H(c_gfx_filter) { (void)w; (void)a; *ret = (uint32_t)gfx_filter(); return true; }
 H(c_gfx_blit_err) { (void)w; *ret = (uint32_t)gfx_blit_err((int)a[0], (int)a[1]); return true; }
 H(c_gfx_set_rotation) { (void)w; gfx_set_rotation((int)a[0]); *ret = 0; return true; }
+/* u-feckless-0059: one pixel, clipped by gfx as its rectangles are; and the
+ * angle gfx_set_rotation() left. A trap a pixel: an app with many to set
+ * writes them through gfx_fb(). */
+H(c_gfx_px) { (void)w; gfx_px((int)a[0], (int)a[1], (uint16_t)a[2]); *ret = 0; return true; }
+H(c_gfx_rotation) { (void)w; (void)a; *ret = (uint32_t)gfx_rotation(); return true; }
 /* (xy *, n points, colour): at most GFX_POLY_MAX_PTS */
 H(c_gfx_fill_poly)
 {
@@ -661,6 +666,9 @@ static const feckless_umode_call_t s_own[] = {
     FN(lcd_backlight_set_counts), FN(touch_swallow),
     /* u-feckless-0048 */
     FNU(esp_random), FNU(esp_fill_random), FN(settimeofday), FN(esp_restart),
+    /* u-feckless-0059: gfx_px reads the size gfx_set_rotation() changes, so
+     * locked as that is; gfx_rotation reads one value, as gfx_w does. */
+    FN(gfx_px), FNU(gfx_rotation),
 };
 
 #define OWN_N (sizeof s_own / sizeof s_own[0])
@@ -670,10 +678,11 @@ static const feckless_umode_call_t s_own[] = {
 #define RTOS_MAX 48
 #define CODEC_MAX 8                         /* u-feckless-0052 */
 #define NVS_MAX 16                          /* u-feckless-0053 */
+#define CAMERA_MAX 8                        /* u-feckless-0059 */
 
 const feckless_umode_call_t *feckless_box_calls_v1(uint32_t *n)
 {
-    static feckless_umode_call_t table[HEAP_MAX + OWN_N + STORAGE_MAX + AUDIO_MAX + RTOS_MAX + CODEC_MAX + NVS_MAX];
+    static feckless_umode_call_t table[HEAP_MAX + OWN_N + STORAGE_MAX + AUDIO_MAX + RTOS_MAX + CODEC_MAX + NVS_MAX + CAMERA_MAX];
     static uint32_t count;
     if (!count) {
         uint32_t k = 0;
@@ -698,6 +707,9 @@ const feckless_umode_call_t *feckless_box_calls_v1(uint32_t *n)
         for (uint32_t i = 0; i < box_nvs_calls_n && i < NVS_MAX; i++) {
             table[k++] = box_nvs_calls[i];
         }
+        for (uint32_t i = 0; i < box_camera_calls_n && i < CAMERA_MAX; i++) {
+            table[k++] = box_camera_calls[i];
+        }
         count = k;
     }
     *n = count;
@@ -711,6 +723,7 @@ void feckless_box_calls_end(void)
     box_rtos_end();
     box_codec_end();
     box_nvs_end();
+    box_camera_end();
     memset(s_err_name, 0, sizeof s_err_name);   /* the box goes with the app */
     s_err_names = 0;
     s_fb_granted = 0;                       /* the grant goes with the app */

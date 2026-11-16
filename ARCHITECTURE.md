@@ -4291,3 +4291,54 @@ and the empty string: 109 checks, all passing. box_string.c at -O2,
 with and without the flag, on the host (x86-64 GCC): no call in
 `stpcpy`. *Not checked:* the RISC-V build; Jinxed without its flag (that
 is u-jinxed-0028).
+
+### u-feckless-0059 -- the camera in a box; gfx_px and gfx_rotation
+
+Unprofitable Mahjong's `umode` branch (u-unprofit-0001) could not scan a
+code: a box answered none of feckless_camera's calls, nor the two gfx
+calls its camera view is drawn with, and the game stood in for all eight
+itself (`absent.c`) to say there was no camera.
+
+- **`src/box_camera.c`**, in feckless_box_calls: `camera_init`,
+  `camera_present`, `camera_start`, `camera_luma_size`,
+  `camera_grab_luma`, `camera_stop`, and `feckless_abi_camera_v1`, so an
+  app requires the section as a trusted one does. Built where the
+  launcher links feckless_camera
+  (`idf_component_optional_requires(PRIVATE feckless_camera)`, and
+  `__has_include("camera.h")`), as box_codec.c is for the codec; an empty
+  table elsewhere, or with `FECKLESS_BOX_NO_CAMERA`. Avoidant's `umode`
+  branch links the camera already, for the ABI's section.
+  - `camera_init` takes the bus's number and gives the driver the host's
+    bus.
+  - `camera_grab_luma` asks the host's `camera_luma_size()` what the
+    frame is at that step and checks the app's buffer holds it, to the
+    byte, before the driver writes there. Not started, the size is
+    nothing and the call is ESP_ERR_INVALID_STATE without reaching the
+    driver. `w` and `h` are checked first and written only on success.
+  - Unlocked, since a grab waits for a frame. feckless_camera is not
+    thread-safe, so one flag lets one call into it at a time and a second
+    is ESP_ERR_INVALID_STATE.
+  - `box_camera_end()` stops a camera the app left streaming.
+- **`gfx_px`** (locked, as `gfx_fill_rect`) **and `gfx_rotation`**
+  (unlocked, as `gfx_w`) in box_calls.c's own table. `gfx_px` is a trap a
+  pixel; Mahjong's view sets a quarter of a million a frame with it, and
+  wants `gfx_fb()` in its place (a patch to the game).
+- `boxcalls_names.txt`: the nine names, 289 in all.
+
+Still not answered of the board's names: `gfx_landscape`,
+`gfx_draw_char`, `gfx_draw_pct_centred`, `gfx_draw_time`,
+`gfx_draw_time_dashes`, `gfx_draw_time_neg`, `lcd_panel`.
+
+*Checked, on a host:* `make -C components/feckless_box_calls/test`,
+with a stand-in camera (`fake_camera.c`, a 12x8 frame): the bus's number
+and no other reaches `camera_init`; no size and no write before a
+start; a frame at steps 1 and 2 lands in the buffer and not a byte past
+it; a buffer one byte short of the frame at the box's end is refused
+and one that ends on the box's last byte is filled; a buffer in the
+host's memory, and `w` or `h` outside the box, are refused before the
+driver is called; the driver's own error comes back; a camera left
+streaming is stopped by `feckless_box_calls_end()`, once. 289 calls in
+the test's table, all passing under ASan and UBSan; `nocamera` compiles
+the empty branch. *Not checked:* an ESP-IDF build; a board; two threads
+at once. What a board should show: Mahjong's Scan a code opening the
+view, once the game drops its `absent.c`.
