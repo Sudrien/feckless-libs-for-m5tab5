@@ -4422,3 +4422,65 @@ its box on core 1:
 stopped when the view closes, or by `box_camera_end()`; two threads at
 the camera; Avoidant's `umode` branch running the same ELF, which wants
 its lock moved to this.
+
+### u-feckless-0062 -- a UART, I2C devices and GPIO in a box
+
+For Errant Moving Map, whose GNSS receiver is on a UART and whose
+accelerometer is a device on the board's bus (its u-errant-0001 counts
+what its ELF imports that a box does not answer). Twenty of ESP-IDF's
+driver calls, all in the ABI's core list already, answered in a box by
+`feckless_box_calls/src/box_drivers.c`; the README lists them.
+
+- **What an app may have is what the board does not hold**
+  (`src/box_pins.h`, no ESP-IDF in it): a deny list of GPIOs and of 7-bit
+  addresses on the board's bus, each read from the driver in this
+  repository that holds it -- the C6's SDIO and EN, the backlight, the
+  touch interrupt, I2S, the bus itself, the card; the codecs, RTC, INA226,
+  expanders, both touch controllers, the camera's sensor. GPIO24/25 (the
+  USB serial/JTAG PHY) and 34-38 (strapping pins) are from the ESP32-P4's
+  datasheet as remembered, not checked against it. Not a list of what the
+  Tab5's headers carry: a pin nothing here names is the app's to ask for.
+- **UART:** ports 1 to 4; not UART0, and not a port whose driver is
+  already installed. No event queue. Installed and deleted on core 0
+  (0060's reason: the interrupt belongs where no window holds it off). A
+  read is sliced at 100 ms and ends when the app is stopping, and returns
+  with the first slice that brought bytes; a write goes 256 bytes at a
+  time; `uart_wait_tx_done` waits at most 2 s.
+- **I2C:** the bus by the number `tab5io_bus()` gave; a device is a number
+  (`0x49324300` + slot, four slots); 7-bit, to 400 kHz; a transfer to
+  16 KB each way, 2 s at most. The app's buffers are checked and handed to
+  the driver as they are.
+- **GPIO:** configuration, direction, level, reset. No interrupts:
+  `intr_type` is forced to disabled, and the two ISR calls stay
+  unanswered. A handler is the app's function; running one needs the
+  launcher to make a window for it, which nothing does yet.
+- **At the app's end** (`box_drivers_end()`): UART drivers deleted, I2C
+  devices removed, every pin the app configured or routed reset.
+
+*Checked, on a host:* `make -C components/feckless_box_calls/test`, 309
+calls (289 before), all passing, under ASan and UBSan: the deny lists
+pin by pin and address by address, with the map's 6, 7, 51 and 0x68
+free; an install refused for UART0, the LP UART, a queue, a port the
+launcher has, and with no task to be had on core 0; made on core 0 with
+the host's flags; a configuration copied with its sleep flags cleared; a
+held pin anywhere in `_uart_set_pin6` refused; reads into the box, to its
+last byte and not past, sliced 100/100/50 for 250 ticks, a forever read
+ended by the app stopping; a 500-byte write as 256 and 244; the device
+handle a number and not a pointer; a fifth device ESP_ERR_NO_MEM; a
+removed device refused; `gpio_config` given POSEDGE reaching the driver as
+disabled, the app's copy untouched; and at the end one driver deleted on
+core 0 (the launcher's left alone), four devices removed, exactly the four
+pins reset. Five changes are each caught (GPIO31/32 freed; the interrupt
+type passed through; 0x43 freed; the stopping check gone; pins not
+reset). `boxcalls_names.txt` regenerated, +20.
+
+*Checked, for the target:* every source of feckless_box_calls compiles
+with riscv32-esp-elf-gcc 15.2.0 against ESP-IDF 6.1.1's headers, with
+Avoidant's sdkconfig.defaults, no warnings (registry components from
+GitHub, component manager off). And Errant's boxed ELF (u-errant-0003)
+links against it: 87 imports, all answered.
+
+*Not checked:* a launcher's link; a board. What one should show, with a
+receiver on GPIO6/7: Errant's `gnss: UART1 at 38400 baud, RX GPIO6, TX
+GPIO7, PPS GPIO51` after `PPS on GPIO51: ESP_ERR_NOT_SUPPORTED; counting
+none`, then fixes; and its `imu:` line for the BMI270.

@@ -14,3 +14,5 @@ const char *esp_err_to_name(esp_err_t e);
 #define ESP_ERR_NVS_INVALID_LENGTH (ESP_ERR_NVS_BASE + 0x0c)
 /* u-feckless-0059 */
 #define ESP_ERR_TIMEOUT 0x107
+/* u-feckless-0062 */
+#define ESP_ERR_NOT_SUPPORTED 0x106

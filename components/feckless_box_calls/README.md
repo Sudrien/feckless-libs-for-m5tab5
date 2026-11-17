@@ -171,6 +171,28 @@ feckless_umode_load(image, size, calls, n, 4 << 20, 64 << 10, &app);
   in the launcher, or with `FECKLESS_BOX_NO_CAMERA`, the table is empty.
   With it, `gfx_px` and `gfx_rotation` (always answered): a trap a pixel,
   so a camera's view is better written through `gfx_fb()`.
+- **A UART, I2C devices and GPIO** (u-feckless-0062, `src/box_drivers.c`):
+  ESP-IDF's driver calls from the ABI's core list, for what an app plugs
+  into the board -- `uart_driver_install`, `uart_driver_delete`,
+  `uart_param_config`, `_uart_set_pin6` (what `uart_set_pin()` is),
+  `uart_read_bytes`, `uart_write_bytes`, `uart_wait_tx_done`,
+  `uart_flush_input`, `uart_get_buffered_data_len`; `i2c_master_probe`,
+  `i2c_master_bus_add_device`, `i2c_master_bus_rm_device`,
+  `i2c_master_transmit`, `i2c_master_receive`,
+  `i2c_master_transmit_receive`; `gpio_config`, `gpio_set_direction`,
+  `gpio_set_level`, `gpio_get_level`, `gpio_reset_pin`. An app may have
+  what the board's own drivers do not hold (`src/box_pins.h`, a deny list
+  read from this repository's drivers): a pin none of them names, a 7-bit
+  address on the board's bus none of them talks to; anything else is
+  ESP_ERR_INVALID_ARG. UARTs 1 to 4, not one the launcher installed, no
+  event queue (ESP_ERR_NOT_SUPPORTED), the driver installed on core 0 so
+  its interrupt is there. Reads wait in 100 ms slices and end with the
+  app; every other wait is capped at 2 s. An I2C device is a number, four
+  at once, to 400 kHz. **No GPIO interrupt**: `gpio_config()`'s
+  `intr_type` is taken as disabled, and `gpio_install_isr_service` and
+  `gpio_isr_handler_add` are not answered -- a handler is the app's
+  function, and a launcher does not call into a box. When the app ends its
+  UART drivers are deleted, its devices removed and its pins reset.
 
 - **FreeRTOS** (u-feckless-0045, `src/box_rtos.c`), as Defeatist uses it:
   - mutexes, recursive mutexes, binary and counting semaphores and queues

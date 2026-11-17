@@ -1090,6 +1090,191 @@ static void test_camera(void)
     CHECK(flags_of("gfx_px") == 0 && flags_of("gfx_rotation") == FECKLESS_UMODE_CALL_UNLOCKED);
 }
 
+/* u-feckless-0062: a UART, I2C devices and GPIO, against fake_periph.c */
+#include "../src/box_pins.h"
+#include "driver/gpio.h"
+#include "driver/i2c_master.h"
+#include "driver/uart.h"
+extern int per_installs, per_deletes, per_install_core, per_delete_core, per_install_flags, per_uart_installed;
+extern int per_cfg_baud, per_cfg_flags, per_cfgs, per_setpins, per_pin[6];
+extern int per_reads, per_read_ticks[8], per_uart_rx, per_writes, per_write_max, per_written, per_wait_ticks;
+extern const void *per_read_dst, *per_i2c_bus, *per_xfer_rd;
+extern int per_gpio_cfgs, per_gpio_intr, per_gpio_resets, per_gpio_sets;
+extern uint64_t per_gpio_mask, per_gpio_reset_mask;
+extern int per_probes, per_probe_ms, per_adds, per_rms, per_xfers, per_xfer_ms, per_dev_live;
+extern uint16_t per_probe_addr, per_xfer_addr;
+extern esp_err_t per_add_result;
+extern bool fake_stopping, fake_task_fail;
+
+static void test_pins(void)
+{
+    /* the map's: GNSS on 6 and 7, PPS on 51; the Grove port's 53 and 54 */
+    CHECK(box_pin_free(6) && box_pin_free(7) && box_pin_free(51) && box_pin_free(53) && box_pin_free(54));
+    CHECK(box_pin_free(0) && box_pin_free(14) && box_pin_free(16) && box_pin_free(21) && box_pin_free(33) && box_pin_free(45));
+    const int held[] = { 8, 9, 10, 11, 12, 13, 15, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
+                         34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44 };
+    int free_n = 0;
+    for (int p = 0; p < BOX_PIN_COUNT; p++) free_n += box_pin_free(p);
+    for (unsigned i = 0; i < sizeof held / sizeof *held; i++) CHECK(!box_pin_free(held[i]));
+    CHECK(free_n == BOX_PIN_COUNT - (int)(sizeof held / sizeof *held));
+    CHECK(!box_pin_free(-1) && !box_pin_free(55) && !box_pin_free(1000));
+    const uint32_t taken[] = { 0x10, 0x14, 0x32, 0x36, 0x40, 0x41, 0x43, 0x44, 0x55, 0x5d };
+    for (unsigned i = 0; i < sizeof taken / sizeof *taken; i++) CHECK(!box_i2c_addr_free(taken[i]));
+    CHECK(box_i2c_addr_free(0x68) && box_i2c_addr_free(0x69) && box_i2c_addr_free(0x08) && box_i2c_addr_free(0x77));
+    CHECK(!box_i2c_addr_free(0) && !box_i2c_addr_free(0x07) && !box_i2c_addr_free(0x78) && !box_i2c_addr_free(0x168));
+}
+
+static void test_periph(void)
+{
+    const int live0 = fake_live;
+    const uint32_t NC = (uint32_t)UART_PIN_NO_CHANGE;
+    uint8_t *buf = (uint8_t *)(uintptr_t)feckless_box_alloc(&box, 512);
+
+    /* install: UART 1-4, no queue, the host's flags, on the board's core */
+    CHECK(call("uart_driver_install", 0, 2048, 0, 0, 0, 0, 0, 0) == ESP_ERR_INVALID_ARG);       /* the console's */
+    CHECK(call("uart_driver_install", 5, 2048, 0, 0, 0, 0, 0, 0) == ESP_ERR_INVALID_ARG);       /* the LP UART */
+    CHECK(call("uart_driver_install", 1, 65537, 0, 0, 0, 0, 0, 0) == ESP_ERR_INVALID_ARG);
+    CHECK(call("uart_driver_install", 1, 2048, 0, 8, P(buf), 0, 0, 0) == ESP_ERR_NOT_SUPPORTED);
+    per_uart_installed = 1 << 2;                                    /* the launcher has UART2 */
+    CHECK(call("uart_driver_install", 2, 2048, 0, 0, 0, 0, 0, 0) == ESP_ERR_INVALID_STATE);
+    uart_config_t *cfg = (uart_config_t *)(uintptr_t)feckless_box_alloc(&box, sizeof *cfg);
+    memset(cfg, 0, sizeof *cfg);
+    cfg->baud_rate = 38400;
+    cfg->flags.allow_pd = 1;
+    CHECK(C2("uart_param_config", 2, P(cfg)) == ESP_ERR_INVALID_ARG);                         /* not the app's */
+    CHECK(call("_uart_set_pin6", 2, 7, 6, NC, NC, NC, NC, 0) == ESP_ERR_INVALID_ARG);
+    CHECK(C4("uart_read_bytes", 2, P(buf), 16, 0) == (uint32_t)-1);
+    CHECK(C1("uart_driver_delete", 2) == ESP_ERR_INVALID_ARG && per_deletes == 0);
+    CHECK(per_installs == 0 && per_cfgs == 0 && per_setpins == 0 && per_reads == 0);
+    fake_task_fail = true;                                          /* no task on core 0: not installed */
+    CHECK(call("uart_driver_install", 1, 2048, 0, 0, 0, 0x400, 0, 0) == ESP_ERR_NO_MEM && per_installs == 0);
+    fake_task_fail = false;
+    CHECK(C4("uart_read_bytes", 1, P(buf), 16, 0) == (uint32_t)-1 && per_reads == 0);          /* before the install */
+    CHECK(call("uart_driver_install", 1, 2048, 0, 0, 0, 0x400, 0, 0) == ESP_OK);
+    CHECK(per_installs == 1 && per_install_core == 0 && per_install_flags == 0);
+    CHECK(call("uart_driver_install", 1, 2048, 0, 0, 0, 0, 0, 0) == ESP_ERR_INVALID_STATE && per_installs == 1);
+
+    /* the configuration is a copy, its sleep flags cleared */
+    CHECK(C2("uart_param_config", 1, P(cfg)) == ESP_OK && per_cfg_baud == 38400 && per_cfg_flags == 0);
+    CHECK(C2("uart_param_config", 1, 0x1000) == ESP_ERR_INVALID_ARG);
+    CHECK(C2("uart_param_config", 1, P(mem + MEM - 4)) == ESP_ERR_INVALID_ARG && per_cfgs == 1);
+    CHECK(C2("uart_param_config", 3, P(cfg)) == ESP_OK && per_cfgs == 2);                      /* before an install, as IDF allows */
+
+    /* pins: free ones, or no change */
+    CHECK(call("_uart_set_pin6", 1, 7, 6, NC, NC, NC, NC, 0) == ESP_OK && per_setpins == 1);
+    CHECK(per_pin[0] == 7 && per_pin[1] == 6 && per_pin[2] == -1 && per_pin[5] == -1);
+    CHECK(call("_uart_set_pin6", 1, 31, 6, NC, NC, NC, NC, 0) == ESP_ERR_INVALID_ARG);          /* the board's SDA */
+    CHECK(call("_uart_set_pin6", 1, 7, 6, NC, NC, NC, 43, 0) == ESP_ERR_INVALID_ARG);           /* the card's clock */
+    CHECK(call("_uart_set_pin6", 1, 7, 55, NC, NC, NC, NC, 0) == ESP_ERR_INVALID_ARG && per_setpins == 1);
+
+    /* a read lands in the box, in slices, and ends with the first bytes */
+    per_uart_rx = 5;
+    CHECK(C4("uart_read_bytes", 1, P(buf), 16, 20) == 5 && per_reads == 1 && per_read_ticks[0] == 20);
+    CHECK(per_read_dst == buf && buf[0] == 0xA1 && buf[4] == 0xA1);
+    CHECK(C4("uart_read_bytes", 1, P(buf), 16, 250) == 0 && per_reads == 4);                   /* 100, 100, 50 */
+    CHECK(per_read_ticks[1] == 100 && per_read_ticks[2] == 100 && per_read_ticks[3] == 50);
+    fake_stopping = true;
+    CHECK(C4("uart_read_bytes", 1, P(buf), 16, portMAX_DELAY) == 0 && per_reads == 5);         /* forever ends with the app */
+    fake_stopping = false;
+    CHECK(C4("uart_read_bytes", 1, 0x1000, 16, 0) == (uint32_t)-1);
+    CHECK(C4("uart_read_bytes", 1, P(mem + MEM - 8), 16, 0) == (uint32_t)-1 && per_reads == 5);
+    CHECK(C4("uart_read_bytes", 1, P(mem + MEM - 16), 16, 0) == 0 && per_reads == 6);          /* to the last byte */
+
+    /* a write goes in pieces; waiting for the transmitter is capped */
+    CHECK(C4("uart_write_bytes", 1, P(buf), 500, 0) == 500 && per_writes == 2 && per_write_max == 256 && per_written == 500);
+    CHECK(C4("uart_write_bytes", 1, 0x1000, 8, 0) == (uint32_t)-1 && per_writes == 2);
+    CHECK(C4("uart_write_bytes", 3, P(buf), 8, 0) == (uint32_t)-1 && per_writes == 2);         /* configured, not installed */
+    CHECK(C2("uart_wait_tx_done", 1, portMAX_DELAY) == ESP_OK && per_wait_ticks == 2000);
+    CHECK(C2("uart_wait_tx_done", 1, 100) == ESP_OK && per_wait_ticks == 100);
+    uint32_t *len = (uint32_t *)(uintptr_t)feckless_box_alloc(&box, 4);
+    per_uart_rx = 9;
+    CHECK(C2("uart_get_buffered_data_len", 1, P(len)) == ESP_OK && *len == 9);
+    CHECK(C2("uart_get_buffered_data_len", 1, 0x1000) == ESP_ERR_INVALID_ARG);
+    CHECK(C1("uart_flush_input", 1) == ESP_OK && C1("uart_flush_input", 4) == ESP_ERR_INVALID_ARG);
+    per_uart_rx = 0;
+
+    /* I2C: the host's bus by its number; an address no driver holds */
+    const uint32_t bus = C0("tab5io_bus");
+    CHECK(C4("i2c_master_probe", P(host_bus), 0x68, 50, 0) == ESP_ERR_INVALID_ARG && per_probes == 0);
+    CHECK(C4("i2c_master_probe", bus, 0x43, 50, 0) == ESP_ERR_INVALID_ARG && per_probes == 0);  /* an expander */
+    CHECK(C4("i2c_master_probe", bus, 0x68, (uint32_t)-1, 0) == ESP_OK && per_probes == 1);
+    CHECK(per_i2c_bus == host_bus && per_probe_addr == 0x68 && per_probe_ms == 2000);
+    i2c_device_config_t *dc = (i2c_device_config_t *)(uintptr_t)feckless_box_alloc(&box, sizeof *dc);
+    memset(dc, 0, sizeof *dc);
+    dc->device_address = 0x68;
+    dc->scl_speed_hz = 400000;
+    uint32_t *dev = (uint32_t *)(uintptr_t)feckless_box_alloc(&box, 4 * 6);
+    CHECK(C4("i2c_master_bus_add_device", 0, P(dc), P(dev), 0) == ESP_ERR_INVALID_ARG);
+    CHECK(C4("i2c_master_bus_add_device", bus, P(dc), 0x1000, 0) == ESP_ERR_INVALID_ARG);
+    dc->device_address = 0x32;                                      /* the RTC */
+    CHECK(C4("i2c_master_bus_add_device", bus, P(dc), P(dev), 0) == ESP_ERR_INVALID_ARG);
+    dc->device_address = 0x68;
+    dc->scl_speed_hz = 1000000;
+    CHECK(C4("i2c_master_bus_add_device", bus, P(dc), P(dev), 0) == ESP_ERR_INVALID_ARG);
+    dc->scl_speed_hz = 400000;
+    dc->dev_addr_length = I2C_ADDR_BIT_LEN_10;
+    CHECK(C4("i2c_master_bus_add_device", bus, P(dc), P(dev), 0) == ESP_ERR_INVALID_ARG && per_adds == 0);
+    dc->dev_addr_length = I2C_ADDR_BIT_LEN_7;
+    per_add_result = ESP_FAIL;
+    CHECK(C4("i2c_master_bus_add_device", bus, P(dc), P(dev), 0) == (uint32_t)ESP_FAIL && dev[0] == 0);
+    per_add_result = ESP_OK;
+    CHECK(C4("i2c_master_bus_add_device", bus, P(dc), P(dev), 0) == ESP_OK && per_i2c_bus == host_bus);
+    CHECK(dev[0] != 0 && (dev[0] < P(mem) || dev[0] >= P(mem) + MEM));                         /* a number, not a pointer */
+    CHECK(call("i2c_master_transmit_receive", dev[0], P(buf), 1, P(buf + 8), 6, 100, 0, 0) == ESP_OK);
+    CHECK(per_xfers == 1 && per_xfer_addr == 0x68 && per_xfer_rd == buf + 8 && buf[8] == 0x5a && per_xfer_ms == 100);
+    CHECK(C4("i2c_master_transmit", dev[0], P(buf), 2, (uint32_t)-1) == ESP_OK && per_xfer_ms == 2000);
+    CHECK(C4("i2c_master_receive", dev[0], P(buf), 4, 10) == ESP_OK && per_xfers == 3);
+    CHECK(C4("i2c_master_transmit", dev[0] + 1, P(buf), 2, 10) == ESP_ERR_INVALID_ARG);         /* no such device */
+    CHECK(C4("i2c_master_transmit", P(host_bus), P(buf), 2, 10) == ESP_ERR_INVALID_ARG);
+    CHECK(C4("i2c_master_transmit", dev[0], 0x1000, 2, 10) == ESP_ERR_INVALID_ARG);
+    CHECK(C4("i2c_master_transmit", dev[0], P(buf), 16385, 10) == ESP_ERR_INVALID_ARG);
+    CHECK(call("i2c_master_transmit_receive", dev[0], P(buf), 1, P(mem + MEM - 2), 6, 100, 0, 0) == ESP_ERR_INVALID_ARG);
+    CHECK(per_xfers == 3);
+    for (int i = 1; i < 4; i++) {
+        dc->device_address = (uint16_t)(0x68 + i);
+        CHECK(C4("i2c_master_bus_add_device", bus, P(dc), P(&dev[i]), 0) == ESP_OK && dev[i] != dev[i - 1]);
+    }
+    CHECK(C4("i2c_master_bus_add_device", bus, P(dc), P(&dev[4]), 0) == ESP_ERR_NO_MEM && per_dev_live == 4);
+    CHECK(C1("i2c_master_bus_rm_device", dev[1]) == ESP_OK && per_dev_live == 3);
+    CHECK(C1("i2c_master_bus_rm_device", dev[1]) == ESP_ERR_INVALID_ARG && per_rms == 1);
+    CHECK(C4("i2c_master_receive", dev[1], P(buf), 4, 10) == ESP_ERR_INVALID_ARG);
+
+    /* GPIO: free pins, and never an interrupt */
+    gpio_config_t *gc = (gpio_config_t *)(uintptr_t)feckless_box_alloc(&box, sizeof *gc);
+    memset(gc, 0, sizeof *gc);
+    gc->pin_bit_mask = 1ull << 51;
+    gc->intr_type = GPIO_INTR_POSEDGE;
+    CHECK(C1("gpio_config", P(gc)) == ESP_OK && per_gpio_mask == 1ull << 51 && per_gpio_intr == GPIO_INTR_DISABLE);
+    CHECK(gc->intr_type == GPIO_INTR_POSEDGE);                      /* the app's copy untouched */
+    gc->pin_bit_mask = 1ull << 51 | 1ull << 22;                     /* and the backlight */
+    CHECK(C1("gpio_config", P(gc)) == ESP_ERR_INVALID_ARG);
+    gc->pin_bit_mask = 1ull << 60;
+    CHECK(C1("gpio_config", P(gc)) == ESP_ERR_INVALID_ARG);
+    gc->pin_bit_mask = 0;
+    CHECK(C1("gpio_config", P(gc)) == ESP_ERR_INVALID_ARG);
+    CHECK(C1("gpio_config", 0x1000) == ESP_ERR_INVALID_ARG && per_gpio_cfgs == 1);
+    CHECK(C2("gpio_set_level", 53, 1) == ESP_OK && C2("gpio_set_level", 15, 0) == ESP_ERR_INVALID_ARG && per_gpio_sets == 1);
+    CHECK(C1("gpio_get_level", 53) == 1 && C1("gpio_get_level", 23) == 0);
+    CHECK(C2("gpio_set_direction", 31, 3) == ESP_ERR_INVALID_ARG && C1("gpio_reset_pin", 44) == ESP_ERR_INVALID_ARG);
+    CHECK(per_gpio_resets == 0);
+
+    /* the app ends: its driver deleted on the board's core, its devices
+     * removed, its pins reset -- and only its own */
+    feckless_box_calls_end();
+    CHECK(per_deletes == 1 && per_delete_core == 0 && per_uart_installed == 1 << 2);
+    CHECK(per_dev_live == 0 && per_rms == 4);
+    CHECK(per_gpio_reset_mask == (1ull << 6 | 1ull << 7 | 1ull << 51 | 1ull << 53) && per_gpio_resets == 4);
+    CHECK(C4("uart_read_bytes", 1, P(buf), 16, 0) == (uint32_t)-1);
+    CHECK(C4("i2c_master_receive", dev[0], P(buf), 4, 10) == ESP_ERR_INVALID_ARG);
+    per_gpio_resets = 0;
+    feckless_box_calls_end();                                       /* again: nothing left to undo */
+    CHECK(per_deletes == 1 && per_gpio_resets == 0);
+    per_uart_installed = 0;
+    CHECK(fake_live == live0);                                      /* every semaphore deleted */
+    CHECK(flags_of("uart_read_bytes") == FECKLESS_UMODE_CALL_UNLOCKED && flags_of("uart_driver_install") == 0);
+    CHECK(flags_of("i2c_master_transmit_receive") == FECKLESS_UMODE_CALL_UNLOCKED);
+}
+
 /* u-feckless-0026: the table's names are feckless_box_libc's
  * boxcalls_names.txt, which boxcheck holds every import of a boxed ELF to:
  * the same set, one name a line. */
@@ -1145,6 +1330,8 @@ int main(int argc, char **argv)
     test_codec();
     test_nvs();
     test_camera();
+    test_pins();
+    test_periph();
     printf(failed ? "%d FAILED\n" : "box_calls: all passed (%u calls)\n", failed ? failed : (int)ncalls);
     return failed != 0;
 }

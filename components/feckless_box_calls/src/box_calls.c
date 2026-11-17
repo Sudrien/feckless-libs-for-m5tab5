@@ -679,10 +679,11 @@ static const feckless_umode_call_t s_own[] = {
 #define CODEC_MAX 8                         /* u-feckless-0052 */
 #define NVS_MAX 16                          /* u-feckless-0053 */
 #define CAMERA_MAX 8                        /* u-feckless-0059 */
+#define DRIVERS_MAX 24                      /* u-feckless-0062 */
 
 const feckless_umode_call_t *feckless_box_calls_v1(uint32_t *n)
 {
-    static feckless_umode_call_t table[HEAP_MAX + OWN_N + STORAGE_MAX + AUDIO_MAX + RTOS_MAX + CODEC_MAX + NVS_MAX + CAMERA_MAX];
+    static feckless_umode_call_t table[HEAP_MAX + OWN_N + STORAGE_MAX + AUDIO_MAX + RTOS_MAX + CODEC_MAX + NVS_MAX + CAMERA_MAX + DRIVERS_MAX];
     static uint32_t count;
     if (!count) {
         uint32_t k = 0;
@@ -710,6 +711,9 @@ const feckless_umode_call_t *feckless_box_calls_v1(uint32_t *n)
         for (uint32_t i = 0; i < box_camera_calls_n && i < CAMERA_MAX; i++) {
             table[k++] = box_camera_calls[i];
         }
+        for (uint32_t i = 0; i < box_drivers_calls_n && i < DRIVERS_MAX; i++) {
+            table[k++] = box_drivers_calls[i];
+        }
         count = k;
     }
     *n = count;
@@ -724,6 +728,7 @@ void feckless_box_calls_end(void)
     box_codec_end();
     box_nvs_end();
     box_camera_end();
+    box_drivers_end();
     memset(s_err_name, 0, sizeof s_err_name);   /* the box goes with the app */
     s_err_names = 0;
     s_fb_granted = 0;                       /* the grant goes with the app */

@@ -83,3 +83,8 @@ void box_nvs_end(void);
 extern const feckless_umode_call_t box_camera_calls[];
 extern const uint32_t box_camera_calls_n;
 void box_camera_end(void);
+
+/* u-feckless-0062: a UART, I2C devices and GPIO (box_drivers.c) */
+extern const feckless_umode_call_t box_drivers_calls[];
+extern const uint32_t box_drivers_calls_n;
+void box_drivers_end(void);
