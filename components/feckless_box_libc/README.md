@@ -31,6 +31,13 @@ void app_main(void)
 main `REQUIRES feckless_box_libc`, and the app's manifest names it at the
 same tag as the other feckless components.
 
+**Never in a firmware** (u-feckless-0063). An app whose one manifest
+serves both its ELF and a .bin that runs it gets this component in the
+.bin's build too. There, in any build that has not called
+`feckless_abi_box_elf()`, the component's sources are replaced by
+`empty.c`: it stays in the build with its header and links nothing, so
+its stdio and `strerror` cannot meet the toolchain's.
+
 ### An app's own calls (u-feckless-0054)
 
 An ELF that only its own firmware runs (the firmware embeds it and boxes

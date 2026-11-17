@@ -4484,3 +4484,52 @@ links against it: 87 imports, all answered.
 receiver on GPIO6/7: Errant's `gnss: UART1 at 38400 baud, RX GPIO6, TX
 GPIO7, PPS GPIO51` after `PPS on GPIO51: ESP_ERR_NOT_SUPPORTED; counting
 none`, then fixes; and its `imu:` line for the BMI270.
+
+### u-feckless-0063 -- feckless_box_libc links nothing into a firmware
+
+"Built into the app, never into a launcher," says the component -- but
+nothing kept it out of one. An app built Spurious's, Lothesome's and
+Errant's way, one manifest for the ELF and for the .bin whose
+`standalone.c` boxes it, has feckless_box_libc in the .bin's build as
+well: the component manager makes it a requirement of `main` there too,
+and ESP-IDF links every component of a build into the executable. As
+soon as the firmware uses stdio or `strerror`, the link stops:
+
+    multiple definition of `stderr'; esp-idf/esp_libc/libesp_libc.a(picolibc_init.c.obj): first defined here
+    multiple definition of `strerror'; ... libfeckless_box_libc.a(box_string.c.obj): first defined here
+
+and `stdin`, `stdout`, `fgetc`, `getc`, `fputc`, `putc`. Errant hit it
+first, its .bin starting the network (u-errant-0007, which strips the
+library from its firmware's link in its own top-level CMakeLists.txt);
+Spurious's and Lothesome's link today only because nothing in their
+firmware asks for those names.
+
+Now the component does it itself. Its CMakeLists.txt defers a call to the
+end of the top-level CMakeLists.txt; there, unless
+`feckless_abi_box_elf()` has run in this build (it sets the global
+property `FECKLESS_BOX_ELF`), the library's sources are replaced by
+`empty.c`. The component stays in the build -- its include directory
+with it, so `feckless_box.h` still resolves -- and its archive is one
+empty object. An ELF's build is left exactly as it was. The deferred
+call's arguments are written out by `cmake_language(EVAL)`, since a
+deferred call reads them in the top-level directory, where
+`COMPONENT_LIB` is not this component's; a call that finds no target
+stops the configure rather than quietly emptying nothing.
+
+*Checked*, ESP-IDF 6.1.1, riscv32-esp-elf 15.2.0, component manager off,
+each app given only the feckless components its manifest names, with
+the library added to the firmware's requirements as the manager adds it:
+
+- **Errant** at a63eea0 with u-errant-0007's workaround taken out: the
+  eight errors reproduce without this patch; with it the .bin links
+  (0x1aa100 bytes), its archive holds `empty.c.obj` alone, and no object
+  of the library is in the map. The ELF's build passes both checks,
+  87 imports, `.text`, `.rodata` and `.data` byte for byte those of the
+  build with the workaround in. Errant as pushed, workaround and this
+  patch together, also links.
+- **Spurious** at a347776, with one file added to its firmware that
+  calls `fputc(…, stderr)`, `fprintf(stdout, …)` and `strerror()`: the
+  same eight errors without this patch; with it the .bin links.
+
+*Not checked:* a build with the component manager; a board. Errant's
+u-errant-0007 can come out once this is on the branch.

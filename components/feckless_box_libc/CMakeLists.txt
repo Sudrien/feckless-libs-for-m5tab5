@@ -38,3 +38,40 @@ set_source_files_properties("src/box_printf.c" PROPERTIES COMPILE_OPTIONS "-w")
 # u-feckless-0058: box_string.c defines stpcpy, which GCC would otherwise
 # turn its own loop -- or a strcpy and a strlen -- back into a call to.
 set_source_files_properties("src/box_string.c" PROPERTIES COMPILE_OPTIONS "-fno-builtin-stpcpy")
+
+# u-feckless-0063: nothing of this component in a firmware.
+#
+# Built into the app, never into a launcher -- but an app whose one manifest
+# serves its ELF and the .bin that runs it (a standalone launcher, as
+# Spurious's, Lothesome's and Errant's umode branches have) gets this
+# component in the firmware's build as well: the component manager makes it
+# a requirement of main there too, and ESP-IDF links every component of a
+# build into the executable. Its stdio and strerror then meet the
+# toolchain's as soon as the firmware uses them: "multiple definition of
+# `stderr'", `stdin', `stdout', `fgetc', `getc', `fputc', `putc',
+# `strerror' (Errant's u-errant-0007).
+#
+# So, at the end of the top-level CMakeLists.txt, in a build that has not
+# called feckless_abi_box_elf(): the library's sources become empty.c. It
+# stays in the build, its include directory with it (feckless_box.h), and
+# links nothing. feckless_abi_box_elf() marks its build, which is left as it
+# was.
+if(NOT CMAKE_BUILD_EARLY_EXPANSION)
+    function(_feckless_box_libc_not_in_firmware lib empty)
+        get_property(_elf GLOBAL PROPERTY FECKLESS_BOX_ELF)
+        if(_elf)
+            return()
+        endif()
+        if(NOT TARGET "${lib}")
+            message(FATAL_ERROR "feckless_box_libc: no target '${lib}' to empty")
+        endif()
+        set_property(TARGET ${lib} PROPERTY SOURCES "${empty}")
+        message(STATUS "feckless_box_libc: not an ELF's build, so nothing of it is linked")
+    endfunction()
+    # A deferred call's arguments are read when it runs, in the top-level
+    # directory, where COMPONENT_LIB is not this component's: written out
+    # now, by EVAL.
+    cmake_language(EVAL CODE "
+        cmake_language(DEFER DIRECTORY [[${CMAKE_SOURCE_DIR}]]
+            CALL _feckless_box_libc_not_in_firmware [[${COMPONENT_LIB}]] [[${CMAKE_CURRENT_LIST_DIR}/empty.c]])")
+endif()

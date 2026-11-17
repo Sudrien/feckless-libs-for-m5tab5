@@ -28,6 +28,9 @@
 set(FECKLESS_BOX_LIBC_DIR "${CMAKE_CURRENT_LIST_DIR}")
 
 macro(feckless_abi_box_elf _name)
+    # u-feckless-0063: this build is an ELF's, so feckless_box_libc's
+    # CMakeLists.txt keeps its sources (it empties them in any other).
+    set_property(GLOBAL PROPERTY FECKLESS_BOX_ELF ON)
     cmake_parse_arguments(_fb "" "" "OWN_CALLS" ${ARGN})
     if(_fb_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "feckless_abi_box_elf: unexpected arguments: ${_fb_UNPARSED_ARGUMENTS}")
