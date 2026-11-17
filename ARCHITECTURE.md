@@ -4395,3 +4395,30 @@ The cause is read from IDF's source (release/v6.1,
 seen fixed. *Not checked:* an ESP-IDF build; a board. What a board
 should show: after `camera: 1280x720 UYVY`, no `dw-gdma` error, and
 the view.
+
+### u-feckless-0061 -- the camera in a box, on a board
+
+No code. What a Tab5 showed for u-feckless-0059 and 0060 (80283a8), in
+Unprofitable Mahjong's standalone .bin on its `umode` branch
+(u-unprofit-0006, 4645fe4; ESP-IDF v6.1-829-g9a97f6c54ec), the game in
+its box on core 1:
+
+    I (2075) sc202cs: Detected Camera sensor PID=0xeb52
+    I (2095) camera: sensor found, /dev/video0
+    I (11990) camera: 1280x720 UYVY, 2560 bytes a line
+    I (23177) ui: scanned a code: 17 chars, read 0 after 0 moves, 0 put right
+    I (28795) ui: game 3: loaded deal 520379927
+    I (28828) ui: game 3: secret Guaranteed Random
+
+- 0059: `camera_init` through the box finds the sensor; frames reach the
+  app's buffer and quirc reads a code from them.
+- 0060: with the start made on core 0 there is no `dw-gdma: ... alloc
+  interrupt failed` after `camera: 1280x720 UYVY`, where 0059 alone had
+  it. That the cause was the interrupt group's core is as good as seen.
+- `gfx_rotation` is answered (the view asks it every frame). `gfx_px` is
+  not exercised: the game writes its view through `gfx_fb()` now.
+
+*Not seen:* the view's frame rate against a trusted run's; the camera
+stopped when the view closes, or by `box_camera_end()`; two threads at
+the camera; Avoidant's `umode` branch running the same ELF, which wants
+its lock moved to this.
