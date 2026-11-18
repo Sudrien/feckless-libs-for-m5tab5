@@ -22,7 +22,7 @@ idf_component_register(
     # esp_system: esp_ipc.h, and esp_private/hw_stack_guard.h, which umode.S
     # includes. soc: the assist_debug and CLIC register definitions.
     # elf_loader (u-feckless-0004): the loader, named as feckless_abi names it.
-    PRIV_REQUIRES esp_system esp_hw_support soc freertos log heap elf_loader
+    PRIV_REQUIRES esp_system esp_hw_support esp_timer soc freertos log heap elf_loader
                   esp_timer   # u-feckless-0029: the call stats
                   riscv       # u-feckless-0034: riscv/csr_pie.h, the PIE unit's state register
 )

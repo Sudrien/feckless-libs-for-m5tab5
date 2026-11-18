@@ -23,10 +23,12 @@ typedef struct {
     uint32_t sp_fired, sp_pc;
     uint32_t mtval;
     int core;                   /* the core this window "ran" on */
+    uint32_t us;                /* u-feckless-0067: how long it "ran" */
 } step_t;
 
 static const step_t *script;
 static int script_len, script_pos, cur_core;
+static int64_t fake_now;        /* u-feckless-0067: the clock the run loop reads */
 
 /* u-feckless-0034: the PIE unit as the stand-in sees it. script_pie_off_at
  * is a step before which it is switched off, as a task switch between
@@ -48,6 +50,7 @@ static uint32_t fake_enter(feckless_umode_ctx_t *ctx)
     ctx->mtval = s->mtval;
     ctx->mcause = s->cause;
     cur_core = s->core;
+    fake_now += s->us;
     return s->cause;
 }
 
@@ -439,6 +442,55 @@ static void test_pie(void)
     CHECK(e.reason == FECKLESS_UMODE_END_FAULT && script_pos == 1 && !w.pie);
 }
 
+
+/* u-feckless-0067: a window is timed from the end of the last host call to
+ * the ecall that ends it, interrupts inside it included and the host
+ * call's own time (a delay here) not; one of long_us or more is reported
+ * with the ecall's pc, before the call is serviced. */
+static int64_t fake_now_us(void) { return fake_now; }
+static void fake_delay_clock(uint32_t ms) { delays++; last_delay = ms; fake_now += (int64_t)ms * 1000; }
+static uint32_t long_us_seen[4], long_pc_seen[4];
+static int long_n;
+static void fake_long(const feckless_umode_window_t *w, uint32_t us, uint32_t pc)
+{
+    CHECK(w != NULL);
+    if (long_n < 4) { long_us_seen[long_n] = us; long_pc_seen[long_n] = pc; }
+    long_n++;
+}
+
+static void test_long_windows(void)
+{
+    feckless_umode_window_t w;
+    new_window(&w);
+    fake_now = 1000000;
+    long_n = 0;
+    feckless_umode_ops_t o = ops;
+    o.delay_ms = fake_delay_clock;
+    o.now_us = fake_now_us;
+    o.long_window = fake_long;
+    o.long_us = 30000;
+    static const step_t s[] = {
+        { ECALL, FECKLESS_SYS_NOP,          0, 0, 0, 0, 0, 0, 10000 },   /* short */
+        { IRQ,   0,                         0, 0, 0, 0, 0, 0, 20000 },   /* inside the next window */
+        { ECALL, FECKLESS_SYS_DELAY_MS, 500, 0, 0, 0, 0, 0, 15000 },     /* 35 ms with the irq: long */
+        { ECALL, FECKLESS_SYS_EXIT,         0, 0, 0, 0, 0, 0, 30000 },   /* 500 ms delay not counted */
+    };
+    run_script(s, 4);
+    feckless_umode_end_t e = feckless_umode_run(&w, &o);
+    CHECK(e.reason == FECKLESS_UMODE_END_EXIT);
+    CHECK(long_n == 2);
+    CHECK(long_us_seen[0] == 35000 && long_pc_seen[0] == 0x1104);
+    CHECK(long_us_seen[1] == 30000 && long_pc_seen[1] == 0x1108);
+
+    /* Without now_us nothing is timed. */
+    new_window(&w);
+    long_n = 0;
+    o.now_us = NULL;
+    run_script(s, 4);
+    e = feckless_umode_run(&w, &o);
+    CHECK(e.reason == FECKLESS_UMODE_END_EXIT && long_n == 0);
+}
+
 int main(void)
 {
     test_range();
@@ -453,6 +505,7 @@ int main(void)
     test_refused();
     test_fpu();
     test_pie();
+    test_long_windows();
     printf(failed ? "%d FAILED\n" : "umode_run: all passed\n", failed);
     return failed != 0;
 }

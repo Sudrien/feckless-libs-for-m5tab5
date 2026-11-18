@@ -91,6 +91,16 @@ typedef struct {
     void (*pie_on)(void);
     bool (*pie_off)(void);
     void (*pie_clear)(void);
+    /* u-feckless-0067: windows that run long. A window is not preempted:
+     * nothing else of the app's on that core runs, and no host task of a
+     * lower priority, until the program's next ecall. If now_us and
+     * long_window are both set, an ecall that ends a window of long_us or
+     * more is reported, before it is serviced: us is the window's length,
+     * interrupts taken inside it included, and pc the ecall's -- the end
+     * of the stretch that ran without one, which addr2line can place. */
+    int64_t (*now_us)(void);
+    void (*long_window)(const feckless_umode_window_t *w, uint32_t us, uint32_t pc);
+    uint32_t long_us;
 } feckless_umode_ops_t;
 
 typedef enum {

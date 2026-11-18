@@ -129,6 +129,8 @@ feckless_umode_end_t feckless_umode_run(feckless_umode_window_t *w, const feckle
     }
 
     w->core = ops->core_id ? (int)ops->core_id() : 0;
+    const bool timed = ops->now_us && ops->long_window;       /* 0067 */
+    int64_t t0 = timed ? ops->now_us() : 0;
     int fpu_retries = 0;
     int pie_retries = 0;
     for (;;) {
@@ -169,9 +171,17 @@ feckless_umode_end_t feckless_umode_run(feckless_umode_window_t *w, const feckle
             fpu_retries = 0;
             pie_retries = 0;
             w->syscalls++;
+            if (timed) {
+                const int64_t us = ops->now_us() - t0;
+                if (us >= (int64_t)ops->long_us) {
+                    ops->long_window(w, us > (int64_t)UINT32_MAX ? UINT32_MAX : (uint32_t)us,
+                                     w->ctx.pc);
+                }
+            }
             if (!dispatch(w, ops, &end)) {
                 return end;
             }
+            if (timed) t0 = ops->now_us();      /* the next window starts after the call */
             continue;
         }
         if ((cause & FUMODE_MCAUSE_EXCCODE_MASK) == FUMODE_EXC_ILLEGAL_INSN && ops->fpu_off &&
