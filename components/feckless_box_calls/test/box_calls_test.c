@@ -29,7 +29,7 @@ extern int level_set;
 static int failed;
 #define CHECK(c) do { if (!(c)) { printf("FAIL %s:%d  %s\n", __FILE__, __LINE__, #c); failed++; } } while (0)
 
-#define MEM (64 * 1024)
+#define MEM (4 * 1024 * 1024)               /* u-feckless-0064: room for a ring past STREAM_MAX */
 static uint8_t *mem;
 static feckless_box_t box;
 static feckless_umode_window_t w;
@@ -532,6 +532,22 @@ static void test_rtos(void)
     CHECK(far != 0);                                               /* storage past the box: the host's */
     CHECK(C4("xStreamBufferSend", far, P(it), 4, 0) == 4);
     C1("vStreamBufferDelete", far);
+    /* u-feckless-0064: the app's storage at any size -- Defeatist's PCM
+     * ring, 3.5 MB, past the 1 MB the host gives of its own */
+    const uint32_t ring_bytes = 3520u * 1024u;
+    uint8_t *ring = (uint8_t *)(uintptr_t)feckless_box_alloc(&box, ring_bytes + 1);
+    CHECK(ring != NULL);
+    const uint32_t big = call("xStreamBufferGenericCreateStatic", ring_bytes, 4096, 0, P(ring), P(sb_ctl), 0, 0, 0);
+    CHECK(big != 0);
+    CHECK(C4("xStreamBufferSend", big, P(it), 10, 0) == 10 && !memcmp(ring, "0123456789", 10));
+    CHECK(C1("xStreamBufferSpacesAvailable", big) == ring_bytes - 10);
+    C1("vStreamBufferDelete", big);
+    CHECK(call("xStreamBufferGenericCreateStatic", ring_bytes, 4096, 0, 0, 0, 0, 0, 0) == 0);          /* the host's: capped */
+    CHECK(call("xStreamBufferGenericCreate", ring_bytes, 4096, 0, 0, 0, 0, 0, 0) == 0);                /* likewise */
+    CHECK(call("xStreamBufferGenericCreateStatic", ring_bytes, 4096, 0, P(mem) + MEM - 1024, 0, 0, 0, 0) == 0); /* runs past the box: the host's, capped */
+    const uint32_t mb = call("xStreamBufferGenericCreateStatic", 1024u * 1024u, 4096, 0, 0, 0, 0, 0, 0);
+    CHECK(mb != 0);                                                /* 1 MB of the host's still */
+    C1("vStreamBufferDelete", mb);
     CHECK(C4("xStreamBufferSend", sb, 0x1000, 10, 0) == 0);
     CHECK(C1("xStreamBufferBytesAvailable", sb) == 10 && C1("xStreamBufferSpacesAvailable", sb) == 54);
     memset(it, 0, 16);

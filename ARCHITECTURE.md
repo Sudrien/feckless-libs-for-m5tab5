@@ -4533,3 +4533,34 @@ the library added to the firmware's requirements as the manager adds it:
 
 *Not checked:* a build with the component manager; a board. Errant's
 u-errant-0007 can come out once this is on the branch.
+
+### u-feckless-0064 -- a stream buffer on the app's own storage, at any size
+
+Defeatist's first run in a box, as the standalone .bin of its
+u-defeatist-0028, booted to
+
+    E (2360) tab5_mp3: no PCM ring; this boot cannot play audio
+
+and everything else came up: the screen, the card, the library, the
+resume point, the RTC, the battery. The player makes three PCM rings of
+3.5 MB each with `xStreamBufferCreateStatic()` over storage it allocated
+itself, in the box; the stores were there (no "could not reserve" line),
+but `box_rtos.c`'s `stream_new()` refuses any stream buffer over
+`STREAM_MAX`, 1 MB, and so all three.
+
+The cap is for the host's PSRAM: a stream buffer whose storage the host
+allocates (`xStreamBufferCreate()`, or a static one whose storage is not
+wholly in the box). Since u-feckless-0049 an app's own storage is used in
+place when it holds the size in the box, and then costs the host one
+control block whatever the size. The cap now applies only when the
+storage is the host's.
+
+*Checked:* `make -C components/feckless_box_calls/test`, all passing.
+The test's box is now 4 MB (was 64 KB) to hold a 3.5 MB ring: one on
+the app's storage is made, carries bytes in place and reports 3.5 MB
+less what was sent; the same size on the host's storage, by either
+create, and on storage that runs past the box, are refused; 1 MB of the
+host's is still made. Without the change the three new checks that
+expect a ring fail. `box_rtos.c` compiles for the ESP32-P4. *Not
+checked:* Defeatist playing in a box, which wants this on the branch and
+its lock moved.

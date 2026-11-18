@@ -67,7 +67,7 @@
 #define TOKEN_OBJ      0x52540000u          /* "RT" + slot: a queue, semaphore, mutex or stream buffer */
 #define SLICE_MS       100
 #define QUEUE_MAX      (64u * 1024u)        /* a queue's storage, length times item */
-#define STREAM_MAX     (1024u * 1024u)
+#define STREAM_MAX     (1024u * 1024u)      /* storage the host gives; the app's own, any size (0064) */
 #define NTHREADS       (FECKLESS_UMODE_MAIN_THREAD + 1)     /* ids 1..MAIN_THREAD; 0 unused */
 #define NAME_LEN       16u                  /* the app's task names, as configMAX_TASK_NAME_LEN */
 
@@ -466,11 +466,18 @@ H(c_xQueueGiveMutexRecursive)
 /* ---- stream buffers ------------------------------------------------------ */
 
 /* in_box: the app's storage, already checked to hold size bytes in the
- * box; 0 for the host's own, in PSRAM. */
+ * box; 0 for the host's own, in PSRAM.
+ *
+ * u-feckless-0064: STREAM_MAX caps only the host's storage, which is the
+ * host's PSRAM. The app's storage is the app's, already in its box and
+ * checked to hold size bytes, and costs the host a control block whatever
+ * its size: Defeatist's three 3.5 MB PCM rings were refused by the cap,
+ * and its player booted saying "no PCM ring; this boot cannot play
+ * audio". */
 static uint32_t stream_new(uint32_t size, uint32_t trigger, uint32_t is_msg, uint32_t cb1, uint32_t cb2,
                            uint32_t in_box)
 {
-    if (size == 0 || size > STREAM_MAX || trigger > size || is_msg > 1 || cb1 || cb2 ||
+    if (size == 0 || (!in_box && size > STREAM_MAX) || trigger > size || is_msg > 1 || cb1 || cb2 ||
         (is_msg && size <= sizeof(size_t))) {
         return 0;                           /* no callbacks: the host cannot run the app's code */
     }
