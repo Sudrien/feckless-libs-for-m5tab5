@@ -3,6 +3,7 @@
  * feckless_umode_run() on FreeRTOS. See feckless_umode_idf.h.
  */
 #include "feckless_umode_idf.h"
+#include "feckless_umode_load.h"     /* 0068: feckless_umode_app_where() */
 
 #include <inttypes.h>
 #include <stdio.h>
@@ -109,9 +110,15 @@ static void op_pie_clear(void)
  * A window holds its core from the app's other threads until its next
  * host call, so one that runs long is a UI that does not answer, touches
  * missed, an audio writer that comes back late. Which loop it was is the
- * question, and the ecall that ended it says: its pc, and the same as an
- * offset into the box, which with the load address the start-up line
- * gives ("app in its box at ...") places it in the app's ELF.
+ * question, and the ecall that ended it says.
+ *
+ * u-feckless-0068: that ecall is nearly always in a call stub, which says
+ * only which call came next; the stub's ra says from where. Both go in the
+ * line -- the call by name, the caller as its link address in the app's
+ * ELF, for addr2line -- so it reads
+ *
+ *   ... the longest 32 ms on core 1, ending at a call to gfx_text_w
+ *   from 0x0001a2b4 in the app
  *
  * Reported at most every LONG_REPORT_US, the longest since the last
  * report and how many there were, so a loop that runs long on every pass
@@ -124,36 +131,60 @@ static void op_pie_clear(void)
 
 static portMUX_TYPE s_long_mux = portMUX_INITIALIZER_UNLOCKED;
 static int64_t  s_long_reported;
-static uint32_t s_long_n, s_long_us, s_long_pc, s_long_off;
+static uint32_t s_long_n, s_long_us, s_long_pc, s_long_ra;
 static int      s_long_core;
 
 static int64_t op_now_us(void) { return esp_timer_get_time(); }
 
+static void long_report(uint32_t n, uint32_t worst, int core, uint32_t pc, uint32_t ra)
+{
+    char where[96];
+    const char *call = NULL;
+    uint32_t link = 0;
+    switch (feckless_umode_app_where(pc, &link, &call)) {
+    case FECKLESS_UMODE_WHERE_STUB: {
+        uint32_t from = 0;
+        if (feckless_umode_app_where(ra, &from, NULL) == FECKLESS_UMODE_WHERE_APP) {
+            snprintf(where, sizeof where, "a call to %s from 0x%08" PRIx32 " in the app",
+                     call ? call : "?", from);
+        } else {
+            snprintf(where, sizeof where, "a call to %s", call ? call : "?");
+        }
+        break;
+    }
+    case FECKLESS_UMODE_WHERE_APP:
+        snprintf(where, sizeof where, "an ecall at 0x%08" PRIx32 " in the app", link);
+        break;
+    default:
+        snprintf(where, sizeof where, "an ecall at pc 0x%08" PRIx32, pc);
+        break;
+    }
+    ESP_LOGW("feckless_umode", "%" PRIu32 " window%s of %u ms or more without a host call; "
+             "the longest %" PRIu32 " ms on core %d, ending at %s",
+             n, n == 1 ? "" : "s", (unsigned)(FECKLESS_UMODE_LONG_WINDOW_US / 1000),
+             worst / 1000, core, where);
+}
+
 static void op_long_window(const feckless_umode_window_t *w, uint32_t us, uint32_t pc)
 {
     const int64_t now = esp_timer_get_time();
-    uint32_t n = 0, worst = 0, at = 0, off = 0;
+    uint32_t n = 0, worst = 0, at = 0, ra = 0;
     int core = 0;
     taskENTER_CRITICAL(&s_long_mux);
     s_long_n++;
     if (us > s_long_us) {
         s_long_us = us;
         s_long_pc = pc;
-        s_long_off = pc - (uint32_t)w->lo;
+        s_long_ra = w->ctx.x[1];
         s_long_core = w->core;
     }
     if (now - s_long_reported >= LONG_REPORT_US) {
-        n = s_long_n; worst = s_long_us; at = s_long_pc; off = s_long_off; core = s_long_core;
+        n = s_long_n; worst = s_long_us; at = s_long_pc; ra = s_long_ra; core = s_long_core;
         s_long_n = s_long_us = 0;
         s_long_reported = now;
     }
     taskEXIT_CRITICAL(&s_long_mux);
-    if (n) {
-        ESP_LOGW("feckless_umode", "%" PRIu32 " window%s of %u ms or more without a host call; "
-                 "the longest %" PRIu32 " ms on core %d, to the ecall at pc 0x%08" PRIx32
-                 " (box+0x%" PRIx32 ")", n, n == 1 ? "" : "s",
-                 (unsigned)(FECKLESS_UMODE_LONG_WINDOW_US / 1000), worst / 1000, core, at, off);
-    }
+    if (n) long_report(n, worst, core, at, ra);
 }
 
 feckless_umode_end_t feckless_umode_run_default(feckless_umode_window_t *w)

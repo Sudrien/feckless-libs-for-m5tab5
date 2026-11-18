@@ -18,6 +18,7 @@
 #include "feckless_umode_load.h"
 
 #include <errno.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -65,6 +66,8 @@ struct feckless_umode_app {
     struct esp_elfsym *syms;        /* host memory: the names point at calls[] */
     void *block;
     uintptr_t exit_stub;
+    uintptr_t stubs;                /* u-feckless-0068: [stubs, exit_stub): one per call */
+    uintptr_t bias;                 /* u-feckless-0068: run address minus link address */
     bool relocated;
     feckless_umode_grant_t grants[FECKLESS_UMODE_MAX_GRANTS];   /* [0] is the box */
     int ngrants;
@@ -497,6 +500,7 @@ esp_err_t feckless_umode_load(const uint8_t *image, size_t size,
         goto fail;
     }
     a->exit_stub = feckless_box_write_stubs(stubs, n);
+    a->stubs = stubs;
     for (uint32_t i = 0; i < n; i++) {
         a->syms[i].name = calls[i].name;
         if (calls[i].fn) {
@@ -530,6 +534,14 @@ esp_err_t feckless_umode_load(const uint8_t *image, size_t size,
         ESP_LOGE(TAG, "the entry is not in the box");
         err = ESP_ERR_INVALID_STATE;
         goto fail;
+    }
+
+    /* u-feckless-0068: where the ELF was put, for a pc in the log. Its
+     * header's e_entry is the entry's link address. */
+    {
+        uint32_t e_entry = 0;
+        memcpy(&e_entry, (const uint8_t *)image + 24, sizeof e_entry);
+        a->bias = (uintptr_t)a->elf.entry - e_entry;
     }
 
     /* The grant: the box, and nothing else (until feckless_umode_app_grant()). */
@@ -566,6 +578,7 @@ esp_err_t feckless_umode_load(const uint8_t *image, size_t size,
     ESP_LOGI(TAG, "app in its box at %p, %u KB, %u calls; %u KB used by the load",
              a->block, (unsigned)(box_size >> 10), (unsigned)n,
              (unsigned)((a->box.n ? a->box.a[a->box.n - 1].off + a->box.a[a->box.n - 1].len : 0) >> 10));
+    ESP_LOGI(TAG, "the app's link address 0 is at 0x%08" PRIxPTR, a->bias);    /* 0068 */
     return ESP_OK;
 
 fail:
@@ -696,6 +709,21 @@ feckless_umode_end_t feckless_umode_app_run_on(feckless_umode_app_t *a, int core
 feckless_umode_app_t *feckless_umode_app_loaded(void)
 {
     return s_loaded;
+}
+
+/* u-feckless-0068 */
+int feckless_umode_app_where(uintptr_t addr, uint32_t *link, const char **call)
+{
+    const feckless_umode_app_t *a = s_loaded;
+    if (!a) return FECKLESS_UMODE_WHERE_NONE;
+    if (addr >= a->stubs && addr < a->exit_stub) {
+        const uint32_t i = (uint32_t)(addr - a->stubs) / FECKLESS_BOX_STUB_SIZE;
+        if (call) *call = i < a->calls.n ? a->syms[i].name : NULL;
+        return FECKLESS_UMODE_WHERE_STUB;
+    }
+    if (!in_box(a, addr)) return FECKLESS_UMODE_WHERE_NONE;
+    if (link) *link = (uint32_t)(addr - a->bias);
+    return FECKLESS_UMODE_WHERE_APP;
 }
 
 /* u-feckless-0022 */

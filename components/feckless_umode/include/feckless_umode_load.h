@@ -71,6 +71,13 @@ bool feckless_umode_app_elf_vaddr(const feckless_umode_app_t *app, uintptr_t add
 /* u-feckless-0022: the app loaded now, or NULL. One at a time. */
 feckless_umode_app_t *feckless_umode_app_loaded(void);
 
+/* u-feckless-0068: what an address in the loaded app is, for the log.
+ * WHERE_STUB: one of the call stubs; *call (if given) is that call's name.
+ * WHERE_APP: in the box; *link (if given) is its link address in the app's
+ * ELF, for addr2line. WHERE_NONE: no app, or not in its box. */
+enum { FECKLESS_UMODE_WHERE_NONE, FECKLESS_UMODE_WHERE_STUB, FECKLESS_UMODE_WHERE_APP };
+int feckless_umode_app_where(uintptr_t addr, uint32_t *link, const char **call);
+
 /* u-feckless-0022: grant the app [lo, hi) as well as its box, on every core,
  * from now until it is unloaded: FECKLESS_UMODE_R, or _R | _W -- never _X,
  * so nothing outside the box runs. lo and hi on the PMP's granule (128 bytes
