@@ -23,6 +23,7 @@
 #include "driver/gpio.h"
 #include "driver/i2s_std.h"
 #include "driver/i2s_tdm.h"     /* 5206: the headset microphone */
+#include "esp_attr.h"           /* u-feckless-0066: IRAM_ATTR */
 #include "esp_check.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -171,6 +172,33 @@ static i2c_master_dev_handle_t s_es7210;
  * slots, and the drop stands for the same reason.)
  */
 static SemaphoreHandle_t       s_i2s_lock;
+
+/*
+ * u-feckless-0066: the DMA running dry, counted.
+ *
+ * The channel has eight descriptors of 480 frames -- 87 ms at 44.1 kHz --
+ * and auto_clear, so a writer that is late is heard as a buffer of
+ * silence, not a stale one: a click, and nothing in the log. The driver
+ * calls on_send_q_ovf from the DMA ISR each time it sends a buffer nobody
+ * refilled. That also happens all through a pause, so the count alone
+ * says nothing; what audio_out_write() reports is a count that went up
+ * between two writes close enough together to be one stretch of playing
+ * (DRY_PLAYING_US), with the gap between them -- how late the writer was.
+ */
+static volatile uint32_t s_dry;             /* buffers sent unrefilled; the ISR's */
+static uint32_t s_dry_seen;
+static int64_t  s_dry_last_write;           /* 0: no write to measure from */
+static uint32_t s_dry_runs, s_dry_bufs, s_dry_gap_max_ms;
+static int64_t  s_dry_logged;
+#define DRY_PLAYING_US      (1000 * 1000)   /* a longer gap is a pause, not a late writer */
+#define DRY_LOG_EVERY_US    (2000 * 1000)
+
+static IRAM_ATTR bool on_dry(i2s_chan_handle_t h, i2s_event_data_t *e, void *u)
+{
+    (void)h; (void)e; (void)u;
+    s_dry++;
+    return false;
+}
 static volatile bool           s_capturing;
 static audio_capture_src_t     s_cap_src;      /* 5206: while s_capturing */
 
@@ -391,6 +419,10 @@ static esp_err_t i2s_init(uint32_t rate)
     std.clk_cfg.mclk_multiple = I2S_MCLK_MULTIPLE_256;
 
     ESP_RETURN_ON_ERROR(i2s_channel_init_std_mode(s_tx, &std), TAG, "init_std");
+    const i2s_event_callbacks_t cbs = { .on_send_q_ovf = on_dry };      /* 0066 */
+    if (i2s_channel_register_event_callback(s_tx, &cbs, NULL) != ESP_OK) {
+        ESP_LOGW(TAG, "no underrun count this boot");
+    }
     ESP_RETURN_ON_ERROR(i2s_channel_enable(s_tx), TAG, "i2s_enable");
     return ESP_OK;
 }
@@ -738,6 +770,7 @@ esp_err_t audio_out_set_format(uint32_t rate, uint8_t channels)
     }
     s_rate = rate;
     s_channels = channels;
+    s_dry_last_write = 0;       /* 0066: a new track's first write is not late */
 
     /* 5023: the converter this track would need on USB, made ready here
      * on the decode task so arbitrate() -- on either task -- only has to
@@ -913,8 +946,34 @@ esp_err_t audio_out_write(const void *data, size_t len)
         vTaskDelay(pdMS_TO_TICKS(ms ? ms : 1));
         return ESP_OK;
     }
+    /* 0066: before the write, which waits for room and so would hide
+     * how late this block came. Only the I2S route has the DMA queue. */
+    const int64_t now = esp_timer_get_time();
+    const uint32_t dry = s_dry;
+    if (dry != s_dry_seen) {
+        if (s_route != ROUTE_USB && s_dry_last_write &&
+            now - s_dry_last_write < DRY_PLAYING_US) {
+            const uint32_t gap = (uint32_t)((now - s_dry_last_write) / 1000);
+            s_dry_runs++;
+            s_dry_bufs += dry - s_dry_seen;
+            if (gap > s_dry_gap_max_ms) s_dry_gap_max_ms = gap;
+        }
+        s_dry_seen = dry;
+    }
+    s_dry_last_write = now;
     const esp_err_t err = write_unlocked(data, len);
     xSemaphoreGive(s_i2s_lock);
+
+    /* Outside the lock, and at most every DRY_LOG_EVERY_US: the console
+     * is slow, and this is the writer's own time. */
+    if (s_dry_runs && now - s_dry_logged >= DRY_LOG_EVERY_US) {
+        const uint32_t ms = s_dry_bufs * 480u * 1000u / (s_rate ? s_rate : 48000u);
+        ESP_LOGW(TAG, "I2S ran dry %" PRIu32 "x: %" PRIu32 " buffers of silence (%" PRIu32
+                 " ms); the writer came %" PRIu32 " ms after its last block at worst",
+                 s_dry_runs, s_dry_bufs, ms, s_dry_gap_max_ms);
+        s_dry_runs = s_dry_bufs = s_dry_gap_max_ms = 0;
+        s_dry_logged = now;
+    }
     return err;
 }
 
