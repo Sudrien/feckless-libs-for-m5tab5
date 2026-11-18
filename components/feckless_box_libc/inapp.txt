@@ -211,3 +211,6 @@ __popcountsi2
 __truncdfsf2
 __unorddf2
 __trunctfdf2
+
+# ---- u-feckless-0065: a long loop's check-in with the host (src/box_heap.c)
+feckless_box_checkin

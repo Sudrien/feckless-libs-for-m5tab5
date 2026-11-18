@@ -80,7 +80,7 @@ static void test_table(void)
             CHECK(strcmp(calls_tab[i].name, calls_tab[j].name) != 0);       /* no name twice */
     int data = 0;
     for (uint32_t i = 0; i < ncalls; i++) if (!calls_tab[i].fn) { data++; CHECK(calls_tab[i].data && calls_tab[i].data_len >= 4); }
-    CHECK(data == 12);       /* abi_v1, box_v1, storage_v2; Ark12's six tables (u-feckless-0021); audio_v1 (u-feckless-0052); nvs_v1 (0053); camera_v1 (0059) */
+    CHECK(data == 13);       /* abi_v1, box_v1, storage_v2; Ark12's six tables (u-feckless-0021); audio_v1 (u-feckless-0052); nvs_v1 (0053); camera_v1 (0059); image_v1 (0065) */
     for (uint32_t i = 0; i < ncalls; i++) {
         if (!strcmp(calls_tab[i].name, "ark12_lit")) CHECK(calls_tab[i].data_len == 10);
         if (!strcmp(calls_tab[i].name, "ark12_tiles")) CHECK(calls_tab[i].data_len == 12);
@@ -1291,6 +1291,83 @@ static void test_periph(void)
     CHECK(flags_of("i2c_master_transmit_receive") == FECKLESS_UMODE_CALL_UNLOCKED);
 }
 
+/* u-feckless-0065: the hardware JPEG decoder, against fake_periph.c */
+#include "driver/jpeg_decode.h"
+extern int jpg_news, jpg_dels, jpg_infos, jpg_procs, jpg_new_timeout, jpg_proc_fmt;
+extern esp_err_t jpg_proc_result;
+extern const void *jpg_proc_in, *jpg_proc_out, *jpg_info_in;
+extern uint32_t jpg_proc_out_size;
+
+static void test_jpeg(void)
+{
+    CHECK(flags_of("jpeg_decoder_process") == FECKLESS_UMODE_CALL_UNLOCKED && flags_of("jpeg_alloc_decoder_mem") == 0);
+    jpeg_decode_engine_cfg_t *ec = (jpeg_decode_engine_cfg_t *)(uintptr_t)feckless_box_alloc(&box, sizeof *ec);
+    memset(ec, 0, sizeof *ec);
+    ec->timeout_ms = -1;                                            /* forever: not given */
+    uint32_t *h = (uint32_t *)(uintptr_t)feckless_box_alloc(&box, 4);
+    CHECK(C2("jpeg_new_decoder_engine", P(ec), 0x1000) == ESP_ERR_INVALID_ARG && jpg_news == 0);
+    CHECK(C2("jpeg_new_decoder_engine", P(ec), P(h)) == ESP_OK && jpg_news == 1 && jpg_new_timeout == 2000);
+    CHECK(*h != 0 && (*h < P(mem) || *h >= P(mem) + MEM));          /* a number, not the host's pointer */
+    const uint32_t eng = *h;
+    CHECK(C2("jpeg_new_decoder_engine", P(ec), P(h)) == ESP_OK && *h == eng && jpg_news == 1);   /* the one engine */
+
+    /* memory in the box, on the line, whole lines */
+    jpeg_decode_memory_alloc_cfg_t *mc = (jpeg_decode_memory_alloc_cfg_t *)(uintptr_t)feckless_box_alloc(&box, sizeof *mc);
+    mc->buffer_direction = JPEG_DEC_ALLOC_OUTPUT_BUFFER;
+    uint32_t *got = (uint32_t *)(uintptr_t)feckless_box_alloc(&box, 4);
+    const uint32_t outp = C4("jpeg_alloc_decoder_mem", 1000, P(mc), P(got), 0);
+    CHECK(outp && outp % 128 == 0 && *got == 1024 && outp >= P(mem) && outp + 1024 <= P(mem) + MEM);
+    CHECK(feckless_box_len(&box, outp) == 1024);
+    CHECK(C4("jpeg_alloc_decoder_mem", 0, P(mc), P(got), 0) == 0);
+    CHECK(C4("jpeg_alloc_decoder_mem", 64, 0x1000, P(got), 0) == 0);
+    CHECK(C4("jpeg_alloc_decoder_mem", 64, P(mc), 0x1000, 0) == 0);
+    CHECK(C4("jpeg_alloc_decoder_mem", MEM, P(mc), P(got), 0) == 0 && *got == 0);   /* does not fit */
+    mc->buffer_direction = JPEG_DEC_ALLOC_INPUT_BUFFER;
+    const uint32_t inp = C4("jpeg_alloc_decoder_mem", 300, P(mc), P(got), 0);
+    CHECK(inp && inp % 128 == 0 && *got == 384);
+    memset((void *)(uintptr_t)inp, 0xff, 300);
+
+    /* the header, read in place */
+    jpeg_decode_picture_info_t *pi = (jpeg_decode_picture_info_t *)(uintptr_t)feckless_box_alloc(&box, sizeof *pi);
+    CHECK(C4("jpeg_decoder_get_info", inp, 300, P(pi), 0) == ESP_OK && jpg_info_in == (void *)(uintptr_t)inp);
+    CHECK(pi->width == 640 && pi->height == 480);
+    CHECK(C4("jpeg_decoder_get_info", P(mem) + MEM - 100, 300, P(pi), 0) == ESP_ERR_INVALID_ARG);  /* runs past the box */
+    CHECK(C4("jpeg_decoder_get_info", inp, 300, 0x1000, 0) == ESP_ERR_INVALID_ARG && jpg_infos == 1);
+
+    /* the decode: the app's buffers, in place */
+    jpeg_decode_cfg_t *dc = (jpeg_decode_cfg_t *)(uintptr_t)feckless_box_alloc(&box, sizeof *dc);
+    memset(dc, 0, sizeof *dc);
+    dc->output_format = JPEG_DECODE_OUT_FORMAT_RGB565;
+    uint32_t *dec = (uint32_t *)(uintptr_t)feckless_box_alloc(&box, 4);
+    CHECK(call("jpeg_decoder_process", eng, P(dc), inp, 300, outp, 1024, P(dec), 0) == ESP_OK);
+    CHECK(jpg_procs == 1 && jpg_proc_in == (void *)(uintptr_t)inp && jpg_proc_out == (void *)(uintptr_t)outp);
+    CHECK(jpg_proc_out_size == 1024 && jpg_proc_fmt == JPEG_DECODE_OUT_FORMAT_RGB565 && *dec == 1024);
+    CHECK(((uint8_t *)(uintptr_t)outp)[1023] == 0x77);
+    CHECK(call("jpeg_decoder_process", eng + 1, P(dc), inp, 300, outp, 1024, P(dec), 0) == ESP_ERR_INVALID_ARG);
+    CHECK(call("jpeg_decoder_process", eng, 0x1000, inp, 300, outp, 1024, P(dec), 0) == ESP_ERR_INVALID_ARG);
+    CHECK(call("jpeg_decoder_process", eng, P(dc), inp, 0, outp, 1024, P(dec), 0) == ESP_ERR_INVALID_ARG);
+    CHECK(call("jpeg_decoder_process", eng, P(dc), inp, 300, P(mem) + MEM - 512, 1024, P(dec), 0) == ESP_ERR_INVALID_ARG);
+    CHECK(call("jpeg_decoder_process", eng, P(dc), 0x1000, 300, outp, 1024, P(dec), 0) == ESP_ERR_INVALID_ARG);
+    CHECK(call("jpeg_decoder_process", eng, P(dc), inp, 300, outp, 1024, 0x1000, 0) == ESP_ERR_INVALID_ARG);
+    CHECK(jpg_procs == 1);
+    jpg_proc_result = ESP_ERR_TIMEOUT;
+    CHECK(call("jpeg_decoder_process", eng, P(dc), inp, 300, outp, 1024, P(dec), 0) == (uint32_t)ESP_ERR_TIMEOUT && *dec == 0);
+    jpg_proc_result = ESP_OK;
+
+    /* the app frees what it was given, as any allocation */
+    CHECK(C1("free", outp) == 0 && feckless_box_len(&box, outp) == 0);
+    CHECK(C1("free", inp) == 0);
+
+    /* deleted: the number stops working; the engine is the host's until the end */
+    CHECK(C1("jpeg_del_decoder_engine", eng) == ESP_OK && jpg_dels == 0);
+    CHECK(C1("jpeg_del_decoder_engine", eng) == ESP_ERR_INVALID_ARG);
+    CHECK(call("jpeg_decoder_process", eng, P(dc), inp, 300, outp, 1024, P(dec), 0) == ESP_ERR_INVALID_ARG);
+    feckless_box_calls_end();
+    CHECK(jpg_dels == 1);
+    feckless_box_calls_end();
+    CHECK(jpg_dels == 1);                                           /* nothing left to delete */
+}
+
 /* u-feckless-0026: the table's names are feckless_box_libc's
  * boxcalls_names.txt, which boxcheck holds every import of a boxed ELF to:
  * the same set, one name a line. */
@@ -1348,6 +1425,7 @@ int main(int argc, char **argv)
     test_camera();
     test_pins();
     test_periph();
+    test_jpeg();
     printf(failed ? "%d FAILED\n" : "box_calls: all passed (%u calls)\n", failed ? failed : (int)ncalls);
     return failed != 0;
 }

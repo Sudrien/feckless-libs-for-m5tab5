@@ -106,20 +106,41 @@ static bool off_of(const feckless_box_t *b, uintptr_t p, uint32_t *off)
 
 uintptr_t feckless_box_alloc(feckless_box_t *b, uint32_t len)
 {
+    return feckless_box_alloc_aligned(b, len, FECKLESS_BOX_ALIGN);
+}
+
+/* u-feckless-0065: the start rounded up to align, on the address, not the
+ * offset -- a box's base is only FECKLESS_BOX_ALIGN-aligned. */
+static uint32_t place(const feckless_box_t *b, uint32_t at, uint32_t align)
+{
+    const uintptr_t abs = b->base + at;
+    const uintptr_t up = (abs + (align - 1)) & ~(uintptr_t)(align - 1);
+    return (uint32_t)(up - b->base);
+}
+
+uintptr_t feckless_box_alloc_aligned(feckless_box_t *b, uint32_t len, uint32_t align)
+{
     if (len == 0 || b->n >= b->cap || len > b->heap_end) {
+        return 0;
+    }
+    if (align < FECKLESS_BOX_ALIGN || (align & (align - 1)) != 0 || align > b->heap_end) {
         return 0;
     }
     const uint32_t need = ALIGN_UP(len);
     if (need < len) {
         return 0;
     }
-    uint32_t at = 0;
+    uint32_t at = place(b, 0, align);
     uint32_t i;
     for (i = 0; i < b->n; i++) {
         if (b->a[i].off >= at && b->a[i].off - at >= need) {
             break;
         }
-        at = ALIGN_UP(b->a[i].off + b->a[i].len);
+        const uint32_t next = ALIGN_UP(b->a[i].off + b->a[i].len);
+        at = place(b, next, align);
+        if (at < next) {
+            return 0;                           /* wrapped */
+        }
     }
     if (at > b->heap_end || b->heap_end - at < need) {
         return 0;

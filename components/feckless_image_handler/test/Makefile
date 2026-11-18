@@ -94,9 +94,9 @@ run-gif: gifimgtest
 PNGLE_FLAGS := -I../vendor -Wno-sign-compare -Wno-unused-function -Wno-unused-parameter -fwrapv -fno-sanitize=signed-integer-overflow \
                -Wno-attributes
 
-pngimgtest: pngimgtest.c ../src/image_png.c ../include/feckless_image_png.h ../include/feckless_image.h $(PNGLE_SRC) ../vendor/pngle.h ../vendor/miniz.h
+pngimgtest: pngimgtest.c ../src/image_png.c ../src/image_checkin.c ../include/feckless_image_png.h ../include/feckless_image.h $(PNGLE_SRC) ../vendor/pngle.h ../vendor/miniz.h
 	$(CC) $(WARNCFLAGS) -c pngimgtest.c -o /dev/null
-	$(CC) $(CFLAGS) $(PNGLE_FLAGS) -o $@ pngimgtest.c ../src/image_png.c $(PNGLE_SRC) $(LDFLAGS) -fno-sanitize=alignment
+	$(CC) $(CFLAGS) $(PNGLE_FLAGS) -o $@ pngimgtest.c ../src/image_png.c ../src/image_checkin.c $(PNGLE_SRC) $(LDFLAGS) -fno-sanitize=alignment
 
 run-png: pngimgtest
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=0 ./pngimgtest
@@ -112,8 +112,8 @@ decodetest: decodetest.c ../src/image_decode.c ../src/image_stb.c ../src/image_j
 run-decode: decodetest
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=0 ./decodetest
 
-fittest: fittest.c ../src/image_fit.c ../include/feckless_image_fit.h
-	$(CC) $(CFLAGS) -o $@ fittest.c ../src/image_fit.c $(LDFLAGS)
+fittest: fittest.c ../src/image_fit.c ../src/image_checkin.c ../include/feckless_image_fit.h
+	$(CC) $(CFLAGS) -o $@ fittest.c ../src/image_fit.c ../src/image_checkin.c $(LDFLAGS)
 
 run-fit: fittest
 	./fittest

@@ -13,6 +13,7 @@ endif()
 idf_component_register(
     SRCS "src/image_ico.c" "src/image_stb.c" "src/image_jxl.c" "src/image_png.c"
          "src/image_decode.c" "src/image_fit.c" "src/image_esp.c"
+         "src/image_checkin.c"   # u-feckless-0065: the weak no-op
          "vendor/pngle.c" "vendor/miniz.c"
     INCLUDE_DIRS "include" "vendor"
     PRIV_REQUIRES heap log freertos esp_driver_jpeg espressif__esp_jpeg

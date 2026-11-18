@@ -171,6 +171,17 @@ feckless_umode_load(image, size, calls, n, 4 << 20, 64 << 10, &app);
   in the launcher, or with `FECKLESS_BOX_NO_CAMERA`, the table is empty.
   With it, `gfx_px` and `gfx_rotation` (always answered): a trap a pixel,
   so a camera's view is better written through `gfx_fb()`.
+- **The hardware JPEG decoder** (u-feckless-0065, `src/box_image.c`): the
+  ABI's image section whole -- `feckless_abi_image_v1`,
+  `jpeg_new_decoder_engine`, `jpeg_del_decoder_engine`,
+  `jpeg_decoder_get_info`, `jpeg_alloc_decoder_mem`,
+  `jpeg_decoder_process` -- where the chip has an engine. One host engine,
+  made at the app's first ask and deleted at its end, a 2 s timeout; the
+  app holds a number. Decoder memory is allocated in the box on PSRAM's
+  cache line (`feckless_box_alloc_aligned()`), whole lines, freed with
+  `free()`; the engine reads and writes the app's buffers by DMA, in place.
+  The decode is one unlocked host call, so a picture no longer decodes in
+  software in the app's window with interrupts held off.
 - **A UART, I2C devices and GPIO** (u-feckless-0062, `src/box_drivers.c`):
   ESP-IDF's driver calls from the ABI's core list, for what an app plugs
   into the board -- `uart_driver_install`, `uart_driver_delete`,

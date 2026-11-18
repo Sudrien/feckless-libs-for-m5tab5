@@ -73,6 +73,12 @@ extern const feckless_umode_call_t box_codec_calls[];
 extern const uint32_t box_codec_calls_n;
 void box_codec_end(void);
 
+/* u-feckless-0065: the hardware JPEG decoder, the ABI's image section
+ * (box_image.c); an empty table where the chip has no engine. */
+extern const feckless_umode_call_t box_image_calls[];
+extern const uint32_t box_image_calls_n;
+void box_image_end(void);
+
 /* u-feckless-0053: NVS, in the namespaces the launcher named (box_nvs.c). */
 extern const feckless_umode_call_t box_nvs_calls[];
 extern const uint32_t box_nvs_calls_n;

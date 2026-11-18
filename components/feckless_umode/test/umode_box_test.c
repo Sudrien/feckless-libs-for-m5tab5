@@ -57,6 +57,29 @@ static void test_alloc_free(void)
     CHECK(feckless_box_alloc(&box, 0xfffffff8u) == 0);  /* rounding would wrap */
 }
 
+/* u-feckless-0065: aligned on the address, in the holes, freed as any */
+static void test_alloc_aligned(void)
+{
+    /* a base only 16-aligned, so the offset alone would give the wrong start */
+    feckless_box_init(&box, B + 16, MEM_SIZE - 16, 4096);
+    const uintptr_t a = feckless_box_alloc(&box, 10);                /* B+16 */
+    const uintptr_t x = feckless_box_alloc_aligned(&box, 1000, 128);
+    CHECK(a == B + 16 && x == B + 128 && x % 128 == 0);
+    const uintptr_t c = feckless_box_alloc(&box, 16);                /* first fit: the gap before x */
+    CHECK(c == B + 32);
+    const uintptr_t y = feckless_box_alloc_aligned(&box, 256, 128);  /* after x, on the next line */
+    CHECK(y % 128 == 0 && y == B + 1152);
+    CHECK(feckless_box_alloc(&box, 32) == B + 48);                   /* what is left of that gap */
+    CHECK(feckless_box_free(&box, x) && !feckless_box_free(&box, x));
+    CHECK(feckless_box_alloc_aligned(&box, 64, 128) == x);           /* its hole again */
+    CHECK(feckless_box_alloc_aligned(&box, 64, 0) == 0);
+    CHECK(feckless_box_alloc_aligned(&box, 64, 8) == 0);             /* under the box's own */
+    CHECK(feckless_box_alloc_aligned(&box, 64, 96) == 0);            /* not a power of two */
+    CHECK(feckless_box_alloc_aligned(&box, 64, 1u << 30) == 0);
+    CHECK(feckless_box_alloc_aligned(&box, box.heap_end, 128) == 0);
+    CHECK(feckless_box_alloc_aligned(&box, 64, 16) != 0);            /* 16 is plain alloc */
+}
+
 static void test_fill_and_table_limit(void)
 {
     feckless_box_init(&box, B, MEM_SIZE, 4096);
@@ -265,6 +288,7 @@ int main(void)
     }
     test_init();
     test_alloc_free();
+    test_alloc_aligned();
     test_fill_and_table_limit();
     test_bigger_table();
     test_realloc();

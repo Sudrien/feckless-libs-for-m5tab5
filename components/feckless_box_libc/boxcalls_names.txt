@@ -274,6 +274,12 @@ esp_audio_simple_dec_open
 esp_audio_simple_dec_process
 esp_audio_simple_dec_get_info
 esp_audio_simple_dec_close
+feckless_abi_image_v1
+jpeg_new_decoder_engine
+jpeg_del_decoder_engine
+jpeg_decoder_get_info
+jpeg_alloc_decoder_mem
+jpeg_decoder_process
 feckless_abi_nvs_v1
 nvsh_get_u8
 nvsh_get_u32

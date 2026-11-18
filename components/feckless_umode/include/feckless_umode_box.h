@@ -61,6 +61,12 @@ void feckless_box_stack(const feckless_box_t *b, uint32_t *lo, uint32_t *hi);
  * full. The memory is not cleared. */
 uintptr_t feckless_box_alloc(feckless_box_t *b, uint32_t len);
 
+/* u-feckless-0065: as feckless_box_alloc(), the start on an align boundary
+ * of the address (a power of two, at least FECKLESS_BOX_ALIGN). For a DMA
+ * engine's output, which must start and end on a cache line. Freed with
+ * feckless_box_free() like any other. */
+uintptr_t feckless_box_alloc_aligned(feckless_box_t *b, uint32_t len, uint32_t align);
+
 /* Free the allocation that starts at p. False, and nothing freed, for any p
  * that is not one. */
 bool feckless_box_free(feckless_box_t *b, uintptr_t p);

@@ -6,6 +6,7 @@
  * SPDX-License-Identifier: MIT
  */
 #include "feckless_image_fit.h"
+#include "image_checkin.h"
 
 #include <string.h>
 
@@ -44,6 +45,7 @@ void img_fit_draw(const img_pic_t *pic, uint16_t *dst, size_t dst_stride, int cw
     const uint32_t ystep = (uint32_t)(((uint64_t)ih << 16) / (uint32_t)ch);
 
     for (int y = 0; y < ch; y++) {
+        feckless_box_checkin((uint32_t)cw);     /* u-feckless-0065 */
         int srow = k ? y / k : (int)(((uint32_t)y * ystep) >> 16);
         if (srow >= ih) srow = ih - 1;
         const uint16_t *row = &pic->px[(size_t)srow * stride];

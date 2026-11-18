@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 #include "feckless_image_png.h"
+#include "image_checkin.h"
 
 #include <stdbool.h>
 #include <stdlib.h>
@@ -98,6 +99,7 @@ static void on_draw(pngle_t *pngle, uint32_t x, uint32_t y, uint32_t w, uint32_t
                     const uint8_t rgba[4])
 {
     png_ctx_t *c = pngle_get_user_data(pngle);
+    feckless_box_checkin(w * h);                /* u-feckless-0065: inflate and filters, between calls */
     if (!c->px) return;
     const uint8_t a = rgba[3];
     if (a == 0) return;                         /* bg is already there */

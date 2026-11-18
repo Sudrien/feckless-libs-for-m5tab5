@@ -4564,3 +4564,81 @@ host's is still made. Without the change the three new checks that
 expect a ring fail. `box_rtos.c` compiles for the ESP32-P4. *Not
 checked:* Defeatist playing in a box, which wants this on the branch and
 its lock moved.
+
+### u-feckless-0065 -- the JPEG engine in a box, and a check-in for long loops
+
+Defeatist's standalone .bin ran its player in a box for an hour and then:
+
+    W (3626000) img_esp: no hardware JPEG engine (ESP_ERR_NOT_SUPPORTED); pictures decode in software
+    Guru Meditation Error: Core  1 panic'ed (Interrupt wdt timeout on CPU1).
+    MEPC    : 0x4ff03dd0  feckless_umode_trap_entry at umode.S:759 (.Lkresume)
+
+A cover was being decoded in software, in the player's window on core 1,
+with interrupts held off there (u-feckless-0017) for longer than the
+interrupt watchdog allows; it fired on the first instruction back in
+M-mode. Before the watchdog, the same stretch had held off the panel's
+interrupts and every other thread of the player on that core -- the
+audio writer among them. Two remedies, the first for the common case and
+the second for what is left.
+
+**The hardware JPEG decoder, answered** (`feckless_box_calls/src/box_image.c`).
+The ABI's image section is exactly ESP-IDF's five calls for the engine and
+`feckless_abi_image_v1`; a box now answers all of it where the chip has an
+engine (`SOC_JPEG_CODEC_SUPPORTED`). One host engine, made at the app's
+first `jpeg_new_decoder_engine()` with a 2 s timeout (under
+feckless_umode's 3 s stop) and deleted when the app ends; the app holds a
+number, and deleting it only retires the number. `jpeg_alloc_decoder_mem()`
+allocates in the box, on the cache's line at the box's address
+(`esp_cache_get_line_size_by_addr()`, PSRAM's), rounded to whole lines: the driver refuses an output
+buffer that does not start and end on one. `jpeg_decoder_process()` checks
+the configuration, the input and the output lie in the box for their whole
+length, and hands them to the driver as they are; the engine reads and
+writes them by DMA and the driver keeps the cache right. It is unlocked --
+the decode waits on the engine, not on the app's other threads -- and
+decodes are taken one at a time. `jpeg_decoder_get_info()` reads the
+header in place. So a baseline cover is one host call, done by DMA while
+the app's thread waits in M-mode with interrupts on.
+
+`feckless_umode`'s box allocator gains `feckless_box_alloc_aligned()`,
+first fit with the start on an address boundary (a box's base is only
+16-aligned); `feckless_box_alloc()` is it with 16. An aligned allocation
+is freed like any other.
+
+**A check-in, for loops that may run long** (`feckless_box_libc`:
+`feckless_box_checkin(work)`). A loop that computes without a host call
+calls it with a measure of its work; every 16 K of work it makes one host
+call, `xTaskGetTickCount()`, and the core takes what was pending -- the
+same remedy Spurious's open uses (u-spurious-0002), as a library's.
+`feckless_image_handler` calls it from pngle's draw callback (the
+inflate and filters run between those) and from the fit's rows, and
+defines a weak no-op of its own (`src/image_checkin.c`) for builds without
+the box's libc, a launcher's. The strong definition is in `box_heap.c`,
+which any app that allocates links, because a linker takes an archive
+member for a strong definition only when it is wanted for something else.
+
+Not covered: a progressive JPEG (stb_image, one call with no hook), a
+JPEG the engine refuses and TJpgDec decodes (esp_jpeg, likewise), JPEG XL.
+Each is still software in the window. Rarer, but an app with long ones
+of its own wants `feckless_box_checkin()` in them too.
+
+*Checked:* `make -C components/feckless_box_calls/test`, 315 calls, all
+passing: the engine made once with a 2 s timeout whatever was asked, the
+handle a number; decoder memory in the box on 128, 1000 bytes asked as
+1024, freed by `free()`; refusals for a zero size, pointers outside the
+box, a size that does not fit; the header read in place; the decode
+handed the app's input and output where they are, refused for a wrong
+handle, a bad configuration, an empty input, an output or input running
+past the box, a bad length pointer; a driver error passed back with the
+length 0; after the delete, the number refused, and the engine deleted
+once at the app's end. `boxcalls_names.txt` regenerated, +6.
+`feckless_umode`'s test: aligned allocation on a base only 16-aligned,
+first fit around it, the hole reused, bad alignments refused.
+`feckless_box_libc`'s test: one tick call per 16 K of work, one for a
+single large step. `feckless_image_handler`'s tests pass. Defeatist built
+against this (its u-defeatist-0029, the ELF requiring the image section):
+200 imports, all in the ABI's lists with `feckless_abi_image_v1` and all
+answered; the .bin holds the six JPEG handlers; and in the ELF's code the
+one `feckless_box_checkin` is box_heap.c's -- add, compare with 0x4000,
+zero, a tail call to `xTaskGetTickCount` -- with four call sites from the
+image handler. `box_image.c` compiles for the ESP32-P4. *Not checked:* a
+board.

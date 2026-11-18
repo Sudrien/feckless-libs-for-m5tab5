@@ -5,6 +5,7 @@ idf_component_register(
     SRCS "src/box_calls.c" "src/box_storage.c" "src/box_audio.c"
          "src/box_rtos.c"   # u-feckless-0045
          "src/box_codec.c"  # u-feckless-0052
+         "src/box_image.c"  # u-feckless-0065
          "src/box_nvs.c"    # u-feckless-0053
          "src/box_camera.c" # u-feckless-0059
          "src/box_drivers.c" # u-feckless-0062
@@ -14,6 +15,7 @@ idf_component_register(
                   feckless_storage_handler feckless_nvs_handler nvs_flash fatfs vfs
                   esp_timer log freertos esp_rom heap
                   esp_driver_uart esp_driver_gpio esp_driver_i2c   # u-feckless-0062
+                  esp_driver_jpeg esp_mm   # u-feckless-0065: the JPEG engine, where the chip has one
 )
 
 # u-feckless-0052: esp_audio_codec's simple decoder, answered in a box where

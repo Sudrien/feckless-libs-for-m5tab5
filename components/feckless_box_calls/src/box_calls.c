@@ -677,13 +677,14 @@ static const feckless_umode_call_t s_own[] = {
 #define AUDIO_MAX 64
 #define RTOS_MAX 48
 #define CODEC_MAX 8                         /* u-feckless-0052 */
+#define IMAGE_MAX 8                         /* u-feckless-0065 */
 #define NVS_MAX 16                          /* u-feckless-0053 */
 #define CAMERA_MAX 8                        /* u-feckless-0059 */
 #define DRIVERS_MAX 24                      /* u-feckless-0062 */
 
 const feckless_umode_call_t *feckless_box_calls_v1(uint32_t *n)
 {
-    static feckless_umode_call_t table[HEAP_MAX + OWN_N + STORAGE_MAX + AUDIO_MAX + RTOS_MAX + CODEC_MAX + NVS_MAX + CAMERA_MAX + DRIVERS_MAX];
+    static feckless_umode_call_t table[HEAP_MAX + OWN_N + STORAGE_MAX + AUDIO_MAX + RTOS_MAX + CODEC_MAX + IMAGE_MAX + NVS_MAX + CAMERA_MAX + DRIVERS_MAX];
     static uint32_t count;
     if (!count) {
         uint32_t k = 0;
@@ -704,6 +705,9 @@ const feckless_umode_call_t *feckless_box_calls_v1(uint32_t *n)
         }
         for (uint32_t i = 0; i < box_codec_calls_n && i < CODEC_MAX; i++) {
             table[k++] = box_codec_calls[i];
+        }
+        for (uint32_t i = 0; i < box_image_calls_n && i < IMAGE_MAX; i++) {
+            table[k++] = box_image_calls[i];
         }
         for (uint32_t i = 0; i < box_nvs_calls_n && i < NVS_MAX; i++) {
             table[k++] = box_nvs_calls[i];
@@ -726,6 +730,7 @@ void feckless_box_calls_end(void)
     box_audio_end();
     box_rtos_end();
     box_codec_end();
+    box_image_end();
     box_nvs_end();
     box_camera_end();
     box_drivers_end();

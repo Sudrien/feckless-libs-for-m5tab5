@@ -127,3 +127,37 @@ esp_err_t i2c_master_transmit_receive(i2c_master_dev_handle_t dev, const uint8_t
     (void)wr; (void)wn;
     return i2c_master_receive(dev, rd, rn, ms);
 }
+
+/* u-feckless-0065: the JPEG engine and the cache's line */
+#include "driver/jpeg_decode.h"
+#include "esp_cache.h"
+static int s_engine_obj;
+int jpg_news, jpg_dels, jpg_infos, jpg_procs, jpg_new_timeout = -1;
+esp_err_t jpg_proc_result = ESP_OK;
+const void *jpg_proc_in, *jpg_proc_out, *jpg_info_in;
+uint32_t jpg_proc_out_size;
+int jpg_proc_fmt = -1;
+size_t esp_cache_get_line_size_by_addr(const void *addr) { (void)addr; return 128; }
+esp_err_t jpeg_new_decoder_engine(const jpeg_decode_engine_cfg_t *cfg, jpeg_decoder_handle_t *ret)
+{
+    jpg_news++; jpg_new_timeout = cfg->timeout_ms;
+    *ret = (jpeg_decoder_handle_t)&s_engine_obj;
+    return ESP_OK;
+}
+esp_err_t jpeg_del_decoder_engine(jpeg_decoder_handle_t eng) { (void)eng; jpg_dels++; return ESP_OK; }
+esp_err_t jpeg_decoder_get_info(const uint8_t *bs, uint32_t n, jpeg_decode_picture_info_t *info)
+{
+    (void)n; jpg_infos++; jpg_info_in = bs;
+    info->width = 640; info->height = 480; info->sample_method = 2;
+    return ESP_OK;
+}
+esp_err_t jpeg_decoder_process(jpeg_decoder_handle_t eng, const jpeg_decode_cfg_t *cfg, const uint8_t *bs, uint32_t n,
+                               uint8_t *out, uint32_t out_size, uint32_t *decoded)
+{
+    (void)eng; (void)n;
+    jpg_procs++; jpg_proc_in = bs; jpg_proc_out = out; jpg_proc_out_size = out_size; jpg_proc_fmt = (int)cfg->output_format;
+    if (jpg_proc_result != ESP_OK) return jpg_proc_result;
+    memset(out, 0x77, out_size);
+    *decoded = out_size;
+    return ESP_OK;
+}

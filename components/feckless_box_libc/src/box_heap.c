@@ -20,6 +20,32 @@
 #include "esp_err.h"
 #include "multi_heap.h"
 
+/* u-feckless-0065: feckless_box_checkin(work). A window holds interrupts off
+ * on its core until the app's next host call (u-feckless-0017), so code that
+ * computes for long without one -- a picture decoded in software -- starves
+ * the panel, the other threads of the app on that core, and at length the
+ * interrupt watchdog. A loop that may run long calls this with a measure of
+ * the work since its last call (pixels, say); every CHECKIN_WORK of it, one
+ * host call, the cheapest there is, and the core takes what was pending.
+ *
+ * Here, in box_heap.c, because a component that wants it in an ELF defines a
+ * weak no-op of its own for builds without this library -- a launcher's --
+ * and a linker extracts an archive member for a strong definition only when
+ * the member is wanted for something else: anything that allocates wants
+ * this one. */
+#define CHECKIN_WORK (16u * 1024u)
+uint32_t xTaskGetTickCount(void);          /* TickType_t; FreeRTOS's header is not the box libc's */
+static uint32_t s_checkin_work;
+
+void feckless_box_checkin(uint32_t work)
+{
+    s_checkin_work += work;
+    if (s_checkin_work >= CHECKIN_WORK) {
+        s_checkin_work = 0;
+        (void)xTaskGetTickCount();
+    }
+}
+
 /* u-feckless-0048: heap_caps_register_failed_alloc_callback()'s, called by
  * these when the box's heap says no -- the app's own code, run in the app. */
 typedef void (*box_alloc_failed_t)(size_t size, uint32_t caps, const char *function_name);

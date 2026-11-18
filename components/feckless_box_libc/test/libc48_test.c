@@ -257,6 +257,26 @@ static void test_heap(void)
     CHECK(s_failed_fn && !strcmp(s_failed_fn, "heap_caps_malloc"));
 }
 
+/* u-feckless-0065: feckless_box_checkin(), one host call per 16 K of work */
+static int s_ticks;
+uint32_t xTaskGetTickCount(void) { return (uint32_t)++s_ticks; }
+void feckless_box_checkin(uint32_t work);
+
+static void test_checkin(void)
+{
+    s_ticks = 0;
+    for (int i = 0; i < 16383; i++) feckless_box_checkin(1);
+    CHECK(s_ticks == 0);
+    feckless_box_checkin(1);
+    CHECK(s_ticks == 1);                        /* the 16384th unit */
+    feckless_box_checkin(0);
+    CHECK(s_ticks == 1);
+    feckless_box_checkin(1000000);
+    CHECK(s_ticks == 2);                        /* a big step is one call, not sixty */
+    for (int i = 0; i < 64; i++) feckless_box_checkin(1024);
+    CHECK(s_ticks == 6);
+}
+
 int main(void)
 {
     test_strtod();
@@ -264,6 +284,7 @@ int main(void)
     test_sscanf();
     test_stdio();
     test_heap();
+    test_checkin();
     printf(failed ? "libc48: %d FAILED\n" : "libc48: all passed (%d checks)\n", failed ? failed : checks);
     return failed != 0;
 }

@@ -21,3 +21,10 @@ static inline void feckless_abi_require_box(void)
 {
     __asm__ volatile("" :: "r"(&FECKLESS_ABI_BOX_SYMBOL));
 }
+
+/* u-feckless-0065: a long loop's check-in with the host, in the box's libc
+ * (src/box_heap.c). work is how much was done since the last call; every
+ * 16 K of it, one host call, so the core takes the interrupts a window has
+ * held off. A component that calls it from code also built into a launcher
+ * defines a weak no-op of its own (feckless_image_handler does). */
+void feckless_box_checkin(uint32_t work);
