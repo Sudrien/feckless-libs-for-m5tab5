@@ -1057,7 +1057,7 @@ static esp_err_t uac_class_install(void)
         .create_background_task = true,
         .task_priority = 5,
         .stack_size = 4096,
-        .core_id = tskNO_AFFINITY,
+        .core_id = USBHOST_CORE,            /* 0069 */
         .callback = driver_event_cb,
         .callback_arg = NULL,
     };
@@ -1077,7 +1077,7 @@ esp_err_t uac_init(void)
     /* Above the UI at 4 and below the audio writer at 6. It runs twice
      * per plug event and holds the lock the writer needs, so it should
      * not be made to wait behind a redraw. */
-    if (xTaskCreate(uac_task, "uac_events", 4096, NULL, 5, NULL) != pdPASS) {
+    if (xTaskCreatePinnedToCore(uac_task, "uac_events", 4096, NULL, 5, NULL, USBHOST_CORE) != pdPASS) {
         return ESP_ERR_NO_MEM;
     }
 

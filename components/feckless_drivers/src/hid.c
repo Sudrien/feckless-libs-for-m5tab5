@@ -1000,7 +1000,7 @@ static esp_err_t hid_claim(usb_device_handle_t dev, const usb_intf_desc_t *intf,
      * and neither should be able to sit behind the other. Below the
      * audio writer at 6, which is the only thing here that must never
      * wait. */
-    if (xTaskCreate(hid_poll_task, "hid_poll", 3072, ctx, 4, NULL) != pdPASS) {
+    if (xTaskCreatePinnedToCore(hid_poll_task, "hid_poll", 3072, ctx, 4, NULL, USBHOST_CORE) != pdPASS) {
         usb_host_transfer_free(ctx->transfer);
         vSemaphoreDelete(ctx->done);
         free(ctx);
@@ -1402,7 +1402,7 @@ static esp_err_t hid_client_install(void)
     };
     ESP_RETURN_ON_ERROR(usb_host_client_register(&cfg, &s_client), TAG, "register");
 
-    if (xTaskCreate(client_task, "hid_client", 4096, NULL, 5, NULL) != pdPASS) {
+    if (xTaskCreatePinnedToCore(client_task, "hid_client", 4096, NULL, 5, NULL, USBHOST_CORE) != pdPASS) {
         return ESP_ERR_NO_MEM;
     }
     return ESP_OK;

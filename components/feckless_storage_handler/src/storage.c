@@ -590,6 +590,7 @@ static esp_err_t msc_class_install(void)
         .create_backround_task = true,
         .task_priority = 5,
         .stack_size = 4096,
+        .core_id = 0,       /* u-feckless-0069: with the rest of USB, off the box's core */
         .callback = msc_event_cb,
     };
     return msc_host_install(&msc_cfg);

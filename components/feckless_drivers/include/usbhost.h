@@ -26,6 +26,21 @@
 #include "driver/i2c_master.h"
 #include "esp_err.h"
 
+/*
+ * u-feckless-0069: the core every USB task runs on -- the bus, the host
+ * library, the class drivers and their event tasks.
+ *
+ * Core 0, the launcher's. A boxed app's windows run on core 1 and are not
+ * preempted: until the app's next host call no task on that core runs,
+ * whatever its priority (u-feckless-0017, 0031). USB audio is isochronous,
+ * fed a few milliseconds ahead from the class driver's buffer by these
+ * tasks, so a task left free to land on core 1 missed its turn behind
+ * every window -- Defeatist's level strip redraws four times a second, and
+ * a USB DAC stuttered four times a second. I2S, with 87 ms of DMA, never
+ * noticed.
+ */
+#define USBHOST_CORE    0
+
 #ifdef __cplusplus
 extern "C" {
 #endif

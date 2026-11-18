@@ -320,7 +320,7 @@ static esp_err_t bring_up(void)
     ESP_LOGI(TAG, "USB transfer buffers and descriptor lists in PSRAM");
 #endif
 
-    if (xTaskCreate(usb_lib_task, "usb_lib", 4096, NULL, 5, NULL) != pdPASS) {
+    if (xTaskCreatePinnedToCore(usb_lib_task, "usb_lib", 4096, NULL, 5, NULL, USBHOST_CORE) != pdPASS) {
         return ESP_ERR_NO_MEM;
     }
 
@@ -412,7 +412,7 @@ esp_err_t usbhost_init(i2c_master_dev_handle_t exp2)
     s_exp2 = exp2;
     /* Again is not an error: one bus task, already there. */
     if (s_task) return ESP_OK;
-    if (xTaskCreate(usbhost_task, "usbhost", 4096, NULL, 3, &s_task) != pdPASS) {
+    if (xTaskCreatePinnedToCore(usbhost_task, "usbhost", 4096, NULL, 3, &s_task, USBHOST_CORE) != pdPASS) {
         return ESP_ERR_NO_MEM;
     }
     return ESP_OK;
