@@ -5119,3 +5119,22 @@ pointer out of the box, an input over 64 KB, and both marks as data (the
 table's data count is now 16). `make nonet` builds it with
 FECKLESS_BOX_NO_CRYPTO. *Not checked:* the board, or against mbedTLS's own
 psa/crypto.h, which this tree doesn't have.
+
+### u-feckless-0079 -- box_httpd.c builds with -Werror=stringop-truncation
+
+The board's build stopped at `strncpy((char *)p->uri, req->uri,
+sizeof p->uri - 1)` in `on_request()`. GCC sees two `uri` arrays of the
+same size (`CONFIG_HTTPD_MAX_URI_LEN + 1`) and warns that the copy may
+truncate, and the project builds with warnings as errors.
+
+The fix is a `memcpy` of `strnlen()` bytes: the proxy is zeroed just
+before, so it always ends in a NUL. A handler's stored path
+(box_httpd.c) and the interface key (box_netif.c) used the same
+strncpy-then-terminate pattern, and now copy the same way. Nothing else
+changes.
+
+*Checked:* box_calls_test, httpd_test, upcall_test, leaselock_test and
+box_storage_test pass. All five files compile at -O2 -Werror, and
+box_httpd.c also against ESP-IDF 6.1's esp_http_server.h. The host's GCC
+did not reproduce the board's warning, so the board's build is the check
+that matters.

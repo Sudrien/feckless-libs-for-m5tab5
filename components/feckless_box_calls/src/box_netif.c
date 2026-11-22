@@ -193,8 +193,9 @@ H(c_esp_netif_get_handle_from_ifkey)
     const char *s = str(w, a[0], KEY_MAX);
     if (!s) return true;
     char key[KEY_MAX];
-    strncpy(key, s, sizeof key - 1);
-    key[sizeof key - 1] = '\0';
+    const size_t kl = strnlen(s, sizeof key - 1);
+    memcpy(key, s, kl);
+    key[kl] = '\0';
     ifkey_t k = { .key = key };
     (void)esp_netif_find_if(by_key, &k);
     if (!k.got) return true;

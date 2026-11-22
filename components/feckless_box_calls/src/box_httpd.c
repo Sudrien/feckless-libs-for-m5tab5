@@ -253,7 +253,9 @@ static esp_err_t on_request(httpd_req_t *req)
         memset(p, 0, sizeof *p);
         p->handle = (httpd_handle_t)(uintptr_t)tok_of(s);
         p->method = req->method;
-        strncpy((char *)p->uri, req->uri, sizeof p->uri - 1);
+        /* u-feckless-0079: memcpy, not strncpy -- GCC's stringop-truncation
+         * sees two arrays of one size; p is zeroed above, so it ends. */
+        memcpy((char *)p->uri, req->uri, strnlen(req->uri, sizeof p->uri - 1));
         p->content_len = req->content_len;
         p->user_ctx = (void *)(uintptr_t)ctx;
         s->cur = req;
@@ -486,8 +488,9 @@ H(c_httpd_register_uri_handler)
     e->fn = fn;
     e->ctx = (uint32_t)(uintptr_t)u.user_ctx;
     e->method = u.method;
-    strncpy(e->uri, path, sizeof e->uri - 1);
-    e->uri[sizeof e->uri - 1] = '\0';
+    const size_t pl = strnlen(path, sizeof e->uri - 1);
+    memcpy(e->uri, path, pl);
+    e->uri[pl] = '\0';
     h.handler = on_request;
     h.user_ctx = e;
     const esp_err_t r = httpd_register_uri_handler(s->h, &h);
