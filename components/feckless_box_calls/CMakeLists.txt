@@ -10,6 +10,7 @@ idf_component_register(
          "src/box_camera.c" # u-feckless-0059
          "src/box_drivers.c" # u-feckless-0062
          "src/box_net.c"     # u-feckless-0071
+         "src/box_http.c"    # u-feckless-0073
     INCLUDE_DIRS "include"
     REQUIRES feckless_umode
     PRIV_REQUIRES feckless_abi feckless_drivers feckless_graphics_handler
@@ -35,3 +36,8 @@ idf_component_optional_requires(PRIVATE feckless_camera)
 # launcher links feckless_network_handler (box_net.c builds an empty table
 # without it), as one that offers the ABI's network section does.
 idf_component_optional_requires(PRIVATE feckless_network_handler)
+
+# u-feckless-0073: esp_http_client, answered where box_net.c is and the
+# launcher links the client and its certificate bundle (box_http.c builds an
+# empty table without them).
+idf_component_optional_requires(PRIVATE esp_http_client mbedtls)

@@ -100,3 +100,11 @@ void box_drivers_end(void);
 extern const feckless_umode_call_t box_net_calls[];
 extern const uint32_t box_net_calls_n;
 void box_net_end(void);
+
+/* u-feckless-0073: esp_http_client, the launcher's clients by number
+ * (box_http.c); an empty table where box_net.c's is, or the launcher does
+ * not link esp_http_client. box_http_reap(): the stop's watch. */
+extern const feckless_umode_call_t box_http_calls[];
+extern const uint32_t box_http_calls_n;
+void box_http_end(void);
+void box_http_reap(void *arg);

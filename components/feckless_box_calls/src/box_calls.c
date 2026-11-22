@@ -682,10 +682,11 @@ static const feckless_umode_call_t s_own[] = {
 #define CAMERA_MAX 8                        /* u-feckless-0059 */
 #define DRIVERS_MAX 24                      /* u-feckless-0062 */
 #define NET_MAX 40                          /* u-feckless-0071 */
+#define HTTP_MAX 24                         /* u-feckless-0073 */
 
 const feckless_umode_call_t *feckless_box_calls_v1(uint32_t *n)
 {
-    static feckless_umode_call_t table[HEAP_MAX + OWN_N + STORAGE_MAX + AUDIO_MAX + RTOS_MAX + CODEC_MAX + IMAGE_MAX + NVS_MAX + CAMERA_MAX + DRIVERS_MAX + NET_MAX];
+    static feckless_umode_call_t table[HEAP_MAX + OWN_N + STORAGE_MAX + AUDIO_MAX + RTOS_MAX + CODEC_MAX + IMAGE_MAX + NVS_MAX + CAMERA_MAX + DRIVERS_MAX + NET_MAX + HTTP_MAX];
     static uint32_t count;
     if (!count) {
         uint32_t k = 0;
@@ -722,6 +723,9 @@ const feckless_umode_call_t *feckless_box_calls_v1(uint32_t *n)
         for (uint32_t i = 0; i < box_net_calls_n && i < NET_MAX; i++) {
             table[k++] = box_net_calls[i];
         }
+        for (uint32_t i = 0; i < box_http_calls_n && i < HTTP_MAX; i++) {
+            table[k++] = box_http_calls[i];
+        }
         count = k;
     }
     *n = count;
@@ -738,6 +742,7 @@ void feckless_box_calls_end(void)
     box_nvs_end();
     box_camera_end();
     box_drivers_end();
+    box_http_end();                         /* u-feckless-0073: before its sockets go */
     box_net_end();                          /* u-feckless-0071 */
     memset(s_err_name, 0, sizeof s_err_name);   /* the box goes with the app */
     s_err_names = 0;

@@ -4796,3 +4796,73 @@ box_calls_test, box_storage_test (its storage_io checks now on the
 class and bytes storage_io_count() is given and the lease given back),
 nofastseek, nocodec, nocamera, nonet, and feckless_storage_handler's
 listtest pass. *Not checked:* the board.
+
+### u-feckless-0073 -- a boxed app's HTTP client: esp_http_client by number
+
+Defeatist's boxed player streams radio, fetches podcast feeds and searches
+radio-browser through esp_http_client, and its absent.c answered every one
+of those calls with a failure. **box_http.c** answers the network
+section's esp_http_client names with the launcher's own client, over the
+routes box_net.c (u-feckless-0071) already answers:
+
+- **`esp_http_client_init`** copies what it can stand behind out of the
+  app's config into the launcher -- the URL, host, path, query, user
+  agent, credentials, common name, a server certificate (PEM string or
+  `cert_len` DER bytes), the scalars -- and gives the app a number,
+  `"HTT\0"` + slot, six at once. `buffer_size` and `buffer_size_tx` are
+  capped at 16 KB. `crt_bundle_attach` set means the launcher's
+  `esp_crt_bundle_attach`, whatever address the app gave. A config asking
+  for a client certificate or key, an interface, async, ALPN, cipher or
+  group lists, the DS or ECDSA peripheral or a custom transport is refused
+  with a line naming it.
+- **The event handler is never called**: it is the app's code, and the box
+  does not call back into its app. The headers it would have been shown
+  are read afterwards with **`esp_http_client_get_response_header`**, new
+  in sections/network.txt; it needs
+  `CONFIG_ESP_HTTP_CLIENT_SAVE_RESPONSE_HEADERS`, which
+  feckless_abi_network now requires (without it the box answers
+  `ESP_ERR_NOT_SUPPORTED`). `perform()` is answered, but since its body
+  goes to events it is for a request whose answer is its status.
+- **Strings handed back** (`get_header`, `get_response_header`) are copied
+  into one 2 KB buffer per number, allocated in the box at init, good
+  until the next such call on that number. `set_post_field`'s data is
+  copied too (up to 16 KB), since the client keeps only the pointer.
+  `get_url` copies into the app's buffer.
+- **open, write, fetch_headers, read, perform, close and cleanup are
+  unlocked** (they wait in lwIP for the app's `timeout_ms`, which may be
+  longer than FECKLESS_UMODE_STOP_WAIT_MS). While any of them is in
+  flight a 100 ms esp_timer watches for the app's stop, and when it comes
+  shuts down the socket of every request in flight
+  (`esp_http_client_get_socket()`, `lwip_shutdown()`), so the waits end
+  inside the stop's 3 s. A DNS lookup inside open cannot be ended that
+  way. New calls on any number are refused while the app stops.
+- `cleanup` or `close` on a number that another of the app's threads is
+  using shuts its socket down and waits (up to 3 s) for that call to come
+  back, so the host never frees a client under a call; `cleanup` frees
+  the box buffer under the app's lock. The app's end
+  (`feckless_box_calls_end()`) cleans up what it left, before its sockets.
+- `read` and `write` work in place in the box, at most 64 KB a call: a
+  longer one is a short read or write, as the client may give anyway,
+  and only the part moved is checked against the box (Defeatist asks for
+  what is left of a 512 KB picture buffer).
+- `fetch_headers` and `get_content_length` return 64 bits
+  (`feckless_umode_ret64`). Calling `esp_crt_bundle_attach` directly
+  answers `ESP_ERR_NOT_SUPPORTED`: there is no TLS config of the
+  launcher's to hand it.
+
+Built where box_net.c is and the launcher links esp_http_client
+(`idf_component_optional_requires(esp_http_client mbedtls)`); without the
+certificate bundle a config asking for it is refused.
+
+*Tested:* box_calls_test's `test_http`, against fake_http.c (a client over
+a socketpair): the config's strings land outside the box and stay put when
+the app changes its copy, the handler and user data are dropped, the
+bundle is the launcher's, the refused configs leave no client behind,
+headers come back in the box buffer (truncated at 2047), the 64-bit
+returns, reads in place, shortened past 64 KB and out of bounds, the post
+field kept, the stop
+arriving during a read shutting the socket down (recv returns at once),
+calls refused while stopping and on numbers not given, six at once,
+cleanup under the app's lock, and the app's end cleaning up the rest.
+`make nonet` also builds box_http.c without the network. Also built
+against ESP-IDF 6.1's own esp_http_client.h with HTTPS and DS on. *Not checked:* the board.

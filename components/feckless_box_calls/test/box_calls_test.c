@@ -1669,6 +1669,171 @@ static void test_net(void)
     w.ctx.x[4] = 0;
 }
 
+/* ---- u-feckless-0073: esp_http_client by number ---- */
+
+#include "esp_crt_bundle.h"
+#include "esp_http_client.h"
+
+extern esp_http_client_handle_t fake_http_last;
+extern int fake_http_live, fake_http_read_got, fake_timer_running, fake_timer_made;
+extern bool fake_http_reap_in_read;
+struct fake_client_view {                  /* fake_http.c's struct, as far as the test looks */
+    esp_http_client_config_t cfg;
+    char *url;
+    int fd[2];
+    const char *post;
+    int post_len;
+};
+#define HTOK 0x48545400u
+static bool in_box(const void *p) { return p && feckless_umode_range_ok(&w, (uintptr_t)p, 1); }
+
+static void test_http(void)
+{
+    const int live0 = fake_http_live;
+    esp_http_client_config_t *cfg = bx(sizeof *cfg);
+    char *url = put_str("http://example.org/stream");
+    cfg->url = url;
+    cfg->user_agent = put_str("defeatist/1");
+    cfg->timeout_ms = 15000;
+    cfg->buffer_size = 1 << 20;                                     /* capped */
+    cfg->crt_bundle_attach = (esp_err_t (*)(void *))(uintptr_t)(P(mem) + 16);   /* the app's own copy */
+    cfg->event_handler = (http_event_handle_cb)(uintptr_t)(P(mem) + 32);         /* never called */
+    cfg->user_data = mem;
+
+    const uint32_t h = C1("esp_http_client_init", P(cfg));
+    CHECK(h >= HTOK && h < HTOK + 6);
+    struct fake_client_view *fc = (struct fake_client_view *)fake_http_last;
+    CHECK(fc && fc->cfg.url && !in_box(fc->cfg.url) && !strcmp(fc->cfg.url, "http://example.org/stream"));
+    CHECK(fc->cfg.user_agent && !in_box(fc->cfg.user_agent) && !strcmp(fc->cfg.user_agent, "defeatist/1"));
+    CHECK(fc->cfg.crt_bundle_attach == esp_crt_bundle_attach);    /* the launcher's */
+    CHECK(fc->cfg.event_handler == NULL && fc->cfg.user_data == NULL);
+    CHECK(fc->cfg.buffer_size == 16 * 1024 && fc->cfg.timeout_ms == 15000);
+    strcpy(url, "http://evil.example/");                              /* the app changes its copy: */
+    CHECK(!strcmp(fc->cfg.url, "http://example.org/stream"));        /* the launcher's does not */
+
+    /* the blocking ones unlocked, the others not */
+    CHECK(flags_of("esp_http_client_read") & FECKLESS_UMODE_CALL_UNLOCKED);
+    CHECK(flags_of("esp_http_client_open") & FECKLESS_UMODE_CALL_UNLOCKED);
+    CHECK(flags_of("esp_http_client_fetch_headers") & FECKLESS_UMODE_CALL_UNLOCKED);
+    CHECK(flags_of("esp_http_client_cleanup") & FECKLESS_UMODE_CALL_UNLOCKED);
+    CHECK(!(flags_of("esp_http_client_init") & FECKLESS_UMODE_CALL_UNLOCKED));
+    CHECK(!(flags_of("esp_http_client_get_response_header") & FECKLESS_UMODE_CALL_UNLOCKED));
+
+    /* refused configs: no number, no client left behind */
+    {
+        esp_http_client_config_t *bad = bx(sizeof *bad);
+        bad->url = put_str("https://example.org/");
+        bad->client_cert_pem = put_str("-----BEGIN CERTIFICATE-----");
+        CHECK(C1("esp_http_client_init", P(bad)) == 0);
+        bad->client_cert_pem = NULL;
+        bad->if_name = (struct ifreq *)mem;
+        CHECK(C1("esp_http_client_init", P(bad)) == 0);
+        bad->if_name = NULL;
+        bad->is_async = true;
+        CHECK(C1("esp_http_client_init", P(bad)) == 0);
+        bad->is_async = false;
+        bad->url = (const char *)(uintptr_t)(P(mem) + MEM - 3);       /* runs out of the box */
+        memset(mem + MEM - 3, 'x', 3);
+        CHECK(C1("esp_http_client_init", P(bad)) == 0);
+        bad->url = put_str("http://no-init/");                       /* the client will not start */
+        CHECK(C1("esp_http_client_init", P(bad)) == 0);
+        CHECK(C1("esp_http_client_init", P(mem) + MEM - 8) == 0);     /* the config out of the box */
+        CHECK(fake_http_live == live0 + 1);
+    }
+
+    /* headers: the request's, and the response's into the number's buffer */
+    char **val = bx(sizeof *val);
+    CHECK(C4("esp_http_client_set_header", h, P(put_str("Icy-MetaData")), P(put_str("1")), 0) == ESP_OK);
+    CHECK(C4("esp_http_client_get_header", h, P(put_str("icy-metadata")), P(val), 0) == ESP_OK);
+    CHECK(in_box(*val) && !strcmp(*val, "1"));
+    CHECK(C4("esp_http_client_get_response_header", h, P(put_str("icy-metaint")), P(val), 0) == ESP_OK);
+    CHECK(in_box(*val) && !strcmp(*val, "16000"));
+    char *first = *val;
+    CHECK(C4("esp_http_client_get_response_header", h, P(put_str("x-long")), P(val), 0) == ESP_OK);
+    CHECK(*val == first && strlen(*val) == 2047);                    /* one buffer, HDR_MAX - 1 */
+    CHECK(C4("esp_http_client_get_response_header", h, P(put_str("nope")), P(val), 0) == ESP_ERR_NOT_FOUND &&
+          *val == NULL);
+    CHECK(C4("esp_http_client_get_response_header", h, P(put_str("icy-metaint")), P(mem) + MEM, 0) ==
+          ESP_ERR_INVALID_ARG);
+
+    /* a request: open, headers (64-bit), the body read in place */
+    CHECK(C2("esp_http_client_open", h, 0) == ESP_OK);
+    CHECK(hi_lo(C1("esp_http_client_fetch_headers", h)) == 11);
+    CHECK(hi_lo(C1("esp_http_client_get_content_length", h)) == 0x100000005ULL);
+    CHECK(C1("esp_http_client_get_status_code", h) == 200);
+    char *body = bx(64);
+    CHECK(sret(C4("esp_http_client_read", h, P(body), 5, 0)) == 5 && !memcmp(body, "hello", 5));
+    CHECK(sret(C4("esp_http_client_read", h, P(mem) + MEM - 2, 5, 0)) == -1);   /* out of the box */
+    CHECK(sret(C4("esp_http_client_read", h, P(body), 0x80000000u, 0)) == -1);
+    {
+        char *big = bx(128 * 1024);                                   /* asks for more than IO_MAX: */
+        CHECK(sret(C4("esp_http_client_read", h, P(big), 128 * 1024, 0)) == 6 && !memcmp(big, " world", 6));
+        CHECK(sret(C4("esp_http_client_read", h, P(mem) + MEM - 100, 512 * 1024, 0)) == -1);   /* IO_MAX runs out */
+    }
+    CHECK(C1("esp_http_client_is_complete_data_received", h) == 1);
+    CHECK(sret(C4("esp_http_client_write", h, P(body), 5, 0)) == 5);
+    CHECK(fake_timer_made == 1 && fake_timer_running == 0);        /* made once, stopped with nothing in flight */
+    CHECK(C1("esp_http_client_close", h) == ESP_OK);
+
+    /* a post field is kept by the launcher, not pointed into the box */
+    {
+        char *d = bx(8);
+        memcpy(d, "a=1&b=2", 8);
+        CHECK(C4("esp_http_client_set_post_field", h, P(d), 7, 0) == ESP_OK);
+        CHECK(fc->post && !in_box(fc->post) && fc->post_len == 7 && !memcmp(fc->post, "a=1&b=2", 7));
+        memset(d, 0, 8);
+        CHECK(!memcmp(fc->post, "a=1&b=2", 7));
+        CHECK(C4("esp_http_client_set_post_field", h, P(mem) + MEM - 2, 7, 0) == ESP_ERR_INVALID_ARG);
+    }
+
+    /* the URL, out and in */
+    {
+        CHECK(C2("esp_http_client_set_url", h, P(put_str("http://example.org/other"))) == ESP_OK);
+        char *u = bx(64);
+        CHECK(C4("esp_http_client_get_url", h, P(u), 64, 0) == ESP_OK && !strcmp(u, "http://example.org/other"));
+        CHECK(C4("esp_http_client_get_url", h, P(u), 10, 0) == ESP_OK && strlen(u) == 9);
+    }
+
+    /* the stop, while a read waits: the watch shuts its socket down */
+    CHECK(C2("esp_http_client_open", h, 0) == ESP_OK);
+    fake_http_reap_in_read = true;
+    CHECK(sret(C4("esp_http_client_read", h, P(body), 64, 0)) == -1);
+    CHECK(fake_http_read_got == 0);                                   /* ended, not stuck */
+    CHECK(fake_stopping);
+    CHECK(C2("esp_http_client_open", h, 0) == ESP_ERR_INVALID_ARG);   /* nothing new while stopping */
+    fake_stopping = false;
+
+    /* numbers the app was not given */
+    CHECK(C1("esp_http_client_get_status_code", 0x1234) == ESP_ERR_INVALID_ARG);
+    CHECK(C1("esp_http_client_cleanup", HTOK + 5) == ESP_ERR_INVALID_ARG);
+    CHECK(C1("esp_crt_bundle_attach", 0) == ESP_ERR_NOT_SUPPORTED);
+
+    /* six at once */
+    {
+        esp_http_client_config_t *c2 = bx(sizeof *c2);
+        c2->url = put_str("http://example.org/");
+        uint32_t more[6];
+        int n = 0;
+        for (; n < 6; n++) if ((more[n] = C1("esp_http_client_init", P(c2))) == 0) break;
+        CHECK(n == 5);
+        for (int i = 0; i < n; i++) CHECK(C1("esp_http_client_cleanup", more[i]) == ESP_OK);
+    }
+
+    /* cleanup: the client and the box buffer go, under the app's lock */
+    const int taken = fake_lock_taken;
+    CHECK(C1("esp_http_client_cleanup", h) == ESP_OK);
+    CHECK(fake_lock_taken > taken && fake_lock_depth == 0);
+    CHECK(fake_http_live == live0);
+    CHECK(C1("esp_http_client_cleanup", h) == ESP_ERR_INVALID_ARG);
+    CHECK(C1("esp_http_client_get_status_code", h) == ESP_ERR_INVALID_ARG);
+
+    /* what the app leaves is cleaned up at its end */
+    CHECK(C1("esp_http_client_init", P(cfg)) != 0);
+    CHECK(fake_http_live == live0 + 1);
+    feckless_box_calls_end();
+    CHECK(fake_http_live == live0 && fake_timer_made == 0);
+}
+
 int main(int argc, char **argv)
 {
     mem = mmap(NULL, MEM, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT, -1, 0);
@@ -1706,6 +1871,7 @@ int main(int argc, char **argv)
     test_periph();
     test_jpeg();
     test_net();                         /* u-feckless-0071 */
+    test_http();                        /* u-feckless-0073 */
     printf(failed ? "%d FAILED\n" : "box_calls: all passed (%u calls)\n", failed ? failed : (int)ncalls);
     return failed != 0;
 }

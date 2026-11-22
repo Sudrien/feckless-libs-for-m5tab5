@@ -7,8 +7,9 @@
  *
  * Not here yet: the radio's control and policy (wifi_request_apply() asks
  * the launcher's hooks, and the app's are functions a launcher does not
- * call), esp_netif's handles, the HTTP server and client, feckless_fetch
- * and feckless_https -- every one of those calls back into the app.
+ * call), esp_netif's handles, the HTTP server, feckless_fetch and
+ * feckless_https -- every one of those calls back into the app. The HTTP
+ * client is box_http.c's (u-feckless-0073), without its event handler.
  *
  * SOCKETS
  * - The app is given lwIP's own descriptor, and may use only those it was
