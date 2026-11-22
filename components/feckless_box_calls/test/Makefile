@@ -11,16 +11,16 @@ CFLAGS := -std=gnu11 -g -O1 -Wall -Wextra -Werror \
           -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer \
           -Ifake -I../include -I$(U)/include
 LDFLAGS := -fsanitize=address,undefined -lm
-SRC := box_calls_test.c fake_board.c fake_storage.c fake_audio.c fake_rtos.c fake_drivers.c fake_codec.c fake_nvs.c fake_camera.c fake_periph.c ../src/box_calls.c ../src/box_storage.c ../src/box_audio.c ../src/box_rtos.c ../src/box_codec.c ../src/box_nvs.c ../src/box_camera.c ../src/box_drivers.c ../src/box_image.c $(U)/src/umode_calls.c $(U)/src/umode_box.c $(U)/src/umode_run.c
+SRC := box_calls_test.c fake_net.c fake_board.c fake_storage.c fake_audio.c fake_rtos.c fake_drivers.c fake_codec.c fake_nvs.c fake_camera.c fake_periph.c ../src/box_calls.c ../src/box_storage.c ../src/box_audio.c ../src/box_rtos.c ../src/box_codec.c ../src/box_nvs.c ../src/box_camera.c ../src/box_drivers.c ../src/box_image.c ../src/box_net.c $(U)/src/umode_calls.c $(U)/src/umode_box.c $(U)/src/umode_run.c
 
 all: run
 
-box_calls_test: $(SRC) $(wildcard fake/*.h fake/freertos/*.h fake/driver/*.h) ../src/box_pins.h ../src/box_calls_priv.h ../include/feckless_box_calls.h
+box_calls_test: $(SRC) $(wildcard fake/*.h fake/freertos/*.h fake/driver/*.h fake/lwip/*.h) ../src/box_pins.h ../src/box_calls_priv.h ../include/feckless_box_calls.h
 	$(CC) $(CFLAGS) -o $@ $(SRC) $(LDFLAGS)
 
-SSRC := box_storage_test.c fake_board.c fake_storage.c fake_audio.c fake_rtos.c fake_drivers.c fake_codec.c fake_nvs.c fake_camera.c fake_periph.c ../src/box_calls.c ../src/box_storage.c ../src/box_audio.c ../src/box_rtos.c ../src/box_codec.c ../src/box_nvs.c ../src/box_camera.c ../src/box_drivers.c ../src/box_image.c $(U)/src/umode_calls.c $(U)/src/umode_box.c $(U)/src/umode_run.c
+SSRC := box_storage_test.c fake_net.c fake_board.c fake_storage.c fake_audio.c fake_rtos.c fake_drivers.c fake_codec.c fake_nvs.c fake_camera.c fake_periph.c ../src/box_calls.c ../src/box_storage.c ../src/box_audio.c ../src/box_rtos.c ../src/box_codec.c ../src/box_nvs.c ../src/box_camera.c ../src/box_drivers.c ../src/box_image.c ../src/box_net.c $(U)/src/umode_calls.c $(U)/src/umode_box.c $(U)/src/umode_run.c
 
-box_storage_test: $(SSRC) $(wildcard fake/*.h fake/freertos/*.h fake/driver/*.h) ../src/box_pins.h ../src/box_calls_priv.h ../include/feckless_box_calls.h
+box_storage_test: $(SSRC) $(wildcard fake/*.h fake/freertos/*.h fake/driver/*.h fake/lwip/*.h) ../src/box_pins.h ../src/box_calls_priv.h ../include/feckless_box_calls.h
 	$(CC) $(CFLAGS) -o $@ $(SSRC) $(LDFLAGS)
 
 # u-feckless-0024: box_storage.c without fast seek, as an app whose sdkconfig
@@ -32,14 +32,18 @@ nofastseek:
 nocodec:
 	$(CC) $(CFLAGS) -DFECKLESS_BOX_NO_CODEC -fsyntax-only ../src/box_codec.c
 
+# u-feckless-0071: box_net.c where the launcher has no network to answer with
+nonet:
+	$(CC) $(CFLAGS) -DFECKLESS_BOX_NO_NET -fsyntax-only ../src/box_net.c
+
 # u-feckless-0059: box_camera.c where the launcher has no camera to answer with
 nocamera:
 	$(CC) $(CFLAGS) -DFECKLESS_BOX_NO_CAMERA -fsyntax-only ../src/box_camera.c
 
-run: nofastseek nocodec nocamera box_calls_test box_storage_test
+run: nofastseek nocodec nocamera nonet box_calls_test box_storage_test
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=0 ./box_calls_test
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=0 ./box_storage_test
 
 clean:
 	rm -f box_calls_test box_storage_test
-.PHONY: all run clean nofastseek nocodec nocamera
+.PHONY: all run clean nofastseek nocodec nocamera nonet

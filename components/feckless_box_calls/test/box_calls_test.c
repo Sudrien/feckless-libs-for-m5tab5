@@ -80,7 +80,7 @@ static void test_table(void)
             CHECK(strcmp(calls_tab[i].name, calls_tab[j].name) != 0);       /* no name twice */
     int data = 0;
     for (uint32_t i = 0; i < ncalls; i++) if (!calls_tab[i].fn) { data++; CHECK(calls_tab[i].data && calls_tab[i].data_len >= 4); }
-    CHECK(data == 13);       /* abi_v1, box_v1, storage_v2; Ark12's six tables (u-feckless-0021); audio_v1 (u-feckless-0052); nvs_v1 (0053); camera_v1 (0059); image_v1 (0065) */
+    CHECK(data == 14);       /* abi_v1, box_v1, storage_v2; Ark12's six tables (u-feckless-0021); audio_v1 (u-feckless-0052); nvs_v1 (0053); camera_v1 (0059); image_v1 (0065); network_v1 (0071) */
     for (uint32_t i = 0; i < ncalls; i++) {
         if (!strcmp(calls_tab[i].name, "ark12_lit")) CHECK(calls_tab[i].data_len == 10);
         if (!strcmp(calls_tab[i].name, "ark12_tiles")) CHECK(calls_tab[i].data_len == 12);
@@ -1390,6 +1390,285 @@ static void test_names_file(void)
     if (listed != ncalls) { printf("FAIL boxcalls_names.txt has %u names, the table %u\n", listed, ncalls); failed++; }
 }
 
+
+/* ---- u-feckless-0071: the routes and sockets, on real loopback ones ---- */
+
+#include <arpa/inet.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <time.h>
+#include <unistd.h>
+
+extern bool fake_net_online, fake_eth_connected, fake_eth_link, fake_wifi_up, fake_wifi_connected, fake_ntp;
+extern int fake_wifistore_count;
+extern char fake_eth_ip[64], fake_sta_ip[64], fake_ssid[64], fake_route[128];
+extern uint32_t fake_probe_timeout;
+extern int fake_lock_depth, fake_lock_taken;
+
+static int *net_errno;
+static int64_t ms_now(void)
+{
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (int64_t)t.tv_sec * 1000 + t.tv_nsec / 1000000;
+}
+static void *bx(uint32_t n) { void *p = (void *)(uintptr_t)feckless_box_alloc(&box, n); memset(p, 0, n); return p; }
+static int sret(uint32_t r) { return (int)r; }
+
+static struct sockaddr_in *loop_addr(uint16_t port)
+{
+    struct sockaddr_in *a = bx(sizeof *a);
+    a->sin_family = AF_INET;
+    a->sin_port = htons(port);
+    a->sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    return a;
+}
+
+static void test_net(void)
+{
+    net_errno = bx(sizeof(int));
+    w.ctx.x[4] = P(net_errno);
+    int fl;
+
+    /* not a socket the app was given: lwIP never sees it */
+    char *buf = bx(256);
+    *net_errno = 0;
+    CHECK(sret(C4("lwip_recv", 0, P(buf), 4, 0)) == -1 && *net_errno == EBADF);
+    CHECK(sret(C1("close", 1)) == -1 && *net_errno == EBADF);       /* stdout: not the app's */
+
+    /* a listener, a client, a blocking connect and accept */
+    const int ls = sret(C4("lwip_socket", AF_INET, SOCK_STREAM, 0, 0));
+    CHECK(ls >= 0);
+    fl = fcntl(ls, F_GETFL);
+    CHECK(fl >= 0 && (fl & O_NONBLOCK));                                /* lwIP's side never blocks */
+    CHECK(sret(C4("lwip_fcntl", (uint32_t)ls, F_GETFL, 0, 0)) >= 0 &&
+          !(sret(C4("lwip_fcntl", (uint32_t)ls, F_GETFL, 0, 0)) & O_NONBLOCK));   /* the app's view: blocking */
+    int *one = bx(sizeof(int));
+    *one = 1;
+    CHECK(sret(call("lwip_setsockopt", (uint32_t)ls, SOL_SOCKET, SO_REUSEADDR, P(one), sizeof(int), 0, 0, 0)) == 0);
+    CHECK(sret(C4("lwip_bind", (uint32_t)ls, P(loop_addr(0)), sizeof(struct sockaddr_in), 0)) == 0);
+    CHECK(sret(C2("lwip_listen", (uint32_t)ls, 4)) == 0);
+    struct sockaddr_in *got = bx(sizeof *got);
+    socklen_t *glen = bx(sizeof(socklen_t));
+    *glen = sizeof *got;
+    CHECK(sret(C4("lwip_getsockname", (uint32_t)ls, P(got), P(glen), 0)) == 0 && *glen == sizeof *got);
+    const uint16_t port = ntohs(got->sin_port);
+    CHECK(port != 0);
+
+    const int cs = sret(C4("lwip_socket", AF_INET, SOCK_STREAM, 0, 0));
+    CHECK(cs >= 0);
+    CHECK(sret(C4("lwip_connect", (uint32_t)cs, P(loop_addr(port)), sizeof(struct sockaddr_in), 0)) == 0);
+    struct sockaddr_in *peer = bx(sizeof *peer);
+    socklen_t *plen = bx(sizeof(socklen_t));
+    *plen = sizeof *peer;
+    const int as = sret(C4("lwip_accept", (uint32_t)ls, P(peer), P(plen), 0));
+    CHECK(as >= 0 && *plen == sizeof *peer && peer->sin_addr.s_addr == htonl(INADDR_LOOPBACK));
+    fl = fcntl(as, F_GETFL);
+    CHECK(fl >= 0 && (fl & O_NONBLOCK));
+
+    /* data both ways, in place in the box */
+    memcpy(buf, "hello", 5);
+    CHECK(sret(C4("lwip_send", (uint32_t)cs, P(buf), 5, 0)) == 5);
+    char *in = bx(64);
+    CHECK(sret(C4("lwip_recv", (uint32_t)as, P(in), 64, 0)) == 5 && !memcmp(in, "hello", 5));
+
+    /* nothing to read, SO_RCVTIMEO 250 ms: waits about that, then EAGAIN */
+    struct timeval *tv = bx(sizeof *tv);
+    tv->tv_sec = 0;
+    tv->tv_usec = 250000;
+    CHECK(sret(call("lwip_setsockopt", (uint32_t)as, SOL_SOCKET, SO_RCVTIMEO, P(tv), sizeof *tv, 0, 0, 0)) == 0);
+    int64_t t0 = ms_now();
+    *net_errno = 0;
+    CHECK(sret(C4("lwip_recv", (uint32_t)as, P(in), 64, 0)) == -1 && *net_errno == EAGAIN);
+    int64_t took = ms_now() - t0;
+    CHECK(took >= 200 && took < 1000);
+    printf("  recv with a 250 ms timeout gave up after %lld ms\n", (long long)took);
+
+    /* the app's O_NONBLOCK: at once; and back */
+    const int f0 = sret(C4("lwip_fcntl", (uint32_t)as, F_GETFL, 0, 0));
+    CHECK(sret(C4("lwip_fcntl", (uint32_t)as, F_SETFL, (uint32_t)(f0 | O_NONBLOCK), 0)) == 0);
+    CHECK(sret(C4("lwip_fcntl", (uint32_t)as, F_GETFL, 0, 0)) & O_NONBLOCK);
+    t0 = ms_now();
+    CHECK(sret(C4("lwip_recv", (uint32_t)as, P(in), 64, 0)) == -1 && *net_errno == EAGAIN);
+    CHECK(ms_now() - t0 < 50);
+    CHECK(sret(C4("lwip_fcntl", (uint32_t)as, F_SETFL, (uint32_t)(f0 & ~O_NONBLOCK), 0)) == 0);
+    CHECK(!(sret(C4("lwip_fcntl", (uint32_t)as, F_GETFL, 0, 0)) & O_NONBLOCK));
+    CHECK(fcntl(as, F_GETFL) & O_NONBLOCK);                           /* lwIP's side still never blocks */
+    CHECK(sret(C4("lwip_fcntl", (uint32_t)as, F_GETFD, 0, 0)) == -1 && *net_errno == ENOSYS);
+
+    /* MSG_DONTWAIT on a blocking socket: at once */
+    t0 = ms_now();
+    CHECK(sret(C4("lwip_recv", (uint32_t)as, P(in), 64, MSG_DONTWAIT)) == -1 && *net_errno == EAGAIN);
+    CHECK(ms_now() - t0 < 50);
+
+    /* no timeout at all, and the app stops: EINTR, within a slice or two */
+    tv->tv_usec = 0;
+    CHECK(sret(call("lwip_setsockopt", (uint32_t)cs, SOL_SOCKET, SO_RCVTIMEO, P(tv), sizeof *tv, 0, 0, 0)) == 0);
+    fake_stopping = true;
+    t0 = ms_now();
+    CHECK(sret(C4("lwip_recv", (uint32_t)cs, P(in), 64, 0)) == -1 && *net_errno == EINTR);
+    CHECK(ms_now() - t0 < 300);
+    fake_stopping = false;
+
+    /* select: what is ready; a fd not the app's; a timeout */
+    fd_set *rs = bx(sizeof(fd_set));
+    FD_ZERO(rs);
+    FD_SET(cs, rs);
+    FD_SET(as, rs);
+    tv->tv_sec = 1;
+    tv->tv_usec = 0;
+    memcpy(buf, "x", 1);
+    CHECK(sret(C4("lwip_send", (uint32_t)as, P(buf), 1, 0)) == 1);
+    const int nf = (cs > as ? cs : as) + 1;
+    CHECK(sret(call("select", (uint32_t)nf, P(rs), 0, 0, P(tv), 0, 0, 0)) == 1);
+    CHECK(FD_ISSET(cs, rs) && !FD_ISSET(as, rs));
+    CHECK(sret(C4("lwip_recv", (uint32_t)cs, P(in), 64, 0)) == 1 && in[0] == 'x');
+    FD_ZERO(rs);
+    FD_SET(0, rs);                                                    /* stdin: not the app's */
+    CHECK(sret(call("select", 1, P(rs), 0, 0, P(tv), 0, 0, 0)) == -1 && *net_errno == EBADF);
+    FD_ZERO(rs);
+    FD_SET(cs, rs);
+    tv->tv_sec = 0;
+    tv->tv_usec = 150000;
+    t0 = ms_now();
+    CHECK(sret(call("select", (uint32_t)cs + 1, P(rs), 0, 0, P(tv), 0, 0, 0)) == 0 && !FD_ISSET(cs, rs));
+    took = ms_now() - t0;
+    CHECK(took >= 120 && took < 800);
+    FD_SET(cs, rs);
+    tv->tv_usec = 0;
+    CHECK(sret(call("select", (uint32_t)cs + 1, P(rs), 0, 0, P(tv), 0, 0, 0)) == 0);   /* a poll */
+    CHECK(sret(call("select", FD_SETSIZE + 1, P(rs), 0, 0, P(tv), 0, 0, 0)) == -1 && *net_errno == EINVAL);
+    fd_set *ws = bx(sizeof(fd_set));
+    FD_ZERO(ws);
+    FD_SET(cs, ws);
+    CHECK(sret(call("select", (uint32_t)cs + 1, 0, P(ws), 0, 0, 0, 0, 0)) == 1 && FD_ISSET(cs, ws));  /* no timeout: writable now */
+
+    /* getsockopt with a short room, getpeername */
+    int *ov = bx(sizeof(int));
+    socklen_t *ol = bx(sizeof(socklen_t));
+    *ol = sizeof(int);
+    CHECK(sret(call("lwip_getsockopt", (uint32_t)ls, SOL_SOCKET, SO_REUSEADDR, P(ov), P(ol), 0, 0, 0)) == 0 &&
+          *ov != 0 && *ol == sizeof(int));
+    *plen = 4;                                                        /* room for 4 of 16 bytes */
+    memset(peer, 0xee, sizeof *peer);
+    CHECK(sret(C4("lwip_getpeername", (uint32_t)cs, P(peer), P(plen), 0)) == 0 && *plen == sizeof *peer);
+    CHECK(peer->sin_family == AF_INET && ((uint8_t *)peer)[4] == 0xee);   /* nothing past the room */
+
+    /* the bounds: outside the box, past IO_MAX */
+    CHECK(sret(C4("lwip_send", (uint32_t)cs, P(mem) + MEM - 2, 5, 0)) == -1 && *net_errno == EFAULT);
+    CHECK(sret(C4("lwip_recv", (uint32_t)cs, P(buf), 64 * 1024 + 1, 0)) == -1 && *net_errno == EMSGSIZE);
+    CHECK(sret(C4("lwip_bind", (uint32_t)cs, P(loop_addr(0)), 4096, 0)) == -1 && *net_errno == EFAULT);
+
+    /* a big blocking send goes whole */
+    {
+        const uint32_t n = 60000;
+        uint8_t *big = bx(n);
+        for (uint32_t i = 0; i < n; i++) big[i] = (uint8_t)(i * 7);
+        CHECK(sret(C4("lwip_send", (uint32_t)cs, P(big), n, 0)) == (int)n);
+        uint32_t have = 0;
+        uint8_t *back = bx(n);
+        while (have < n) {
+            const int r = sret(C4("lwip_recv", (uint32_t)as, P(back) + have, n - have, 0));
+            if (r <= 0) break;
+            have += (uint32_t)r;
+        }
+        CHECK(have == n && !memcmp(back, big, n));
+    }
+
+    /* UDP to itself, recvfrom with a short room for the address */
+    {
+        const int us = sret(C4("lwip_socket", AF_INET, SOCK_DGRAM, 0, 0));
+        CHECK(us >= 0 && sret(C4("lwip_bind", (uint32_t)us, P(loop_addr(0)), sizeof(struct sockaddr_in), 0)) == 0);
+        *glen = sizeof *got;
+        CHECK(sret(C4("lwip_getsockname", (uint32_t)us, P(got), P(glen), 0)) == 0);
+        memcpy(buf, "dgram", 5);
+        CHECK(sret(call("lwip_sendto", (uint32_t)us, P(buf), 5, 0, P(got), sizeof *got, 0, 0)) == 5);
+        socklen_t *fl2 = bx(sizeof(socklen_t));
+        *fl2 = sizeof *peer;
+        CHECK(sret(call("lwip_recvfrom", (uint32_t)us, P(in), 64, 0, P(peer), P(fl2), 0, 0)) == 5 &&
+              !memcmp(in, "dgram", 5) && *fl2 == sizeof *peer && peer->sin_port == got->sin_port);
+        CHECK(sret(C1("lwip_close", (uint32_t)us)) == 0);
+    }
+
+    /* close; then it is not the app's */
+    CHECK(sret(C1("close", (uint32_t)as)) == 0);
+    CHECK(fcntl(as, F_GETFD) == -1);                                  /* really closed */
+    CHECK(sret(C1("close", (uint32_t)as)) == -1 && *net_errno == EBADF);
+    CHECK(sret(C4("lwip_send", (uint32_t)as, P(buf), 1, 0)) == -1 && *net_errno == EBADF);
+    CHECK(sret(C2("lwip_shutdown", (uint32_t)cs, SHUT_RDWR)) == 0);
+
+    /* sixteen at once, the seventeenth EMFILE */
+    {
+        int fds[20], n = 0;
+        for (; n < 20; n++) {
+            fds[n] = sret(C4("lwip_socket", AF_INET, SOCK_DGRAM, 0, 0));
+            if (fds[n] < 0) break;
+        }
+        CHECK(n == 16 - 2 && *net_errno == EMFILE);                 /* ls and cs still open */
+        for (int i = 0; i < n; i++) CHECK(sret(C1("close", (uint32_t)fds[i])) == 0);
+    }
+
+    /* getaddrinfo: the answer in the box, allocated under the app's lock */
+    {
+        struct addrinfo *h = bx(sizeof *h);
+        h->ai_family = AF_INET;
+        h->ai_socktype = SOCK_STREAM;
+        h->ai_flags = AI_NUMERICHOST;
+        struct addrinfo **res = bx(sizeof *res);
+        const int taken = fake_lock_taken;
+        CHECK(sret(C4("lwip_getaddrinfo", P(put_str("127.0.0.1")), P(put_str("80")), P(h), P(res))) == 0);
+        CHECK(fake_lock_taken > taken && fake_lock_depth == 0);
+        struct addrinfo *ai = *res;
+        CHECK(ai && feckless_umode_range_ok(&w, (uintptr_t)ai, sizeof *ai));
+        CHECK(ai->ai_family == AF_INET && ai->ai_addr &&
+              feckless_umode_range_ok(&w, (uintptr_t)ai->ai_addr, ai->ai_addrlen));
+        const struct sockaddr_in *sa = (const struct sockaddr_in *)ai->ai_addr;
+        CHECK(sa->sin_port == htons(80) && sa->sin_addr.s_addr == htonl(INADDR_LOOPBACK));
+        for (struct addrinfo *p = ai; p; p = p->ai_next) CHECK(feckless_umode_range_ok(&w, (uintptr_t)p, sizeof *p));
+        const int taken2 = fake_lock_taken;
+        C1("lwip_freeaddrinfo", P(ai));
+        CHECK(fake_lock_taken > taken2 && fake_lock_depth == 0);
+        CHECK(!feckless_box_free(&box, (uintptr_t)ai));               /* already given back */
+        C1("lwip_freeaddrinfo", P(ai));                               /* twice: ignored */
+        C1("lwip_freeaddrinfo", P(buf));                              /* not an answer: ignored */
+        CHECK(feckless_box_free(&box, (uintptr_t)buf) || 1);
+        buf = bx(256);
+        CHECK(sret(C4("lwip_getaddrinfo", P(put_str("127.0.0.1")), 0, P(h), P(mem) + MEM)) == EAI_FAIL);
+        CHECK(sret(C4("lwip_getaddrinfo", P(put_str("not an address")), 0, P(h), P(res))) != 0);
+    }
+
+    /* the routes */
+    fake_net_online = true; fake_eth_connected = true; fake_eth_link = true;
+    fake_wifi_up = false; fake_wifi_connected = false; fake_ntp = true; fake_wifistore_count = 3;
+    strcpy(fake_eth_ip, "192.168.1.125");
+    strcpy(fake_route, "cable (ecm) 192.168.1.125");
+    CHECK(C0("net_online") == 1 && C0("ethernet_connected") == 1 && C0("ethernet_link") == 1);
+    CHECK(C0("wifi_up") == 0 && C0("wifi_connected") == 0 && C0("wifi_ntp_synced") == 1);
+    CHECK(C0("wifistore_count") == 3);
+    char *ip = bx(64);
+    CHECK(C2("ethernet_ip", P(ip), 64) == 1 && !strcmp(ip, "192.168.1.125"));
+    memset(ip, 'z', 64);
+    CHECK(C2("ethernet_ip", P(ip), 8) == 1 && !strcmp(ip, "192.168") && ip[8] == 'z');  /* cut, ended, no further */
+    CHECK(C2("wifi_sta_ip", P(ip), 64) == 0 && ip[0] == '\0');
+    CHECK(C2("ethernet_ip", P(mem) + MEM - 4, 64) == 0);             /* past the box: nothing written */
+    C2("net_route_describe", P(ip), 64);
+    CHECK(!strcmp(ip, "cable (ecm) 192.168.1.125"));
+    int *gw = bx(sizeof(int)), *nt = bx(sizeof(int));
+    char *what = bx(16);
+    CHECK(call("net_probe", 5000, P(gw), P(nt), P(what), 16, 0, 0, 0) == 1);
+    CHECK(fake_probe_timeout == 600 && *gw == 3 && *nt == 41 && strlen(what) == 15);
+
+    /* the end closes what the app left open */
+    feckless_box_calls_end();
+    CHECK(fcntl(ls, F_GETFD) == -1 && fcntl(cs, F_GETFD) == -1);
+    CHECK(sret(C1("close", (uint32_t)ls)) == -1);
+    w.ctx.x[4] = 0;
+}
+
 int main(int argc, char **argv)
 {
     mem = mmap(NULL, MEM, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT, -1, 0);
@@ -1426,6 +1705,7 @@ int main(int argc, char **argv)
     test_pins();
     test_periph();
     test_jpeg();
+    test_net();                         /* u-feckless-0071 */
     printf(failed ? "%d FAILED\n" : "box_calls: all passed (%u calls)\n", failed ? failed : (int)ncalls);
     return failed != 0;
 }

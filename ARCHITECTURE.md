@@ -4679,3 +4679,64 @@ and before each one the part file's bytes up to it are already the
 body's (read under the lease, as a caller would); a pause tells what it
 kept, and the resumed run tells again from the start to the end.
 wifistore, netlink and redirect tests pass. *Not checked:* a board.
+
+### u-feckless-0071 -- a boxed app on the network: the routes and lwIP's sockets
+
+Defeatist's boxed player had no network at all: its absent.c stood in for
+every name of the ABI's network section, since a box answered none. On
+the board a cable came up on the launcher's side (192.168.1.125) and the
+player could not open a socket on it. This answers the first two layers:
+what the routes are, and sockets. The rest of the section -- the radio's
+control and policy, esp_netif's handles, the HTTP server and client,
+feckless_fetch, feckless_https -- calls back into the app, which a box
+cannot yet do, and stays for later.
+
+- **`feckless_box_calls/src/box_net.c`**, where the launcher links
+  feckless_network_handler (an empty table without it, or with
+  FECKLESS_BOX_NO_NET; `idf_component_optional_requires`), and
+  `feckless_abi_network_v1` as data.
+- **The routes**: `net_online`, `ethernet_connected`, `ethernet_link`,
+  `ethernet_ip`, `wifi_up`, `wifi_connected`, `wifi_ntp_synced`,
+  `wifi_sta_ip`, `wifi_sta_ssid`, `wifistore_count`, `net_route_describe`,
+  `net_probe`. Read only; strings through the host's stack, cut and
+  terminated at the app's room, nothing written past it; `net_probe`'s
+  timeout capped at 600 ms so its three waits end inside a box's stop.
+- **Sockets**: lwIP's descriptors, the app's alone -- a table of 16, and
+  any other number EBADF before lwIP sees it, select()'s sets included;
+  closed at `feckless_box_calls_end()`. Every socket non-blocking in
+  lwIP; the app's blocking, SO_RCVTIMEO and SO_SNDTIMEO are kept here and
+  waited out in 100 ms select() slices, counted down rather than read
+  from a clock, ending with EINTR when the app stops -- so no call is
+  ever inside lwIP where a stop cannot reach it, and all are unlocked. A
+  blocking connect() is the non-blocking one, a wait to be writable and
+  SO_ERROR; a blocking send() sends it all or what it could. `close` is
+  answered as a socket's: in a box, files are FILEs and FILs. Addresses,
+  options and fd_sets copied in and out, a length read once and only the
+  room it checked written; data in place, 64 KB a call. `fcntl` takes
+  F_GETFL and F_SETFL (O_NONBLOCK the app's own), ENOSYS for the rest, as
+  lwIP.
+- **getaddrinfo** waits for the lookup unlocked, then allocates the answer
+  in the box -- entries, addresses and names in one block -- under the
+  app's lock, which **`feckless_umode_app_lock()` / `_unlock()`** (new in
+  feckless_umode_load.h) give an unlocked call for that part only.
+  `freeaddrinfo` frees only an answer it gave. Eight entries, eight
+  answers outstanding.
+- `boxcalls_names.txt` regenerated: 36 names.
+
+*Tested:* feckless_box_calls' `make run` -- box_calls_test with real
+loopback sockets standing in for lwIP's (fake_net.c): a socket not the
+app's refused; a listener, a blocking connect and accept; lwIP's side
+non-blocking while the app's view is blocking; data both ways in place; a
+250 ms SO_RCVTIMEO giving up at 250 ms; O_NONBLOCK and MSG_DONTWAIT at
+once; the stop ending a wait with no timeout in EINTR; select ready,
+refused for a fd not the app's, timing out with its sets cleared, polling,
+EINVAL past FD_SETSIZE; getsockopt and getpeername writing nothing past a
+short room; EFAULT and EMSGSIZE at the bounds; a 60000-byte blocking send
+whole; UDP sendto and recvfrom; close then EBADF; the seventeenth socket
+EMFILE; getaddrinfo's answer in the box under the lock and freeaddrinfo
+once only; the routes' copies; net_probe's cap; the end closing what was
+left. `nonet` compiles the empty table. box_storage_test, feckless_umode's
+and feckless_box_libc's tests and feckless_abi's cmake tests pass.
+box_net.c also compiled with -Wall -Wextra -Werror against esp-lwip's and
+ESP-IDF's lwIP port headers and feckless_network_handler's own: clean.
+*Not checked:* a launcher build; the board.

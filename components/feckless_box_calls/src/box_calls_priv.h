@@ -94,3 +94,9 @@ void box_camera_end(void);
 extern const feckless_umode_call_t box_drivers_calls[];
 extern const uint32_t box_drivers_calls_n;
 void box_drivers_end(void);
+
+/* u-feckless-0071: the routes' state and lwIP's sockets (box_net.c); an
+ * empty table where the launcher does not link feckless_network_handler. */
+extern const feckless_umode_call_t box_net_calls[];
+extern const uint32_t box_net_calls_n;
+void box_net_end(void);

@@ -823,6 +823,16 @@ bool feckless_umode_app_stopping(const feckless_umode_app_t *a)
     return !a || a->stopping;
 }
 
+void feckless_umode_app_lock(feckless_umode_app_t *a)
+{
+    if (a && a->lock) xSemaphoreTakeRecursive(a->lock, portMAX_DELAY);
+}
+
+void feckless_umode_app_unlock(feckless_umode_app_t *a)
+{
+    if (a && a->lock) xSemaphoreGiveRecursive(a->lock);
+}
+
 void feckless_umode_unload(feckless_umode_app_t *a)
 {
     if (!a || a != s_loaded) {

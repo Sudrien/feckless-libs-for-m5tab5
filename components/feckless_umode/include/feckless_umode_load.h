@@ -141,6 +141,14 @@ void *feckless_umode_app_thread_task(feckless_umode_app_t *app, uint32_t id);
 bool feckless_umode_app_thread_stack(feckless_umode_app_t *app, uint32_t id, uint32_t *lo, uint32_t *hi);
 bool feckless_umode_app_stopping(const feckless_umode_app_t *app);
 
+/* u-feckless-0071: the lock every call not flagged UNLOCKED runs under
+ * (recursive). For an UNLOCKED call that waits and then must touch what the
+ * lock guards -- the box's heap: getaddrinfo()'s answer, allocated in the
+ * box after the lookup -- for that part only, never across the wait. NULL
+ * does nothing. */
+void feckless_umode_app_lock(feckless_umode_app_t *app);
+void feckless_umode_app_unlock(feckless_umode_app_t *app);
+
 /* Revoke the grant, then free everything. The app's fini functions are not
  * run: esp_elf would run them in M-mode. u-feckless-0023: not if a thread of
  * the app is still running (see feckless_umode_app_run()): that is logged,

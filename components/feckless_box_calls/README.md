@@ -205,6 +205,33 @@ feckless_umode_load(image, size, calls, n, 4 << 20, 64 << 10, &app);
   function, and a launcher does not call into a box. When the app ends its
   UART drivers are deleted, its devices removed and its pins reset.
 
+- **The network** (u-feckless-0071, `src/box_net.c`), where the launcher
+  links feckless_network_handler, and `feckless_abi_network_v1`:
+  - the routes, read only: `net_online`, `ethernet_connected`,
+    `ethernet_link`, `ethernet_ip`, `wifi_up`, `wifi_connected`,
+    `wifi_ntp_synced`, `wifi_sta_ip`, `wifi_sta_ssid`, `wifistore_count`,
+    `net_route_describe`, `net_probe` (its timeout capped at 600 ms);
+    strings copied out, cut and terminated at the room the app gave;
+  - lwIP's sockets: `lwip_socket`, `_bind`, `_connect`, `_listen`,
+    `_accept`, `_send`, `_sendto`, `_recv`, `_recvfrom`, `_setsockopt`,
+    `_getsockopt`, `_getsockname`, `_getpeername`, `_shutdown`, `_close`,
+    `_fcntl` (F_GETFL, F_SETFL), `select`, and `close` -- in a box a
+    socket's; `lwip_getaddrinfo`, `_freeaddrinfo`, `lwip_inet_ntop`,
+    `_inet_pton`, `ipaddr_addr`.
+
+  The app holds lwIP's own numbers, and only those it was given (16 at
+  once): any other is EBADF before lwIP sees it, select()'s sets included.
+  Every socket is non-blocking in lwIP; blocking, SO_RCVTIMEO and
+  SO_SNDTIMEO are the app's view, waited out here in 100 ms select()
+  slices that end with EINTR when the app stops. Unlocked, every one.
+  Addresses, options and fd_sets are copied; data is read and written in
+  place, 64 KB a call. getaddrinfo()'s answer is one allocation in the box
+  (eight entries at most, eight answers outstanding), made under the app's
+  lock after the lookup has waited without it. The app's sockets are
+  closed at `feckless_box_calls_end()`. Not yet: the radio's control,
+  esp_netif's handles, the HTTP server and client, feckless_fetch and
+  feckless_https -- each calls back into the app.
+
 - **FreeRTOS** (u-feckless-0045, `src/box_rtos.c`), as Defeatist uses it:
   - mutexes, recursive mutexes, binary and counting semaphores and queues
     (`xQueueGenericCreate`, `xQueueCreateMutex`,

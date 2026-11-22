@@ -9,6 +9,7 @@ idf_component_register(
          "src/box_nvs.c"    # u-feckless-0053
          "src/box_camera.c" # u-feckless-0059
          "src/box_drivers.c" # u-feckless-0062
+         "src/box_net.c"     # u-feckless-0071
     INCLUDE_DIRS "include"
     REQUIRES feckless_umode
     PRIV_REQUIRES feckless_abi feckless_drivers feckless_graphics_handler
@@ -16,6 +17,7 @@ idf_component_register(
                   esp_timer log freertos esp_rom heap
                   esp_driver_uart esp_driver_gpio esp_driver_i2c   # u-feckless-0062
                   esp_driver_jpeg esp_mm   # u-feckless-0065: the JPEG engine, where the chip has one
+                  lwip                     # u-feckless-0071
 )
 
 # u-feckless-0052: esp_audio_codec's simple decoder, answered in a box where
@@ -28,3 +30,8 @@ idf_component_optional_requires(PRIVATE espressif__esp_audio_codec esp_audio_cod
 # launcher links the camera (box_camera.c builds an empty table without it),
 # as one that offers the ABI's camera section does.
 idf_component_optional_requires(PRIVATE feckless_camera)
+
+# u-feckless-0071: the routes and lwIP's sockets, answered in a box where the
+# launcher links feckless_network_handler (box_net.c builds an empty table
+# without it), as one that offers the ABI's network section does.
+idf_component_optional_requires(PRIVATE feckless_network_handler)
