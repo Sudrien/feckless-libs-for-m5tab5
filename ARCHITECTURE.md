@@ -5138,3 +5138,24 @@ box_storage_test pass. All five files compile at -O2 -Werror, and
 box_httpd.c also against ESP-IDF 6.1's esp_http_server.h. The host's GCC
 did not reproduce the board's warning, so the board's build is the check
 that matters.
+
+### u-feckless-0080 -- stopping a boxed app's server no longer frees the launcher's slot
+
+On the board, turning remote control off ended in
+`assert failed: heap_caps_free ... "free() target pointer is outside heap areas"`,
+from `httpd_stop()` inside box_httpd.c's `stop()`.
+- **Cause:** box_httpd.c gives httpd its own `global_user_ctx` (the
+  server's slot in `s_srv`, which is how the callbacks find their server),
+  and it set `global_user_ctx_free_fn` to NULL. But `httpd_stop()` frees
+  the context with that function, or with `free()` when there is none. So
+  it called `free()` on a static array.
+- **Fix:** the free function is now `keep_srv()`, which does nothing.
+
+fake_httpd.c's `httpd_stop()` now does what IDF's does with the context,
+which reproduced the crash under ASan (a bad free, from httpd_test
+stopping its port-80 server) before the fix. httpd_test also checks that
+the config handed to httpd has a free function.
+
+*Checked:* box_calls_test, httpd_test, upcall_test, leaselock_test and
+box_storage_test pass. *Not checked:* the board: remote control off, then
+on again.

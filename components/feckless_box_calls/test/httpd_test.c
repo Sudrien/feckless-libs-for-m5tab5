@@ -355,6 +355,7 @@ int main(void)
     CHECK(rc->uri_match_fn == httpd_uri_match_wildcard);                 /* the launcher's own */
     CHECK(rc->open_fn && (uint32_t)(uintptr_t)rc->open_fn != F_OPEN);    /* a trampoline */
     CHECK(rc->close_fn && rc->global_user_ctx != (void *)0x99);
+    CHECK(rc->global_user_ctx_free_fn != NULL);                        /* or httpd_stop() free()s it */
     CHECK(rc->stack_size == 10240 && rc->max_open_sockets == 4);
 
     /* handlers */

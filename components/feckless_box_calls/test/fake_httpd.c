@@ -81,6 +81,12 @@ esp_err_t httpd_stop(httpd_handle_t h)
     fake_srv_t *s = h;
     for (int i = 0; i < SESS; i++) if (s->fd[i] >= 0) fake_httpd_close(h, s->fd[i]);
     for (int i = 0; i < HANDLERS; i++) free(s->h[i].uri);
+    /* u-feckless-0080: as IDF's httpd_stop(): the global context goes to
+     * its free function, or to free() when there is none */
+    if (s->cfg.global_user_ctx) {
+        if (s->cfg.global_user_ctx_free_fn) s->cfg.global_user_ctx_free_fn(s->cfg.global_user_ctx);
+        else free(s->cfg.global_user_ctx);
+    }
     free(s);
     fake_httpd_live--;
     return ESP_OK;

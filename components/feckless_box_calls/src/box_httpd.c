@@ -287,6 +287,11 @@ static esp_err_t on_request(httpd_req_t *req)
 
 static srv_t *srv_of_handle(httpd_handle_t h) { return httpd_get_global_user_ctx(h); }
 
+/* u-feckless-0080: httpd_stop() hands the global context to its free
+ * function, or to free() when there is none -- and ours is a slot of
+ * s_srv, not the heap's. Nothing to free. */
+static void keep_srv(void *ctx) { (void)ctx; }
+
 static esp_err_t on_open(httpd_handle_t h, int fd)
 {
     srv_t *s = srv_of_handle(h);
@@ -349,7 +354,7 @@ static bool config_of(win_t *w, uint32_t p, httpd_config_t *c, srv_t *s)
     c->open_fn = s->open_fn ? on_open : NULL;
     c->close_fn = s->close_fn ? on_close : NULL;
     c->global_user_ctx = s;
-    c->global_user_ctx_free_fn = NULL;
+    c->global_user_ctx_free_fn = keep_srv;  /* not NULL: then httpd_stop() calls free() on it */
     return true;
 }
 
