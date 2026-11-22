@@ -4740,3 +4740,59 @@ and feckless_box_libc's tests and feckless_abi's cmake tests pass.
 box_net.c also compiled with -Wall -Wextra -Werror against esp-lwip's and
 ESP-IDF's lwIP port headers and feckless_network_handler's own: clean.
 *Not checked:* a launcher build; the board.
+
+### u-feckless-0072 -- the card's lease is never waited for under the app's lock
+
+Defeatist's boxed player froze on the board twice, at about 13.5 s and
+14.0 s: touch dead, its log silent, the episode playing on until the ring
+ran dry -- only the audio writer still running, the one thread whose calls
+are all unlocked. Both times during its media reindex with an episode
+open. A lock-order inversion between the app's lock (every locked call
+runs under it) and the card's lease (storage_io_acquire()):
+
+- thread A takes the lease with the `storage_io_acquire` call and holds it
+  across calls, as an app's sidecar write does -- then `fopen`, a locked
+  call, waits for the app's lock;
+- thread B is in `storage_io_fread` or `storage_io_read_at`, locked calls
+  that take the lease inside the storage handler -- waiting for A's lease
+  while holding the app's lock.
+
+Every thread then stops at its next locked call. The `storage_io_acquire`
+call itself had the same shape: it waited for the lease under the lock.
+
+- **`lease_wait()`** in box_storage.c: lets go of the app's lock
+  (`feckless_umode_app_unlock()`, u-feckless-0071), takes the lease, takes
+  the lock back -- lease, then lock, the one order every holder now has.
+  `storage_io_acquire`, `storage_io_fread` and `storage_io_read_at` all
+  wait through it.
+- **The reads lease each 8 KB slice themselves** and `fread()` under both,
+  rather than calling storage_io_fread() and storage_io_read_at(), whose
+  own lease would nest inside the box's -- logging "nested acquire" for
+  every read. The file is looked up again by its number after every wait
+  (another of the app's threads may have closed it: the read ends there),
+  and the staging buffer is touched only with both held. read_at seeks in
+  a lease of its own, as storage_io_read_at() does, and keeps its
+  LONG_MAX refusal.
+- **`storage_io_count(cls, bytes)`**, new in feckless_storage_handler: a
+  reader under its own lease counts its bytes into the class's stats as
+  storage_io_fread() counts its own, so an app's `tab5_io` lines still
+  show them. Lease counts and hold times come from the acquires as
+  before.
+- A boxed app that holds the lease and then calls `storage_io_fread` gets
+  the storage handler's nested-acquire warning, as it would unboxed.
+
+*Tested:* new `leaselock_test` (`make run-leaselock`, in `make run`):
+real threads, a real lease (fake_storage.c with FAKE_REAL_LOCKS: one
+owner, nested by the same thread, the others waiting, and
+storage_io_fread() leasing each read as the real one does), a real
+recursive app lock, and a dispatcher taking it for every locked call.
+Thread A holds the lease across a `fopen`; thread B reads 40000 bytes
+with `storage_io_fread`, then with `storage_io_read_at`. Before this
+change both cases deadlock -- reported after 5 s as "thread A stuck
+(holds the lease, wants the app's lock), thread B stuck (holds the app's
+lock, wants the lease)" -- and after it both read every byte right, B
+having waited for the lease, and storage_io_count() having counted them.
+box_calls_test, box_storage_test (its storage_io checks now on the
+class and bytes storage_io_count() is given and the lease given back),
+nofastseek, nocodec, nocamera, nonet, and feckless_storage_handler's
+listtest pass. *Not checked:* the board.

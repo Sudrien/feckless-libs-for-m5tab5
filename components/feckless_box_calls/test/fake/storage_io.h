@@ -2,6 +2,7 @@
 typedef enum { STORAGE_IO_PLAYBACK = 0, STORAGE_IO_BACKGROUND } storage_io_class_t;
 void storage_io_acquire(storage_io_class_t cls);
 void storage_io_release(void);
+void storage_io_count(storage_io_class_t cls, size_t bytes);   /* u-feckless-0072 */
 /* u-feckless-0047 */
 #include <stdbool.h>
 #include <stdint.h>

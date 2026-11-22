@@ -32,6 +32,14 @@ nofastseek:
 nocodec:
 	$(CC) $(CFLAGS) -DFECKLESS_BOX_NO_CODEC -fsyntax-only ../src/box_codec.c
 
+# u-feckless-0072: the card's lease against the app's lock, with real threads
+LSRC := leaselock_test.c $(filter-out box_storage_test.c,$(SSRC))
+leaselock_test: $(LSRC) $(wildcard fake/*.h fake/freertos/*.h fake/driver/*.h fake/lwip/*.h) ../src/box_calls_priv.h
+	$(CC) $(CFLAGS) -DFAKE_REAL_LOCKS -o $@ $(LSRC) $(LDFLAGS) -lpthread
+
+run-leaselock: leaselock_test
+	timeout 60 ./leaselock_test
+
 # u-feckless-0071: box_net.c where the launcher has no network to answer with
 nonet:
 	$(CC) $(CFLAGS) -DFECKLESS_BOX_NO_NET -fsyntax-only ../src/box_net.c
@@ -40,10 +48,10 @@ nonet:
 nocamera:
 	$(CC) $(CFLAGS) -DFECKLESS_BOX_NO_CAMERA -fsyntax-only ../src/box_camera.c
 
-run: nofastseek nocodec nocamera nonet box_calls_test box_storage_test
+run: nofastseek nocodec nocamera nonet run-leaselock box_calls_test box_storage_test
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=0 ./box_calls_test
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=0 ./box_storage_test
 
 clean:
-	rm -f box_calls_test box_storage_test
-.PHONY: all run clean nofastseek nocodec nocamera nonet
+	rm -f box_calls_test box_storage_test leaselock_test
+.PHONY: all run clean nofastseek nocodec nocamera nonet run-leaselock

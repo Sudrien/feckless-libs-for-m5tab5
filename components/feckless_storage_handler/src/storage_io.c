@@ -305,6 +305,12 @@ static void count_bytes(storage_io_class_t cls, size_t n)
     xSemaphoreGive(s_lock);
 }
 
+void storage_io_count(storage_io_class_t cls, size_t bytes)      /* u-feckless-0072 */
+{
+    if (cls >= STORAGE_IO_CLASSES) cls = STORAGE_IO_BACKGROUND;
+    count_bytes(cls, bytes);
+}
+
 /*
  * Log what stdio would have used if we had not intervened.
  *

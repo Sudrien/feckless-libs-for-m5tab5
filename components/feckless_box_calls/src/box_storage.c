@@ -22,6 +22,7 @@
  */
 #include <dirent.h>
 #include <errno.h>
+#include <limits.h>   /* u-feckless-0072: LONG_MAX */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,6 +36,7 @@
 #include "storage_io.h"
 
 #include "box_calls_priv.h"
+#include "feckless_umode_load.h"   /* u-feckless-0072: the app's lock */
 
 #define MAX_FIL   8
 #define MAX_FILE  16                        /* u-feckless-0047: was 8; Defeatist keeps more open */
@@ -685,21 +687,53 @@ H(c_storage_io_open)
 }
 H(c_storage_io_close) { return c_fclose(w, a, ret); }
 
-/* Into the box's dst from the stream's position, through the staging
- * buffer; the bytes read. */
-static uint32_t io_read(FILE *f, uint8_t *dst, uint32_t len, storage_io_class_t cls)
+/*
+ * u-feckless-0072: THE LEASE IS NEVER WAITED FOR UNDER THE APP'S LOCK.
+ *
+ * These calls run under the app's lock, and the card's lease is the other
+ * lock an app holds: an app thread takes it with storage_io_acquire() and
+ * keeps it across calls -- a sidecar's fopen, fwrite, fclose -- each of
+ * which needs the app's lock. If a second thread is meanwhile in a locked
+ * call waiting for the lease, each waits for the other's: Defeatist's box
+ * froze that way on the board, during its media reindex with an episode
+ * playing, every thread stopped but the audio writer, whose calls are
+ * unlocked.
+ *
+ * So a call that needs the lease lets go of the app's lock while it waits,
+ * and takes it back once the lease is its own (lease, then lock -- the
+ * order every holder now has). What the lock guards may have changed
+ * meanwhile: the file is looked up again by its number after every wait,
+ * and the staging buffer is touched only with both held. The reads take
+ * the lease per slice and count their bytes with storage_io_count(), not
+ * through storage_io_fread(), whose own lease would be a nested one.
+ */
+static void lease_wait(storage_io_class_t cls)
 {
-    uint8_t *const st = stage();
-    if (!st) {
-        return (uint32_t)storage_io_fread(dst, len, f, cls);
-    }
+    feckless_umode_app_t *app = feckless_umode_app_loaded();
+    feckless_umode_app_unlock(app);
+    storage_io_acquire(cls);
+    feckless_umode_app_lock(app);
+}
+
+/* Into the box's dst from file `tok`'s position, a slice per lease, through
+ * the staging buffer (or straight in if there is none); the bytes read. A
+ * file closed by another of the app's threads while this one waited ends
+ * the read where it was. */
+static uint32_t io_read(uint32_t tok, uint8_t *dst, uint32_t len, storage_io_class_t cls)
+{
     uint32_t done = 0;
     while (done < len) {
         const uint32_t want = len - done > READ_SLICE ? READ_SLICE : len - done;
-        const size_t g = storage_io_fread(st, want, f, cls);
-        memcpy(dst + done, st, g);
+        lease_wait(cls);
+        FILE *f = file_of(tok);
+        uint8_t *const st = stage();
+        size_t g = 0;
+        if (f) g = fread(st ? st : dst + done, 1, want, f);
+        storage_io_release();
+        storage_io_count(cls, g);
+        if (st && g) memcpy(dst + done, st, g);
         done += (uint32_t)g;
-        if (g < want) {
+        if (!f || g < want) {
             break;
         }
     }
@@ -709,42 +743,42 @@ static uint32_t io_read(FILE *f, uint8_t *dst, uint32_t len, storage_io_class_t 
 /* (dst, len, f, class) */
 H(c_storage_io_fread)
 {
-    FILE *f = file_of(a[2]);
     *ret = 0;
-    if (!f || a[1] == 0 || !ok_ptr(w, a[0], a[1])) {
+    if (!file_of(a[2]) || a[1] == 0 || !ok_ptr(w, a[0], a[1])) {
         return true;
     }
-    *ret = io_read(f, (uint8_t *)(uintptr_t)a[0], a[1], (storage_io_class_t)a[3]);
+    *ret = io_read(a[2], (uint8_t *)(uintptr_t)a[0], a[1], (storage_io_class_t)a[3]);
     return true;
 }
 
 /* (f, int64_t off in a1/a2, dst, len, class): all of it, or false */
 H(c_storage_io_read_at)
 {
-    FILE *f = file_of(a[0]);
     const int64_t off = (int64_t)((uint64_t)a[2] << 32 | a[1]);
     *ret = false;
-    if (!f || off < 0 || !ok_ptr(w, a[3], a[4])) {
+    if (!file_of(a[0]) || off < 0 || !ok_ptr(w, a[3], a[4])) {
         return true;
     }
     if (a[4] == 0) {
         *ret = true;
         return true;
     }
-    uint8_t *const st = stage();
-    uint8_t *const dst = (uint8_t *)(uintptr_t)a[3];
+    /* storage_io_read_at()'s reach: fseek() takes a long (u-feckless-0072:
+     * its rule kept, now that the box seeks itself). */
+    if (off > (int64_t)LONG_MAX) {
+        return true;
+    }
     const storage_io_class_t cls = (storage_io_class_t)a[5];
-    if (!st) {
-        *ret = storage_io_read_at(f, off, dst, a[4], cls);
+    /* The seek in a lease of its own, as storage_io_read_at() takes it;
+     * then the read, a slice per lease. */
+    lease_wait(cls);
+    FILE *f = file_of(a[0]);
+    const bool sought = f && fseek(f, (long)off, SEEK_SET) == 0;
+    storage_io_release();
+    if (!sought) {
         return true;
     }
-    /* The first slice where asked, the rest on from it. */
-    const uint32_t first = a[4] > READ_SLICE ? READ_SLICE : a[4];
-    if (!storage_io_read_at(f, off, st, first, cls)) {
-        return true;
-    }
-    memcpy(dst, st, first);
-    *ret = first == a[4] || io_read(f, dst + first, a[4] - first, cls) == a[4] - first;
+    *ret = io_read(a[0], (uint8_t *)(uintptr_t)a[3], a[4], cls) == a[4];
     return true;
 }
 H(c_storage_io_phase_ms) { (void)w; (void)a; *ret = storage_io_phase_ms(); return true; }
@@ -968,7 +1002,7 @@ H(c_storage_join_path)
 H(c_storage_io_acquire)
 {
     (void)w;
-    storage_io_acquire((storage_io_class_t)a[0]);
+    lease_wait((storage_io_class_t)a[0]);   /* u-feckless-0072: not under the app's lock */
     s_io_depth++;
     *ret = 0;
     return true;

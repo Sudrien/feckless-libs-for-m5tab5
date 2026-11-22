@@ -64,12 +64,48 @@ bool storage_join_path(char *out, size_t n, const char *d, const char *f)
 }
 uint32_t storage_generation(void) { return 7; }
 void storage_hold(storage_id_t id) { hold_id = (int)id; }
+#ifndef FAKE_REAL_LOCKS
 void storage_io_acquire(storage_io_class_t c) { (void)c; io_depth++; }
 void storage_io_release(void) { io_depth--; }
+#else
+/* u-feckless-0072: a real lease, for leaselock_test: one owner, nested by
+ * the same thread, the others waiting -- as storage_io.c's. */
+#include <pthread.h>
+static pthread_mutex_t lease_mu = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t lease_cv = PTHREAD_COND_INITIALIZER;
+static pthread_t lease_owner;
+static int lease_n;
+int lease_waits;
+void storage_io_acquire(storage_io_class_t c)
+{
+    (void)c;
+    pthread_mutex_lock(&lease_mu);
+    if (lease_n && pthread_equal(lease_owner, pthread_self())) {
+        lease_n++;
+    } else {
+        if (lease_n) lease_waits++;
+        while (lease_n) pthread_cond_wait(&lease_cv, &lease_mu);
+        lease_owner = pthread_self();
+        lease_n = 1;
+    }
+    io_depth++;
+    pthread_mutex_unlock(&lease_mu);
+}
+void storage_io_release(void)
+{
+    pthread_mutex_lock(&lease_mu);
+    io_depth--;
+    if (lease_n && --lease_n == 0) pthread_cond_broadcast(&lease_cv);
+    pthread_mutex_unlock(&lease_mu);
+}
+#endif
+/* u-feckless-0072: the bytes a caller read under its own lease */
+size_t io_counted;
 
 /* u-feckless-0047: the rest, over the host's own files and directories. */
 #include <dirent.h>
 int io_open, io_cls = -1, io_into_box, brief[2], bg = -1, readers_mask, ffdir_open;
+void storage_io_count(storage_io_class_t cls, size_t n) { io_cls = (int)cls; io_counted += n; }
 BYTE chmod_attr, chmod_mask;
 char hidden_path[300], report_phase[64];
 FILE *storage_io_open(const char *path, const char *mode)
@@ -83,7 +119,14 @@ size_t storage_io_fread(void *dst, size_t len, FILE *f, storage_io_class_t cls)
 {
     io_cls = (int)cls;
     if ((uintptr_t)dst < box_hi && (uintptr_t)dst + len > box_lo) io_into_box++;
+#ifdef FAKE_REAL_LOCKS
+    storage_io_acquire(cls);                /* as the real one leases each read */
+    const size_t n = fread(dst, 1, len, f);
+    storage_io_release();
+    return n;
+#else
     return fread(dst, 1, len, f);
+#endif
 }
 bool storage_io_read_at(FILE *f, int64_t off, void *dst, size_t len, storage_io_class_t cls)
 {

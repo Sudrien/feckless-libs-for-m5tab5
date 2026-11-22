@@ -24,6 +24,7 @@
 #include <utime.h>
 
 extern int io_depth, hold_id, fat_open;
+extern size_t io_counted;                   /* u-feckless-0072: storage_io_count() */
 extern DWORD *last_cltbl;
 extern uintptr_t box_lo, box_hi;
 extern int reads_into_box, reads_total;
@@ -565,12 +566,16 @@ static void test_storage_io(void)
     const uint32_t f = call("storage_io_open", P(path), P(rb), 0, 0);
     CHECK(f != 0 && io_open == 1);
     uint8_t *b = box_alloc(20000);
-    io_into_box = 0;
-    CHECK(call("storage_io_fread", P(b), 20000, f, 1) == 20000 && io_cls == 1 && io_into_box == 0);
+    /* u-feckless-0072: the box leases each slice itself and reads through
+     * its staging buffer, so it is storage_io_count() that is given the
+     * class and the bytes, and the lease is given back */
+    const size_t counted = io_counted;
+    CHECK(call("storage_io_fread", P(b), 20000, f, 1) == 20000 && io_cls == 1);
+    CHECK(io_counted - counted == 20000 && io_depth == 0);
     CHECK(b[19999] == 'a' + 19999 % 26);
     CHECK(call("storage_io_fread", P(b), 16, f, 0) == 0);            /* at the end */
     memset(b, 0, 20000);
-    CHECK(call6("storage_io_read_at", f, 9000, 0, P(b), 11000, 0) == 1 && io_into_box == 0);
+    CHECK(call6("storage_io_read_at", f, 9000, 0, P(b), 11000, 0) == 1 && io_cls == 0 && io_depth == 0);
     CHECK(b[0] == 'a' + 9000 % 26 && b[10999] == 'a' + 19999 % 26);
     CHECK(call6("storage_io_read_at", f, 19990, 0, P(b), 11, 0) == 0);    /* one short */
     CHECK(call6("storage_io_read_at", f, 0, 0x80000000u, P(b), 4, 0) == 0); /* a negative offset */

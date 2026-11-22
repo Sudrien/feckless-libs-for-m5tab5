@@ -225,6 +225,15 @@ void storage_io_acquire(storage_io_class_t cls);
 void storage_io_release(void);
 
 /*
+ * u-feckless-0072: count bytes read under a lease the caller took itself
+ * (storage_io_acquire(), fread(), storage_io_release()) into cls's stats,
+ * as storage_io_fread() counts its own -- for a reader that must not take
+ * the lease inside storage_io_fread(): feckless_box_calls, which has to
+ * let go of its app's lock while it waits for the lease.
+ */
+void storage_io_count(storage_io_class_t cls, size_t bytes);
+
+/*
  * Is somebody more urgent queued behind me?
  *
  * For loops that read for a long time and can stop cleanly. The lease

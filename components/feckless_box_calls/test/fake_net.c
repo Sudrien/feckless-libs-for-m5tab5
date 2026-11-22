@@ -83,7 +83,10 @@ bool net_probe(uint32_t t, int *gw, int *net, char *what, size_t n)
     return true;
 }
 
-/* the app's lock: depth now, and how many times taken */
+/* the app's lock: depth now, and how many times taken (leaselock_test has
+ * a real one: FAKE_REAL_LOCKS) */
 int fake_lock_depth, fake_lock_taken;
+#ifndef FAKE_REAL_LOCKS
 void feckless_umode_app_lock(feckless_umode_app_t *a) { (void)a; fake_lock_depth++; fake_lock_taken++; }
 void feckless_umode_app_unlock(feckless_umode_app_t *a) { (void)a; fake_lock_depth--; }
+#endif
