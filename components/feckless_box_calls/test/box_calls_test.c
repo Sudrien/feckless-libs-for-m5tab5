@@ -81,7 +81,7 @@ static void test_table(void)
             CHECK(strcmp(calls_tab[i].name, calls_tab[j].name) != 0);       /* no name twice */
     int data = 0;
     for (uint32_t i = 0; i < ncalls; i++) if (!calls_tab[i].fn) { data++; CHECK(calls_tab[i].data && calls_tab[i].data_len >= 4); }
-    CHECK(data == 14);       /* abi_v1, box_v1, storage_v2; Ark12's six tables (u-feckless-0021); audio_v1 (u-feckless-0052); nvs_v1 (0053); camera_v1 (0059); image_v1 (0065); network_v1 (0071) */
+    CHECK(data == 16);       /* abi_v1, box_v1, storage_v2; Ark12's six tables (u-feckless-0021); audio_v1 (u-feckless-0052); nvs_v1 (0053); camera_v1 (0059); image_v1 (0065); network_v1 (0071); crypto_v2, crypto_mbedtls4 (0078) */
     for (uint32_t i = 0; i < ncalls; i++) {
         if (!strcmp(calls_tab[i].name, "ark12_lit")) CHECK(calls_tab[i].data_len == 10);
         if (!strcmp(calls_tab[i].name, "ark12_tiles")) CHECK(calls_tab[i].data_len == 12);
@@ -1902,6 +1902,37 @@ static void test_netif(void)
     CHECK(C1("feckless_box_netif_next", 0) != 0);
 }
 
+/* ---- u-feckless-0078: the crypto section's hash ---- */
+
+#include "psa/crypto.h"
+
+static void test_crypto(void)
+{
+    CHECK(C0("psa_crypto_init") == PSA_SUCCESS);
+    uint8_t *in = bx(5), *out = bx(32);
+    size_t *len = bx(sizeof *len);
+    memcpy(in, "hello", 5);
+    CHECK(call("psa_hash_compute", PSA_ALG_SHA_256, P(in), 5, P(out), 32, P(len), 0, 0) == PSA_SUCCESS);
+    CHECK(*len == 32 && out[0] == ('h' ^ 0) && out[1] == ('e' ^ 7) && out[31] == 31 * 7);
+    CHECK(call("psa_hash_compute", PSA_ALG_SHA_256, P(in), 5, P(out), 16, P(len), 0, 0) ==
+          (uint32_t)PSA_ERROR_BUFFER_TOO_SMALL && *len == 0);
+    CHECK(call("psa_hash_compute", PSA_ALG_SHA_256, P(mem) + MEM - 2, 5, P(out), 32, P(len), 0, 0) ==
+          (uint32_t)PSA_ERROR_INVALID_ARGUMENT);                       /* input out of the box */
+    CHECK(call("psa_hash_compute", PSA_ALG_SHA_256, P(in), 5, P(out), 32, P(mem) + MEM - 2, 0, 0) ==
+          (uint32_t)PSA_ERROR_INVALID_ARGUMENT);                       /* length out of the box */
+    CHECK(call("psa_hash_compute", PSA_ALG_SHA_256, P(in), 64 * 1024 + 1, P(out), 32, P(len), 0, 0) ==
+          (uint32_t)PSA_ERROR_INVALID_ARGUMENT);
+    /* the section's marks are data */
+    const feckless_umode_call_t *t = NULL;
+    uint32_t n = 0;
+    t = feckless_box_calls_v1(&n);
+    int marks = 0;
+    for (uint32_t i = 0; i < n; i++)
+        if (!strcmp(t[i].name, "feckless_abi_crypto_v2") || !strcmp(t[i].name, "feckless_abi_crypto_mbedtls4"))
+            marks += !t[i].fn && t[i].data && t[i].data_len == 4;
+    CHECK(marks == 2);
+}
+
 int main(int argc, char **argv)
 {
     mem = mmap(NULL, MEM, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT, -1, 0);
@@ -1941,6 +1972,7 @@ int main(int argc, char **argv)
     test_net();                         /* u-feckless-0071 */
     test_http();                        /* u-feckless-0073 */
     test_netif();                       /* u-feckless-0076 */
+    test_crypto();                      /* u-feckless-0078 */
     printf(failed ? "%d FAILED\n" : "box_calls: all passed (%u calls)\n", failed ? failed : (int)ncalls);
     return failed != 0;
 }

@@ -128,3 +128,20 @@ int esp_netif_get_all_ip6(esp_netif_t *n, esp_ip6_addr_t a[])
     return n->n6;
 }
 const char *esp_netif_get_ifkey(esp_netif_t *n) { return n->key; }
+
+/* ---- u-feckless-0078: PSA's hash, a stand-in digest ----------------------- */
+
+#include "psa/crypto.h"
+
+int fake_psa_inits;
+psa_status_t psa_crypto_init(void) { fake_psa_inits++; return PSA_SUCCESS; }
+psa_status_t psa_hash_compute(psa_algorithm_t alg, const uint8_t *in, size_t n, uint8_t *out, size_t size,
+                              size_t *len)
+{
+    if (alg != PSA_ALG_SHA_256) return PSA_ERROR_INVALID_ARGUMENT;
+    if (size < 32) return PSA_ERROR_BUFFER_TOO_SMALL;
+    for (int i = 0; i < 32; i++) out[i] = (uint8_t)(i * 7);
+    for (size_t i = 0; i < n; i++) out[i % 32] ^= in[i];
+    *len = 32;
+    return PSA_SUCCESS;
+}

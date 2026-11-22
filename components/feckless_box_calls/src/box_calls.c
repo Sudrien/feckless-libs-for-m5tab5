@@ -686,10 +686,11 @@ static const feckless_umode_call_t s_own[] = {
 #define UPCALL_MAX 4                        /* u-feckless-0075 */
 #define NETIF_MAX 8                         /* u-feckless-0076 */
 #define HTTPD_MAX 32                        /* u-feckless-0077 */
+#define CRYPTO_MAX 4                        /* u-feckless-0078 */
 
 const feckless_umode_call_t *feckless_box_calls_v1(uint32_t *n)
 {
-    static feckless_umode_call_t table[HEAP_MAX + OWN_N + STORAGE_MAX + AUDIO_MAX + RTOS_MAX + CODEC_MAX + IMAGE_MAX + NVS_MAX + CAMERA_MAX + DRIVERS_MAX + NET_MAX + HTTP_MAX + UPCALL_MAX + NETIF_MAX + HTTPD_MAX];
+    static feckless_umode_call_t table[HEAP_MAX + OWN_N + STORAGE_MAX + AUDIO_MAX + RTOS_MAX + CODEC_MAX + IMAGE_MAX + NVS_MAX + CAMERA_MAX + DRIVERS_MAX + NET_MAX + HTTP_MAX + UPCALL_MAX + NETIF_MAX + HTTPD_MAX + CRYPTO_MAX];
     static uint32_t count;
     if (!count) {
         uint32_t k = 0;
@@ -737,6 +738,9 @@ const feckless_umode_call_t *feckless_box_calls_v1(uint32_t *n)
         }
         for (uint32_t i = 0; i < box_httpd_calls_n && i < HTTPD_MAX; i++) {
             table[k++] = box_httpd_calls[i];
+        }
+        for (uint32_t i = 0; i < box_crypto_calls_n && i < CRYPTO_MAX; i++) {
+            table[k++] = box_crypto_calls[i];
         }
         count = k;
     }

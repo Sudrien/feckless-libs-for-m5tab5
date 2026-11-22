@@ -136,3 +136,7 @@ extern const uint32_t box_httpd_calls_n;
 bool box_httpd_lends(int fd);
 void box_httpd_end(void);
 void box_httpd_reap(void *arg);
+
+/* u-feckless-0078: psa_crypto_init, psa_hash_compute (box_crypto.c). */
+extern const feckless_umode_call_t box_crypto_calls[];
+extern const uint32_t box_crypto_calls_n;

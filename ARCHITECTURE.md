@@ -5094,3 +5094,28 @@ box_calls_test, box_storage_test, upcall_test and leaselock_test pass,
 `make nonet` builds box_httpd.c without the network, and box_httpd.c was
 built against ESP-IDF 6.1's own esp_http_server.h. *Not checked:* the
 board.
+
+### u-feckless-0078 -- the crypto section's hash for a boxed app
+
+Defeatist's remote keeps a SHA-256 of each browser it allowed, and hashes
+the token a browser presents to compare (approve.c). In a box the stand-in
+hash failed, so no browser could ever be allowed: the remote would serve
+its pairing page and refuse the rest. **box_crypto.c** answers the crypto
+section:
+- `psa_hash_compute` (any algorithm PSA hashes) reads the input in place
+  in the box (at most 64 KB), and writes the digest into the app's buffer
+  and its length through the app's `size_t`. A buffer too small is PSA's
+  own error, with the length 0.
+- `psa_crypto_init`.
+- The section's two marks, `feckless_abi_crypto_v2` and
+  `feckless_abi_crypto_mbedtls4`, as data, as box_net.c answers the
+  network's.
+
+Nothing else of PSA is answered.
+
+*Tested:* box_calls_test's `test_crypto`, against a stand-in digest in
+fake_net.c: the bytes in and out, a buffer too small, an input or length
+pointer out of the box, an input over 64 KB, and both marks as data (the
+table's data count is now 16). `make nonet` builds it with
+FECKLESS_BOX_NO_CRYPTO. *Not checked:* the board, or against mbedTLS's own
+psa/crypto.h, which this tree doesn't have.

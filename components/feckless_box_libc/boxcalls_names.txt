@@ -414,3 +414,7 @@ httpd_ws_get_fd_info
 httpd_ws_recv_frame
 httpd_ws_send_frame
 httpd_ws_send_frame_async
+feckless_abi_crypto_v2
+feckless_abi_crypto_mbedtls4
+psa_crypto_init
+psa_hash_compute
