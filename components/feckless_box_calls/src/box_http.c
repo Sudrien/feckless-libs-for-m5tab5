@@ -223,9 +223,11 @@ H(c_esp_http_client_init)
 #endif
 #if CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS
     if (in.alpn_protos) return refuse("ALPN"), true;
-    if (in.ciphersuites_list) return refuse("a ciphersuite list"), true;
-    if (in.groups_list) return refuse("a group list"), true;
 #endif
+    /* u-feckless-0074: not ciphersuites_list or groups_list -- fields of
+     * newer ESP-IDF only, which a field test cannot be written for. Like
+     * every field not copied below, they reach the client as NULL: the
+     * defaults, not the app's arrays. */
 #if CONFIG_ESP_TLS_USE_DS_PERIPHERAL
     if (in.ds_data) return refuse("the DS peripheral"), true;
 #endif

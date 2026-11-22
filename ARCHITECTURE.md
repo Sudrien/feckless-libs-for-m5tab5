@@ -4812,9 +4812,9 @@ routes box_net.c (u-feckless-0071) already answers:
   `"HTT\0"` + slot, six at once. `buffer_size` and `buffer_size_tx` are
   capped at 16 KB. `crt_bundle_attach` set means the launcher's
   `esp_crt_bundle_attach`, whatever address the app gave. A config asking
-  for a client certificate or key, an interface, async, ALPN, cipher or
-  group lists, the DS or ECDSA peripheral or a custom transport is refused
-  with a line naming it.
+  for a client certificate or key, an interface, async, ALPN, the DS or
+  ECDSA peripheral or a custom transport is refused with a line naming
+  it. (Any field not copied reaches the client zeroed -- u-feckless-0074.)
 - **The event handler is never called**: it is the app's code, and the box
   does not call back into its app. The headers it would have been shown
   are read afterwards with **`esp_http_client_get_response_header`**, new
@@ -4866,3 +4866,18 @@ calls refused while stopping and on numbers not given, six at once,
 cleanup under the app's lock, and the app's end cleaning up the rest.
 `make nonet` also builds box_http.c without the network. Also built
 against ESP-IDF 6.1's own esp_http_client.h with HTTPS and DS on. *Not checked:* the board.
+
+### u-feckless-0074 -- box_http.c builds on ESP-IDF 6.1 as shipped
+
+0073 refused a config with `ciphersuites_list` or `groups_list` set, and
+was compiled against an ESP-IDF tree newer than the one Defeatist builds
+with (v6.1-829), whose esp_http_client_config_t has neither field: the
+launcher's build failed on both lines. The two checks are gone. Nothing
+is lost: init builds the client's config from a zeroed struct and copies
+only the fields it lists, so those arrays, had the app set them, would
+reach the client as NULL -- its default suites and groups -- as every
+other field it does not copy does (event_handler, user_data).
+
+*Checked:* box_calls_test, box_storage_test and nonet pass. *Not checked:*
+the board's build; the error was in no other line of box_http.c in the
+log given.
