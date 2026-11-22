@@ -60,11 +60,34 @@ struct fake_sb {
 int fake_core = 1, fake_tasks, fake_task_core = -1;
 bool fake_task_fail;
 BaseType_t xPortGetCoreID(void) { return fake_core; }
+#ifdef FAKE_REAL_SEMS
+typedef struct { TaskFunction_t fn; void *arg; } fake_thr_t;
+static void *fake_thr(void *p)
+{
+    fake_thr_t t = *(fake_thr_t *)p;
+    free(p);
+    t.fn(t.arg);
+    return NULL;
+}
+#endif
 BaseType_t xTaskCreatePinnedToCore(TaskFunction_t fn, const char *name, uint32_t stack, void *arg,
                                    UBaseType_t prio, TaskHandle_t *out, BaseType_t core)
 {
     (void)name; (void)stack; (void)prio; (void)out;
     if (fake_task_fail) return pdFAIL;
+#ifdef FAKE_REAL_SEMS
+    {                                       /* u-feckless-0081: a task of its own, really */
+        (void)core;
+        fake_thr_t *t = malloc(sizeof *t);
+        t->fn = fn;
+        t->arg = arg;
+        pthread_t th;
+        pthread_create(&th, NULL, fake_thr, t);
+        pthread_detach(th);
+        fake_tasks++;
+        return pdPASS;
+    }
+#endif
     const int was = fake_core;
     fake_tasks++;
     fake_task_core = fake_core = core;

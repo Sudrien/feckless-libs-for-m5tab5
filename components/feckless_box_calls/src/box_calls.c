@@ -687,10 +687,11 @@ static const feckless_umode_call_t s_own[] = {
 #define NETIF_MAX 8                         /* u-feckless-0076 */
 #define HTTPD_MAX 32                        /* u-feckless-0077 */
 #define CRYPTO_MAX 4                        /* u-feckless-0078 */
+#define FETCH_MAX 8                         /* u-feckless-0081 */
 
 const feckless_umode_call_t *feckless_box_calls_v1(uint32_t *n)
 {
-    static feckless_umode_call_t table[HEAP_MAX + OWN_N + STORAGE_MAX + AUDIO_MAX + RTOS_MAX + CODEC_MAX + IMAGE_MAX + NVS_MAX + CAMERA_MAX + DRIVERS_MAX + NET_MAX + HTTP_MAX + UPCALL_MAX + NETIF_MAX + HTTPD_MAX + CRYPTO_MAX];
+    static feckless_umode_call_t table[HEAP_MAX + OWN_N + STORAGE_MAX + AUDIO_MAX + RTOS_MAX + CODEC_MAX + IMAGE_MAX + NVS_MAX + CAMERA_MAX + DRIVERS_MAX + NET_MAX + HTTP_MAX + UPCALL_MAX + NETIF_MAX + HTTPD_MAX + CRYPTO_MAX + FETCH_MAX];
     static uint32_t count;
     if (!count) {
         uint32_t k = 0;
@@ -742,6 +743,9 @@ const feckless_umode_call_t *feckless_box_calls_v1(uint32_t *n)
         for (uint32_t i = 0; i < box_crypto_calls_n && i < CRYPTO_MAX; i++) {
             table[k++] = box_crypto_calls[i];
         }
+        for (uint32_t i = 0; i < box_fetch_calls_n && i < FETCH_MAX; i++) {
+            table[k++] = box_fetch_calls[i];
+        }
         count = k;
     }
     *n = count;
@@ -758,6 +762,7 @@ void feckless_box_calls_end(void)
     box_nvs_end();
     box_camera_end();
     box_drivers_end();
+    box_fetch_end();                        /* u-feckless-0081: no callbacks; its download paused */
     box_httpd_end();                        /* u-feckless-0077: its servers, before the sockets */
     box_http_end();                         /* u-feckless-0073: before its sockets go */
     box_net_end();                          /* u-feckless-0071 */

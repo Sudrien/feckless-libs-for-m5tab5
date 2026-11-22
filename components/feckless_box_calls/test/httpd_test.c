@@ -28,6 +28,7 @@
 #include "feckless_box_calls.h"
 #include "feckless_umode_load.h"
 #include "fake_httpd.h"
+#include "feckless_fetch.h"
 #include "../src/box_calls_priv.h"
 
 extern bool fake_stopping;
@@ -75,6 +76,22 @@ static uint32_t dcall(feckless_umode_window_t *w, const char *name, uint32_t a0,
     return ret;
 }
 
+/* six arguments: a4 and a5 too */
+static uint32_t dcall6(feckless_umode_window_t *w, const char *name, uint32_t a0, uint32_t a1, uint32_t a2,
+                       uint32_t a3, uint32_t a4, uint32_t a5)
+{
+    const uint32_t i = idx_of(name);
+    w->ctx.x[10] = a0; w->ctx.x[11] = a1; w->ctx.x[12] = a2; w->ctx.x[13] = a3;
+    w->ctx.x[14] = a4; w->ctx.x[15] = a5;
+    uint32_t ret = 0xdeadbeef;
+    const bool locked = !(calls_tab[i].flags & FECKLESS_UMODE_CALL_UNLOCKED);
+    if (locked) pthread_mutex_lock(&s_app);
+    const bool ok = feckless_umode_calls_ext(w, FECKLESS_SYS_EXT_BASE + i, &w->ctx.x[10], &ret);
+    if (locked) pthread_mutex_unlock(&s_app);
+    CHECK(ok);
+    return ret;
+}
+
 static void window(feckless_umode_window_t *w)
 {
     memset(w, 0, sizeof *w);
@@ -107,6 +124,8 @@ static void sleep_ms(int ms) { struct timespec t = { ms / 1000, (long)(ms % 1000
 #define F_WORK      AT(6)
 #define F_BLOCK     AT(7)
 #define F_CLOSE     AT(8)
+#define F_FETCH     AT(10)                  /* u-feckless-0081: the download's callback */
+#define F_CANCEL    AT(11)                  /* a handler that cancels, as the remote's does */
 #define STUB_WILD   AT(14)                  /* the app's stubs for the launcher's functions */
 #define STUB_REDIR  AT(15)
 
@@ -225,6 +244,35 @@ static uint32_t app_block(uint32_t p)
     return (int)dcall(&lw, "httpd_req_recv", p, P(b), 8, 0) > 0 ? ESP_OK : (uint32_t)ESP_FAIL;
 }
 
+/* ---- u-feckless-0081: the download's callback ---- */
+
+static volatile int s_ev_seen[8], s_fetch_arg_ok = 1, s_verify_ok = 1;
+static volatile int64_t s_ready_size;
+static char s_headers_seen[160];
+
+static uint32_t app_fetch(uint32_t p)
+{
+    feckless_fetch_ev_t *ev = (feckless_fetch_ev_t *)(uintptr_t)p;
+    if (ev->kind < 8) s_ev_seen[ev->kind]++;
+    if (ev->arg != (void *)0x55 || ev->id != 42) s_fetch_arg_ok = 0;
+    switch (ev->kind) {
+    case FECKLESS_FETCH_EV_HEADERS:
+        snprintf(s_headers_seen, sizeof s_headers_seen, "%s|%s", ev->url, ev->ctype);
+        snprintf(ev->path, ev->path_size, "/sd/Podcasts/x/ep.mp3");
+        return 1;
+    case FECKLESS_FETCH_EV_READY: s_ready_size = ev->size; return 1;
+    case FECKLESS_FETCH_EV_VERIFY: return (uint32_t)s_verify_ok;
+    default: return 1;
+    }
+}
+
+static uint32_t app_cancel(uint32_t unused)
+{
+    (void)unused;
+    dcall(&lw, "feckless_fetch_cancel", 0, 0, 0, 0);
+    return 0;
+}
+
 typedef struct { uint32_t fn, a[4]; } up_t;
 
 static uint32_t run(const up_t *u)
@@ -238,6 +286,8 @@ static uint32_t run(const up_t *u)
     if (u->fn == F_WS) return app_ws(u->a[0]);
     if (u->fn == F_WORK) return app_work(u->a[0]);
     if (u->fn == F_BLOCK) return app_block(u->a[0]);
+    if (u->fn == F_FETCH) return app_fetch(u->a[0]);
+    if (u->fn == F_CANCEL) return app_cancel(u->a[0]);
     printf("FAIL the loop was handed %#x\n", (unsigned)u->fn);
     failed++;
     return 0;
@@ -458,6 +508,91 @@ int main(void)
     fake_httpd_close(real, fd3);
     CHECK(s_closed_fd == fd3);
 
+
+    /* ---- u-feckless-0081: a download, its callback through the loop ---- */
+    {
+        extern feckless_fetch_opts_t fake_fetch_opts;
+        extern char fake_fetch_url[], fake_fetch_path[], fake_fetch_partp[], fake_fetch_ua[], fake_fetch_discarded[];
+        extern bool fake_fetch_running, fake_fetch_paused;
+        extern int fake_fetch_discards;
+        bool fake_fetch_event(feckless_fetch_ev_kind_t kind, const char *url, const char *ctype, int64_t size);
+
+        CHECK(!(calls_tab[idx_of("feckless_fetch_start")].flags & FECKLESS_UMODE_CALL_UNLOCKED));
+        CHECK(calls_tab[idx_of("feckless_fetch_discard")].flags & FECKLESS_UMODE_CALL_UNLOCKED);
+        feckless_fetch_opts_t *o = bx(sizeof *o);
+        o->url = bstr("https://example.org/ep.mp3");
+        o->path = bstr("/sd/Podcasts/x/ep.mp3");
+        o->part = bstr("/sd/.parts/ep.part");
+        o->user_agent = bstr("Defeatist/0.8");
+        o->conns = 3;
+        o->cb = (feckless_fetch_cb_t)(uintptr_t)F_FETCH;
+        o->arg = (void *)0x55;
+        o->id = 42;
+        CHECK(dcall(&w, "feckless_fetch_start", P(o), 0, 0, 0) == 1);
+        CHECK(!strcmp(fake_fetch_url, "https://example.org/ep.mp3") && !strcmp(fake_fetch_partp, "/sd/.parts/ep.part"));
+        CHECK(!strcmp(fake_fetch_ua, "Defeatist/0.8") && fake_fetch_opts.conns == 3 && fake_fetch_opts.id == 42);
+        CHECK(fake_fetch_opts.cb && (uint32_t)(uintptr_t)fake_fetch_opts.cb != F_FETCH && !fake_fetch_opts.arg);
+        /* a second start is refused, and the first keeps its callback */
+        feckless_fetch_opts_t *o2 = bx(sizeof *o2);
+        *o2 = *o;
+        o2->cb = (feckless_fetch_cb_t)(uintptr_t)F_PAGE;
+        o2->arg = (void *)0x66;
+        CHECK(dcall(&w, "feckless_fetch_start", P(o2), 0, 0, 0) == 0);
+        char *why = bx(64);
+        dcall(&w, "feckless_fetch_why", P(why), 64, 0, 0);
+        CHECK(!strcmp(why, "one is running"));
+        o2->url = (const char *)(uintptr_t)(P(mem) + MEM - 2);
+        CHECK(dcall(&w, "feckless_fetch_start", P(o2), 0, 0, 0) == 0);   /* a string out of the box */
+
+        /* the download's task: each event through the app's callback */
+        CHECK(fake_fetch_event(FECKLESS_FETCH_EV_START, NULL, NULL, 0));
+        CHECK(fake_fetch_event(FECKLESS_FETCH_EV_HEADERS, "https://cdn.example/ep", "audio/mpeg", 0));
+        CHECK(!strcmp(s_headers_seen, "https://cdn.example/ep|audio/mpeg"));
+        CHECK(!strcmp(fake_fetch_path, "/sd/Podcasts/x/ep.mp3"));          /* the app's new path, back */
+        CHECK(fake_fetch_event(FECKLESS_FETCH_EV_READY, NULL, NULL, 1 << 20) && s_ready_size == (1 << 20));
+        s_verify_ok = 0;
+        CHECK(!fake_fetch_event(FECKLESS_FETCH_EV_VERIFY, NULL, NULL, 3 << 20));   /* the app's no */
+        s_verify_ok = 1;
+        CHECK(fake_fetch_event(FECKLESS_FETCH_EV_VERIFY, NULL, NULL, 3 << 20));
+        CHECK(fake_fetch_event(FECKLESS_FETCH_EV_DONE, NULL, NULL, 3 << 20));
+        CHECK(s_ev_seen[FECKLESS_FETCH_EV_START] == 1 && s_ev_seen[FECKLESS_FETCH_EV_VERIFY] == 2 &&
+              s_ev_seen[FECKLESS_FETCH_EV_DONE] == 1 && s_fetch_arg_ok);
+
+        /* the state, 64 bits through the app's pointers */
+        int64_t *id = bx(8), *got = bx(8), *total = bx(8);
+        uint32_t *gen = bx(4);
+        char *path = bx(64);
+        CHECK(dcall6(&w, "feckless_fetch_state", P(id), P(got), P(total), P(path), 64, P(gen)) == FECKLESS_FETCH_RUNNING);
+        CHECK(*id == 42 && *got == 0x123456789LL && *total == 0x223456789LL && *gen == 7);
+        CHECK(!strcmp(path, "/sd/Podcasts/x/ep.mp3"));
+        CHECK(dcall6(&w, "feckless_fetch_state", P(id), 0, 0, P(path), 4, 0) == FECKLESS_FETCH_RUNNING &&
+              !strcmp(path, "/sd"));                                      /* cut to the app's room */
+        CHECK(dcall6(&w, "feckless_fetch_state", P(mem) + MEM - 4, 0, 0, 0, 0, 0) == FECKLESS_FETCH_IDLE);   /* out of the box */
+
+        /* live, part, discard */
+        char *part = bx(64);
+        int64_t *ready = bx(8), *tot = bx(8);
+        feckless_fetch_state_t *st = bx(sizeof *st);
+        CHECK(dcall6(&w, "feckless_fetch_live", P(bstr("/sd/Podcasts/x/ep.mp3")), P(part), 64, P(ready), P(tot), P(st)) == 1);
+        CHECK(!strcmp(part, "/sd/.parts/ep.part") && *ready == (1 << 20) && *tot == (3 << 20));
+        CHECK(dcall(&w, "feckless_fetch_part", P(bstr("/sd/.parts/ep.part")), P(ready), 0, 0) == 1 && *ready == (1 << 20));
+        dcall(&w, "feckless_fetch_discard", P(bstr("/sd/.parts/ep.part")), 0, 0, 0);
+        CHECK(fake_fetch_discards == 1 && !strcmp(fake_fetch_discarded, "/sd/.parts/ep.part"));
+
+        /* paused, then cancelled from a handler on the loop: CANCELLED would
+         * come on the loop's own task, so it comes a moment later instead */
+        dcall(&w, "feckless_fetch_pause", 0, 0, 0, 0);
+        CHECK(fake_fetch_paused && !fake_fetch_running);
+        uint32_t r;
+        CHECK(box_upcall(F_CANCEL, (const uint32_t[4]){ 0 }, &r) == ESP_OK);
+        for (int i = 0; i < 200 && !s_ev_seen[FECKLESS_FETCH_EV_CANCELLED]; i++) sleep_ms(10);
+        CHECK(s_ev_seen[FECKLESS_FETCH_EV_CANCELLED] == 1);
+
+        /* one left running for the app's end, which pauses it */
+        CHECK(dcall(&w, "feckless_fetch_start", P(o), 0, 0, 0) == 1 && fake_fetch_running);
+        printf("  a download: its events through the loop, the path rewritten, a refusal, a deferred CANCELLED\n");
+    }
+
     /* the stop while a handler waits on its socket: the server's task is let
      * go, but only after the call on its request has come back */
     printf("  pages, a post, a query, a WebSocket, queued work, the redirect: answered through the loop\n");
@@ -477,9 +612,12 @@ int main(void)
     CHECK(fake_httpd_open(real) == -1);                                /* open_fn refused while stopping */
     printf("  the stop ended a handler blocked in recv by shutting its socket; the loop ended\n");
 
-    /* the app's end: its servers stopped */
+    /* the app's end: its servers stopped, its download paused */
+    extern int fake_fetch_pauses;
+    const int pauses = fake_fetch_pauses;
     feckless_box_calls_end();
     CHECK(fake_httpd_live == 0);
+    CHECK(fake_fetch_pauses == pauses + 1);
     fake_stopping = false;
 
     if (failed) { printf("httpd_test: %d FAILED\n", failed); return 1; }

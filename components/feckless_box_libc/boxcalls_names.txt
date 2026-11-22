@@ -418,3 +418,11 @@ feckless_abi_crypto_v2
 feckless_abi_crypto_mbedtls4
 psa_crypto_init
 psa_hash_compute
+feckless_fetch_start
+feckless_fetch_pause
+feckless_fetch_cancel
+feckless_fetch_state
+feckless_fetch_why
+feckless_fetch_live
+feckless_fetch_part
+feckless_fetch_discard

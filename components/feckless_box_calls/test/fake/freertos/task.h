@@ -9,6 +9,9 @@ void vTaskDelay(TickType_t t);
 typedef void (*TaskFunction_t)(void *);
 BaseType_t xTaskCreatePinnedToCore(TaskFunction_t fn, const char *name, uint32_t stack, void *arg,
                                    UBaseType_t prio, TaskHandle_t *out, BaseType_t core);
+/* u-feckless-0081 */
+#define xTaskCreate(fn, name, stack, arg, prio, out) \
+    xTaskCreatePinnedToCore((fn), (name), (stack), (arg), (prio), (out), tskNO_AFFINITY)
 void vTaskDelete(TaskHandle_t t);
 TickType_t xTaskGetTickCount(void);
 TaskHandle_t xTaskGetCurrentTaskHandle(void);

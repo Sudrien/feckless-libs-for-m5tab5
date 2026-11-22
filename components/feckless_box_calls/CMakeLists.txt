@@ -15,6 +15,7 @@ idf_component_register(
          "src/box_netif.c"   # u-feckless-0076
          "src/box_httpd.c"   # u-feckless-0077
          "src/box_crypto.c"  # u-feckless-0078
+         "src/box_fetch.c"   # u-feckless-0081
     INCLUDE_DIRS "include"
     REQUIRES feckless_umode
     PRIV_REQUIRES feckless_abi feckless_drivers feckless_graphics_handler

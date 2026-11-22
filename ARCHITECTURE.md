@@ -5159,3 +5159,63 @@ the config handed to httpd has a free function.
 *Checked:* box_calls_test, httpd_test, upcall_test, leaselock_test and
 box_storage_test pass. *Not checked:* the board: remote control off, then
 on again.
+
+### u-feckless-0081 -- feckless_fetch for a boxed app: podcast downloads
+
+The boxed Defeatist searched Podcast Index and listed episodes, but
+"Download to microSD" said `not started: no network in a box`, from
+absent.c's stand-in. **box_fetch.c** answers sections/network.txt's
+`feckless_fetch_*` names with the launcher's own downloader: its tasks,
+the writer's lease on the card, the part files and their maps.
+
+- **`feckless_fetch_start`** copies the app's options (url, path, part,
+  user agent, connections, split, https_only, id) into the launcher.
+  - If the app gave a callback, the launcher's own takes its place. Each
+    event is copied into one block in the app's box: the event, the url
+    and Content-Type it names, the part file, and a path buffer the app
+    may rewrite. The callback loop (u-feckless-0075) runs the app's
+    callback on it while the download's task waits.
+  - A HEADERS callback's new path, written into the buffer or pointed
+    elsewhere in the block, is copied back.
+  - The block is allocated once, on the first start with a callback, and
+    goes with the box.
+  - A start refused because one is running leaves the running
+    download's callback as it was.
+  - The app's lock is let go around the real start: START comes at once
+    on the download's task, and its callback may need the lock.
+- **CANCELLED of a paused or failed download** is delivered on the task
+  that called `feckless_fetch_cancel()`. That may be the callback loop
+  itself, since Defeatist's remote cancels from an HTTP handler, and a
+  callback asked for from the loop's own task could never run. That one
+  event is handed to a short launcher task and delivered a moment later
+  (`box_upcall_on_loop()`, new); its return was ignored anyway.
+- **When the app stops mid-callback**, the event counts as answered yes,
+  so a VERIFY the app never got to judge doesn't throw away a whole file.
+  At the app's end, a download it started is paused (its part file kept,
+  to resume at the next start) and no callback is made.
+- **Locking:** only start is locked. pause, cancel, state, why, live,
+  part and discard are unlocked: discard, part and live touch the card,
+  whose lease an app thread may hold while waiting for the app's lock
+  (u-feckless-0072). state and live return their 64-bit numbers through
+  the app's pointers.
+- **Tests:** the test Makefile now also searches
+  feckless_network_handler/include, after the fakes, so the box is tested
+  against the real feckless_fetch.h. The fake RTOS, with FAKE_REAL_SEMS,
+  gives `xTaskCreatePinnedToCore` a real thread.
+
+*Tested:* httpd_test's download section, with real threads, against
+fake_fetch.c. It checks:
+- the options copied out of the box, and the callback and arg replaced;
+- a second start refused, with `why`;
+- a string outside the box refused;
+- START, HEADERS (url and type seen, the new path copied back), READY,
+  VERIFY refused and then accepted, and DONE, each through the app's
+  callback on the loop, with its arg and id;
+- the state's 64-bit numbers, gen, and the path cut to the app's room,
+  and pointers outside the box refused;
+- live, part and discard;
+- a pause, then a cancel from a handler running on the loop, whose
+  CANCELLED arrives a moment later from another task;
+- the app's end pausing a running download.
+
+The other host tests and the ABI tests pass. *Not checked:* the board.

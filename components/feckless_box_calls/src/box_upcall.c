@@ -130,6 +130,10 @@ const uint32_t box_upcall_calls_n = sizeof box_upcall_calls / sizeof box_upcall_
 
 bool box_upcall_ready(void) { return s_thread != 0; }
 
+/* u-feckless-0081: the caller is the loop's own host task -- a callback
+ * asked for now could never be answered, so the caller defers it. */
+bool box_upcall_on_loop(void) { return s_loop_task && xTaskGetCurrentTaskHandle() == s_loop_task; }
+
 esp_err_t box_upcall_start(win_t *w, uint32_t stack, int prio)
 {
     (void)w;

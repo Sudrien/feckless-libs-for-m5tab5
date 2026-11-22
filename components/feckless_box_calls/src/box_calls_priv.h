@@ -121,6 +121,7 @@ extern const feckless_umode_call_t box_upcall_calls[];
 extern const uint32_t box_upcall_calls_n;
 esp_err_t box_upcall_start(win_t *w, uint32_t stack, int prio);
 bool box_upcall_ready(void);
+bool box_upcall_on_loop(void);
 esp_err_t box_upcall(uint32_t fn, const uint32_t args[4], uint32_t *ret);
 void box_upcall_end(void);
 
@@ -140,3 +141,8 @@ void box_httpd_reap(void *arg);
 /* u-feckless-0078: psa_crypto_init, psa_hash_compute (box_crypto.c). */
 extern const feckless_umode_call_t box_crypto_calls[];
 extern const uint32_t box_crypto_calls_n;
+
+/* u-feckless-0081: feckless_fetch, the launcher's downloader (box_fetch.c). */
+extern const feckless_umode_call_t box_fetch_calls[];
+extern const uint32_t box_fetch_calls_n;
+void box_fetch_end(void);
