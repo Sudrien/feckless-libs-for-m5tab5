@@ -18,6 +18,14 @@ typedef unsigned UBaseType_t;
 typedef struct { int unused; } portMUX_TYPE;
 #define portMUX_INITIALIZER_UNLOCKED { 0 }
 extern int fake_crit_depth;
+#ifdef FAKE_REAL_SEMS
+/* u-feckless-0075: upcall_test's threads -- one real lock for every mux */
+void fake_crit_enter(void);
+void fake_crit_exit(void);
+#define portENTER_CRITICAL(m) ((void)(m), fake_crit_enter())
+#define portEXIT_CRITICAL(m) ((void)(m), fake_crit_exit())
+#else
 #define portENTER_CRITICAL(m) ((void)(m), fake_crit_depth++)
 #define portEXIT_CRITICAL(m) ((void)(m), fake_crit_depth--)
+#endif
 BaseType_t xPortGetCoreID(void);

@@ -8,5 +8,6 @@ void esp_log_write(esp_log_level_t level, const char *tag, const char *format, .
 uint32_t esp_log_timestamp(void);
 #define ESP_LOGE(tag, fmt, ...) esp_log_write(ESP_LOG_ERROR, tag, fmt, ##__VA_ARGS__)
 #define ESP_LOGW(tag, fmt, ...) esp_log_write(ESP_LOG_WARN, tag, fmt, ##__VA_ARGS__)
+#define ESP_LOGI(tag, fmt, ...) esp_log_write(ESP_LOG_INFO, tag, fmt, ##__VA_ARGS__)
 esp_log_level_t esp_log_level_get(const char *tag);
 void esp_log_level_set(const char *tag, esp_log_level_t level);

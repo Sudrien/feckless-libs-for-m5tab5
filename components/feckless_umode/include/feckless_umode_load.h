@@ -99,7 +99,10 @@ esp_err_t feckless_umode_app_grant(feckless_umode_app_t *app, uint32_t lo, uint3
  * bad core. ESP_ERR_NO_MEM: no slot (FECKLESS_UMODE_MAX_THREADS), no room
  * in the box, or no host task. ESP_ERR_INVALID_STATE: not the loaded app,
  * or it is stopping. */
-#define FECKLESS_UMODE_MAX_THREADS 8
+/* u-feckless-0075: 12, was 8 -- Defeatist's player runs 7 threads of its
+ * own, and the callback loop (feckless_box_calls' box_upcall.c) is one
+ * more. A slot is a host task and its bookkeeping, taken only when spawned. */
+#define FECKLESS_UMODE_MAX_THREADS 12
 esp_err_t feckless_umode_app_spawn(feckless_umode_app_t *app, uint32_t fn, uint32_t arg,
                                    uint32_t stack_bytes, int prio, int core, uint32_t *id);
 

@@ -8,6 +8,11 @@
  */
 #include <stdlib.h>
 #include <string.h>
+#ifdef FAKE_REAL_SEMS
+#include <errno.h>
+#include <pthread.h>
+#include <time.h>
+#endif
 
 #include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
@@ -25,7 +30,7 @@ int fake_live;                      /* objects not deleted */
 UBaseType_t fake_prio;
 TaskHandle_t fake_prio_task;
 
-uint32_t fake_thread_id = 9;        /* the window's: app_main */
+uint32_t fake_thread_id = FECKLESS_UMODE_MAIN_THREAD;   /* the window's: app_main */
 void *fake_thread_task[16];
 uint32_t fake_stack_lo[16], fake_stack_hi[16];
 bool fake_stopping;
@@ -36,6 +41,12 @@ struct fake_q {
     uint8_t *store;
     void *holder;
     uint32_t rec;
+#ifdef FAKE_REAL_SEMS
+    /* u-feckless-0075: a binary semaphore that really waits, for upcall_test's threads */
+    bool real;
+    pthread_mutex_t m;
+    pthread_cond_t c;
+#endif
 };
 
 struct fake_sb {
@@ -63,7 +74,14 @@ BaseType_t xTaskCreatePinnedToCore(TaskFunction_t fn, const char *name, uint32_t
 }
 void vTaskDelete(TaskHandle_t t) { (void)t; }
 TickType_t xTaskGetTickCount(void) { return 4242; }
+#ifdef FAKE_REAL_SEMS
+static pthread_mutex_t s_crit = PTHREAD_MUTEX_INITIALIZER;
+void fake_crit_enter(void) { pthread_mutex_lock(&s_crit); fake_crit_depth++; }
+void fake_crit_exit(void) { fake_crit_depth--; pthread_mutex_unlock(&s_crit); }
+TaskHandle_t xTaskGetCurrentTaskHandle(void) { return (TaskHandle_t)(uintptr_t)pthread_self(); }
+#else
 TaskHandle_t xTaskGetCurrentTaskHandle(void) { return fake_task; }
+#endif
 UBaseType_t uxTaskPriorityGet(TaskHandle_t t) { return t == fake_prio_task ? fake_prio : 7; }
 void vTaskPrioritySet(TaskHandle_t t, UBaseType_t p) { fake_prio_task = t; fake_prio = p; }
 eTaskState eTaskGetState(TaskHandle_t t) { (void)t; return eBlocked; }
@@ -72,6 +90,13 @@ static struct fake_q *q_new(uint32_t len, uint32_t item, uint8_t type, uint32_t 
 {
     struct fake_q *q = calloc(1, sizeof *q);
     q->len = len; q->item = item; q->type = type; q->count = count; q->store = store;
+#ifdef FAKE_REAL_SEMS
+    if (type == queueQUEUE_TYPE_BINARY_SEMAPHORE) {
+        q->real = true;
+        pthread_mutex_init(&q->m, NULL);
+        pthread_cond_init(&q->c, NULL);
+    }
+#endif
     fake_live++;
     return q;
 }
@@ -106,6 +131,15 @@ static bool q_mutex(const struct fake_q *q)
 
 BaseType_t xQueueGenericSend(QueueHandle_t q, const void *item, TickType_t t, BaseType_t pos)
 {
+#ifdef FAKE_REAL_SEMS
+    if (q->real) {
+        pthread_mutex_lock(&q->m);
+        const bool ok = q->count == 0;
+        if (ok) { q->count = 1; pthread_cond_signal(&q->c); }
+        pthread_mutex_unlock(&q->m);
+        return ok ? pdTRUE : pdFALSE;
+    }
+#endif
     fake_last_ticks = t;
     if (q->item && !item) abort();
     if (pos == queueOVERWRITE && q->len != 1) abort();
@@ -131,6 +165,22 @@ BaseType_t xQueueGenericSend(QueueHandle_t q, const void *item, TickType_t t, Ba
 }
 BaseType_t xQueueSemaphoreTake(QueueHandle_t q, TickType_t t)
 {
+#ifdef FAKE_REAL_SEMS
+    if (q->real) {                          /* t in ms: the fake's 1 kHz tick */
+        struct timespec until;
+        clock_gettime(CLOCK_REALTIME, &until);
+        until.tv_sec += t / 1000;
+        until.tv_nsec += (long)(t % 1000) * 1000000L;
+        if (until.tv_nsec >= 1000000000L) { until.tv_sec++; until.tv_nsec -= 1000000000L; }
+        pthread_mutex_lock(&q->m);
+        int r = 0;
+        while (!q->count && r != ETIMEDOUT) r = pthread_cond_timedwait(&q->c, &q->m, &until);
+        const bool ok = q->count != 0;
+        if (ok) q->count = 0;
+        pthread_mutex_unlock(&q->m);
+        return ok ? pdTRUE : pdFALSE;
+    }
+#endif
     fake_last_ticks = t;
     if (q->item) abort();
     if (!q->count) { fake_take_tries++; return pdFALSE; }

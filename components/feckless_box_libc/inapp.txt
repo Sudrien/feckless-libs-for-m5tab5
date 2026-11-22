@@ -96,6 +96,9 @@ heap_caps_realloc
 heap_caps_free
 # ---- u-feckless-0023: vTaskDelete(NULL) ends the thread (src/box_task.c)
 vTaskDelete
+# ---- u-feckless-0075: the app's callback loop (src/box_upcall.c), which the
+# host spawns a thread at; never a host call
+feckless_box_upcall_loop
 # ---- u-feckless-0027: libgcc's float conversions, which pass the float in
 # fa0 (no host call) and are not position-independent (src/box_fpconv.c);
 # and newlib's float NaN test

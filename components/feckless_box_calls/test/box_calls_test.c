@@ -19,6 +19,7 @@
 #include "feckless_umode.h"   /* u-feckless-0022: FECKLESS_UMODE_R, _W */
 #include "esp_heap_caps.h"   /* u-feckless-0045: MALLOC_CAP_SPIRAM */
 #include "freertos/task.h"
+#include "feckless_umode_load.h"   /* u-feckless-0075: FECKLESS_UMODE_MAIN_THREAD */
 
 extern int calls, last_i[8], log_kind;
 extern char last_fn[32], last_str[700], log_tag[80];
@@ -431,7 +432,7 @@ static void test_rtos(void)
     static int t1, t2, t3;
     const int live0 = fake_live;
     fake_task = &t1;
-    fake_thread_id = 9;
+    fake_thread_id = FECKLESS_UMODE_MAIN_THREAD;
 
     /* a mutex: given only by its holder */
     const uint32_t m = C1("xQueueCreateMutex", 1);
@@ -574,7 +575,7 @@ static void test_rtos(void)
     CHECK(C4("ulTaskGenericNotifyTake", 0, 1, 0, 0) == 1);
     fake_take_tries = 0;
     CHECK(C4("ulTaskGenericNotifyTake", 0, 1, 120, 0) == 0);
-    fake_thread_id = 9;
+    fake_thread_id = FECKLESS_UMODE_MAIN_THREAD;
     CHECK(call("xTaskGenericNotify", 3, 0, 0x55, 3, P(prev), 0, 0, 0) == 1 && *prev == 0);
     CHECK(call("xTaskGenericNotify", 3, 0, 0x66, 4, P(prev), 0, 0, 0) == 0 && *prev == 0x55);   /* pending */
     CHECK(call("xTaskGenericNotify", 3, 0, 0x0f, 1, 0, 0, 0, 0) == 1);        /* eSetBits */
@@ -582,7 +583,7 @@ static void test_rtos(void)
     CHECK(call("xTaskGenericNotifyWait", 0, 0, 0xffffffffu, P(prev), 0, 0, 0, 0) == 1 && *prev == 0x5f);
     CHECK(call("xTaskGenericNotifyWait", 0, 0, 0, P(prev), 0, 0, 0, 0) == 0);  /* nothing pending */
     CHECK(call("xTaskGenericNotifyWait", 0, 0, 0, 0x1000, 0, 0, 0, 0) == 0);
-    fake_thread_id = 9;
+    fake_thread_id = FECKLESS_UMODE_MAIN_THREAD;
     CHECK(call("xTaskGenericNotify", 5, 0, 1, 2, 0, 0, 0, 0) == 0);           /* not running */
     CHECK(call("xTaskGenericNotify", 3, 1, 1, 2, 0, 0, 0, 0) == 0);           /* index 1 */
     CHECK(call("xTaskGenericNotify", 0x1234, 0, 1, 2, 0, 0, 0, 0) == 0);
@@ -606,7 +607,7 @@ static void test_rtos(void)
 
     /* tasks */
     CHECK(C0("xPortInIsrContext") == 0 && C0("xTaskGetTickCount") == 4242);
-    CHECK(C0("xTaskGetCurrentTaskHandle") == 9);
+    CHECK(C0("xTaskGetCurrentTaskHandle") == FECKLESS_UMODE_MAIN_THREAD);
     const uint32_t nm = C1("pcTaskGetName", 0);
     CHECK(nm >= P(mem) && nm < P(mem) + MEM && !strcmp((char *)(uintptr_t)nm, "main"));
     const uint32_t fn = P(mem) + 0x100;
@@ -621,12 +622,12 @@ static void test_rtos(void)
     uint8_t *stk = (uint8_t *)(uintptr_t)feckless_box_alloc(&box, 256);
     memset(stk, 0xa5, 100);
     memset(stk + 100, 0, 156);
-    fake_thread_task[9] = &t1;
-    fake_stack_lo[9] = P(stk);
-    fake_stack_hi[9] = P(stk) + 256;
+    fake_thread_task[FECKLESS_UMODE_MAIN_THREAD] = &t1;
+    fake_stack_lo[FECKLESS_UMODE_MAIN_THREAD] = P(stk);
+    fake_stack_hi[FECKLESS_UMODE_MAIN_THREAD] = P(stk) + 256;
     CHECK(C1("uxTaskGetStackHighWaterMark", 0) == 100 && C1("xTaskGetStackStart", 0) == P(stk));
     memset(stk, 0xa5, 256);
-    CHECK(C1("uxTaskGetStackHighWaterMark", 9) == 256);            /* never past the top */
+    CHECK(C1("uxTaskGetStackHighWaterMark", FECKLESS_UMODE_MAIN_THREAD) == 256);            /* never past the top */
     CHECK(C1("uxTaskGetStackHighWaterMark", 5) == 0 && C1("xTaskGetStackStart", 5) == 0);
     C2("vTaskPrioritySet", 3, 99);
     CHECK(fake_prio_task == &t3 && fake_prio == 23 && C1("uxTaskPriorityGet", 3) == 23);
@@ -659,7 +660,7 @@ static void test_rtos(void)
     feckless_box_calls_end();
     CHECK(fake_live == live0);
     CHECK(C2("xQueueSemaphoreTake", m, 0) == 0);
-    fake_thread_task[3] = fake_thread_task[9] = NULL;
+    fake_thread_task[3] = fake_thread_task[FECKLESS_UMODE_MAIN_THREAD] = NULL;
 }
 
 /* u-feckless-0046: playback, the battery, the clock, polyrsp, the rest of gfx */

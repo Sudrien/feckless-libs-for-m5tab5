@@ -11,6 +11,7 @@ idf_component_register(
          "src/box_drivers.c" # u-feckless-0062
          "src/box_net.c"     # u-feckless-0071
          "src/box_http.c"    # u-feckless-0073
+         "src/box_upcall.c"  # u-feckless-0075
     INCLUDE_DIRS "include"
     REQUIRES feckless_umode
     PRIV_REQUIRES feckless_abi feckless_drivers feckless_graphics_handler

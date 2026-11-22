@@ -277,6 +277,31 @@ static void test_checkin(void)
     CHECK(s_ticks == 6);
 }
 
+/* u-feckless-0075: the callback loop. The host's two calls, recorded: the
+ * constructor's announcement before main, and the loop's asks. Calls into
+ * u.fn are not made here -- a 32-bit address of a 64-bit host's function --
+ * the loop is checked to hand each answer back and to end on 0. */
+typedef struct { uint32_t fn, a[4]; } up_t;
+void feckless_box_upcall_loop(void *arg);
+static void (*s_announced)(void *);
+static int s_announces, s_asks;
+static uint32_t s_last_ret = 0xdead;
+void feckless_box_upcall_loop_is(void (*loop)(void *)) { s_announced = loop; s_announces++; }
+uint32_t feckless_box_upcall_next(up_t *u, uint32_t ret)
+{
+    s_asks++;
+    s_last_ret = ret;
+    CHECK(u != NULL);
+    return 0;                               /* the app is stopping */
+}
+
+static void test_upcall(void)
+{
+    CHECK(s_announces == 1 && s_announced == feckless_box_upcall_loop);   /* before main, once */
+    feckless_box_upcall_loop(NULL);
+    CHECK(s_asks == 1 && s_last_ret == 0);  /* asked once, with nothing to answer; ended on 0 */
+}
+
 int main(void)
 {
     test_strtod();
@@ -285,6 +310,7 @@ int main(void)
     test_stdio();
     test_heap();
     test_checkin();
+    test_upcall();
     printf(failed ? "libc48: %d FAILED\n" : "libc48: all passed (%d checks)\n", failed ? failed : checks);
     return failed != 0;
 }

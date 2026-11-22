@@ -46,6 +46,13 @@ void feckless_box_checkin(uint32_t work)
     }
 }
 
+/* u-feckless-0075: the app's callback loop (box_upcall.c), linked with the
+ * heap for the reason above -- a linker takes an archive member only for a
+ * name something wants, and the loop's constructor is wanted by no name.
+ * Never called; `used` keeps the reference in the object. */
+void feckless_box_upcall_loop(void *arg);
+__attribute__((used)) static void box_upcall_wanted(void) { feckless_box_upcall_loop(0); }
+
 /* u-feckless-0048: heap_caps_register_failed_alloc_callback()'s, called by
  * these when the box's heap says no -- the app's own code, run in the app. */
 typedef void (*box_alloc_failed_t)(size_t size, uint32_t caps, const char *function_name);

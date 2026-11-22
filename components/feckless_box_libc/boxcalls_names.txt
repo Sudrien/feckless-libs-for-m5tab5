@@ -378,3 +378,5 @@ esp_http_client_read
 esp_http_client_perform
 esp_http_client_close
 esp_http_client_cleanup
+feckless_box_upcall_loop_is
+feckless_box_upcall_next

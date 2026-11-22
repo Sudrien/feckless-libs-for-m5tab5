@@ -4881,3 +4881,71 @@ other field it does not copy does (event_handler, user_data).
 *Checked:* box_calls_test, box_storage_test and nonet pass. *Not checked:*
 the board's build; the error was in no other line of box_http.c in the
 log given.
+
+### u-feckless-0075 -- callbacks into a boxed app
+
+A box never calls into its app from a host task: the app's code runs in
+windows on the app's own threads. But an HTTP server calls its handlers,
+its `open_fn` and its queued work; HID calls a report callback;
+feckless_fetch calls progress and done. Defeatist's remote control is all
+of those, so this is the mechanism its server (u-feckless-0076) and the
+others after it will use.
+
+- **In the app, `feckless_box_libc`'s src/box_upcall.c** has a loop and a
+  constructor. Before app_main, the constructor makes one host call,
+  `feckless_box_upcall_loop_is(loop)`, and nothing else runs. The loop asks
+  `feckless_box_upcall_next(&u, last answer)` for a call
+  (`{fn, a[4]}`), makes it as the app's own code, and hands back what it
+  returned with its next ask; 0 from the ask ends the thread. box_heap.c
+  refers to the loop, so every ELF that allocates links it (a linker takes
+  an archive member only for a name something wants; the constructor is
+  wanted by none). `feckless_box_upcall_loop` is in inapp.txt, the two
+  host calls in sections/box.txt.
+- **In the launcher, `feckless_box_calls`' src/box_upcall.c.**
+  - `box_upcall_start(w, stack, prio)`, from a host call on the app's
+    thread under its lock, spawns the loop's thread once, on the caller's
+    core.
+  - `box_upcall(fn, args, &ret)`, from any host task holding no lock of the
+    app's, posts the call and waits for its own answer. It waits however
+    long the app's function takes, and is let go within 100 ms, with
+    ESP_ERR_INVALID_STATE, when the app stops. Callers take turns, so
+    callbacks run one at a time in the order asked for.
+  - Asking from the loop's own thread (a callback whose host call wants
+    another callback) would never be answered; it is refused and logged.
+  - `next()` is unlocked and waits in 100 ms slices; when the app stops it
+    answers 0.
+  - The app's end resets it all for the next app.
+- **The rule for what uses it:** a host call that waits for something that
+  waits for a callback (httpd_stop, say) must be UNLOCKED, since the
+  app's function may need the app's lock.
+- **`FECKLESS_UMODE_MAX_THREADS` is 12** (was 8): the player runs seven
+  threads of its own, and the loop is one more. The host tests now take
+  the main thread's id from `FECKLESS_UMODE_MAIN_THREAD`, not 9.
+
+**Compatibility:** an ELF built with this library imports the two new
+names, so a launcher from before this patch refuses to load it, naming
+the import. An ELF from before runs on this launcher; it has no loop, and
+anything that needs callbacks fails with a line saying so.
+
+*Tested:* upcall_test, new, is built with real threads (FAKE_REAL_LOCKS,
+and FAKE_REAL_SEMS, new in fake_rtos.c: binary semaphores that wait and
+one real lock for critical sections). One thread plays the app's loop;
+others play host tasks. It checks:
+- nothing runs before the app announces its loop, or with a loop outside
+  its box;
+- one spawn, with the stack, priority and core asked for;
+- 600 callbacks from three host tasks at once, each getting its own
+  answers;
+- a callback asking for another from the loop's thread is refused, not
+  hung;
+- a callback making a locked host call while another thread holds the
+  lock;
+- the stop mid-callback releases the asker after about 100 ms, before
+  the callback's 300 ms are up, and the loop then ends;
+- the app's end resets everything.
+
+libc48_test checks the constructor announces the loop before main, and
+that the loop ends on 0. box_calls_test, box_storage_test, leaselock_test,
+feckless_umode's tests and the ABI tests pass. The in-app file was
+compiled for rv32imac with clang: one `.init_array` entry. *Not checked:*
+the board.

@@ -59,7 +59,7 @@ newlib_math_test: newlib_math_test.c $(NEWLIB_MATH_SRCS) newlib_shim/machine/iee
 	      -o $@ newlib_math_test.c $(NEWLIB_MATH_SRCS)
 
 # u-feckless-0048: strtod, the strings, sscanf, the stdio wrappers, the heap
-LIBC48 := ../src/box_strtod.c ../src/box_string.c ../src/box_scanf.c ../src/box_stdio.c ../src/box_strto.c ../src/box_heap.c
+LIBC48 := ../src/box_strtod.c ../src/box_string.c ../src/box_scanf.c ../src/box_stdio.c ../src/box_strto.c ../src/box_heap.c ../src/box_upcall.c
 libc48_test: libc48_test.c $(LIBC48)
 	$(CC) $(CFLAGS) -fno-builtin -Ifake_idf -D'BOX_NAME(n)=box_##n' -D'BOX_HOST(n)=host_##n' -D'BOX_STD(n)=box_##n' \
 	      -o $@ libc48_test.c $(LIBC48) -lm $(LDFLAGS)

@@ -15,3 +15,8 @@ feckless_box_log
 # u-feckless-0049: the box heap's figures, which feckless_box_libc's
 # heap_caps_get_info() and its siblings ask for (u-feckless-0048).
 feckless_box_heap_stats
+
+# u-feckless-0075: callbacks into the app. feckless_box_libc's constructor
+# says where the app's loop is; the loop asks for each call and answers it.
+feckless_box_upcall_loop_is
+feckless_box_upcall_next

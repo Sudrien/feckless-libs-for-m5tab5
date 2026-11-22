@@ -108,3 +108,18 @@ extern const feckless_umode_call_t box_http_calls[];
 extern const uint32_t box_http_calls_n;
 void box_http_end(void);
 void box_http_reap(void *arg);
+
+/* u-feckless-0075: callbacks into the app (box_upcall.c). box_upcall_start():
+ * from a host call on the app's thread, under its lock -- spawns the app's
+ * callback loop once (ESP_ERR_NOT_SUPPORTED: the app has none). box_upcall():
+ * from a host task, holding no lock of the app's -- fn(args) run by the
+ * loop, its return in *ret; waits as long as fn takes; ESP_ERR_INVALID_STATE
+ * when the app stops (or asked from the loop's own thread),
+ * ESP_ERR_NOT_SUPPORTED with no loop running. */
+#include "esp_err.h"
+extern const feckless_umode_call_t box_upcall_calls[];
+extern const uint32_t box_upcall_calls_n;
+esp_err_t box_upcall_start(win_t *w, uint32_t stack, int prio);
+bool box_upcall_ready(void);
+esp_err_t box_upcall(uint32_t fn, const uint32_t args[4], uint32_t *ret);
+void box_upcall_end(void);
