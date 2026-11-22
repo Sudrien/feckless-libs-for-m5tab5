@@ -90,3 +90,41 @@ int fake_lock_depth, fake_lock_taken;
 void feckless_umode_app_lock(feckless_umode_app_t *a) { (void)a; fake_lock_depth++; fake_lock_taken++; }
 void feckless_umode_app_unlock(feckless_umode_app_t *a) { (void)a; fake_lock_depth--; }
 #endif
+
+/* ---- u-feckless-0076: esp_netif's list ---------------------------------- */
+
+#include "esp_netif.h"
+
+struct esp_netif_obj {
+    const char *key;
+    uint32_t ip, mask;
+    int n6;
+    bool live;
+};
+struct esp_netif_obj fake_nif[3] = {
+    { "ETH_DEF", 0x7d01a8c0u, 0x00ffffffu, 2, true },        /* 192.168.1.125/24 */
+    { "WIFI_STA_DEF", 0x0a00000au, 0x0000ffffu, 0, true },   /* 10.0.0.10/16 */
+    { "ecm", 0, 0, 0, false },
+};
+int fake_find_if_calls;
+
+esp_netif_t *esp_netif_find_if(esp_netif_find_predicate_t fn, void *ctx)
+{
+    fake_find_if_calls++;
+    for (int i = 0; i < 3; i++)
+        if (fake_nif[i].live && fn(&fake_nif[i], ctx)) return &fake_nif[i];
+    return NULL;
+}
+esp_err_t esp_netif_get_ip_info(esp_netif_t *n, esp_netif_ip_info_t *ip)
+{
+    ip->ip.addr = n->ip;
+    ip->netmask.addr = n->mask;
+    ip->gw.addr = n->ip ? (n->ip & n->mask) | 0xfe000000u : 0;
+    return ESP_OK;
+}
+int esp_netif_get_all_ip6(esp_netif_t *n, esp_ip6_addr_t a[])
+{
+    for (int i = 0; i < n->n6; i++) { memset(&a[i], 0, sizeof a[i]); a[i].addr[0] = 0xfe80u + (uint32_t)i; }
+    return n->n6;
+}
+const char *esp_netif_get_ifkey(esp_netif_t *n) { return n->key; }

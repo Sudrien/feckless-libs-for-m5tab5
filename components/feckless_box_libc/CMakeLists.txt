@@ -11,6 +11,7 @@ idf_component_register(
          "src/box_div64.c"                   # u-feckless-0038
          "src/box_strtod.c" "src/box_string.c" "src/box_scanf.c" "src/box_stdio.c"   # u-feckless-0048
          "src/box_upcall.c"                  # u-feckless-0075
+         "src/box_netif.c"                   # u-feckless-0076
     INCLUDE_DIRS "include"
     # printf.c includes <printf/printf.h>; newlib_math includes "fdlibm.h"
     PRIV_INCLUDE_DIRS "vendor" "newlib_math/common"

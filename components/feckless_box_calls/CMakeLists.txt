@@ -12,6 +12,8 @@ idf_component_register(
          "src/box_net.c"     # u-feckless-0071
          "src/box_http.c"    # u-feckless-0073
          "src/box_upcall.c"  # u-feckless-0075
+         "src/box_netif.c"   # u-feckless-0076
+         "src/box_httpd.c"   # u-feckless-0077
     INCLUDE_DIRS "include"
     REQUIRES feckless_umode
     PRIV_REQUIRES feckless_abi feckless_drivers feckless_graphics_handler
@@ -42,3 +44,7 @@ idf_component_optional_requires(PRIVATE feckless_network_handler)
 # launcher links the client and its certificate bundle (box_http.c builds an
 # empty table without them).
 idf_component_optional_requires(PRIVATE esp_http_client mbedtls)
+
+# u-feckless-0076, 0077: esp_netif's handles and the HTTP server, where the
+# launcher has them (box_netif.c and box_httpd.c build empty tables without).
+idf_component_optional_requires(PRIVATE esp_netif esp_http_server)

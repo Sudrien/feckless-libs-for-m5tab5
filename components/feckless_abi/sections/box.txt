@@ -20,3 +20,7 @@ feckless_box_heap_stats
 # says where the app's loop is; the loop asks for each call and answers it.
 feckless_box_upcall_loop_is
 feckless_box_upcall_next
+
+# u-feckless-0076: the interfaces one by one, as numbers, for
+# feckless_box_libc's esp_netif_find_if().
+feckless_box_netif_next

@@ -1835,6 +1835,73 @@ static void test_http(void)
     CHECK(fake_http_live == live0 && fake_timer_made == 0);
 }
 
+/* ---- u-feckless-0076: esp_netif's handles by number ---- */
+
+#include "esp_netif.h"
+
+struct fake_nif_view { const char *key; uint32_t ip, mask; int n6; bool live; };
+extern struct fake_nif_view fake_nif[3];
+
+/* feckless_box_libc's esp_netif_find_if(), as the app runs it: the
+ * predicate here, each number from the host */
+static uint32_t app_find_if(bool (*pred)(uint32_t, void *), void *ctx)
+{
+    for (uint32_t n = C1("feckless_box_netif_next", 0); n; n = C1("feckless_box_netif_next", n))
+        if (pred(n, ctx)) return n;
+    return 0;
+}
+static int s_pred_calls;
+static bool pred_eth(uint32_t n, void *ctx)
+{
+    s_pred_calls++;
+    esp_netif_ip_info_t *ii = ctx;
+    if (C2("esp_netif_get_ip_info", n, P(ii)) != ESP_OK) return false;
+    return ii->ip.addr == 0x7d01a8c0u;
+}
+static bool pred_none(uint32_t n, void *ctx) { (void)n; (void)ctx; s_pred_calls++; return false; }
+
+static void test_netif(void)
+{
+    const uint32_t first = C1("feckless_box_netif_next", 0);
+    const uint32_t second = C1("feckless_box_netif_next", first);
+    CHECK(first >= 0x4e494600u && second >= 0x4e494600u && first != second);
+    CHECK(C1("feckless_box_netif_next", second) == 0);                /* two live */
+    CHECK(C1("feckless_box_netif_next", 0) == first);                 /* the same numbers again */
+
+    esp_netif_ip_info_t *ii = bx(sizeof *ii);
+    s_pred_calls = 0;
+    CHECK(app_find_if(pred_eth, ii) == first && s_pred_calls == 1);
+    CHECK(ii->ip.addr == 0x7d01a8c0u && ii->netmask.addr == 0x00ffffffu);
+    s_pred_calls = 0;
+    CHECK(app_find_if(pred_none, NULL) == 0 && s_pred_calls == 2);
+
+    esp_ip6_addr_t *six = bx(sizeof *six * LWIP_IPV6_NUM_ADDRESSES);
+    CHECK(C2("esp_netif_get_all_ip6", first, P(six)) == 2 && six[1].addr[0] == 0xfe81u);
+    CHECK(C2("esp_netif_get_all_ip6", second, P(six)) == 0);
+    CHECK(C2("esp_netif_get_all_ip6", first, P(mem) + MEM - 8) == 0);    /* out of the box */
+    CHECK(C2("esp_netif_get_ip_info", first, P(mem) + MEM - 4) == ESP_ERR_INVALID_ARG);
+    CHECK(C2("esp_netif_get_ip_info", 0x1234, P(ii)) == ESP_ERR_INVALID_ARG);
+    CHECK(C1("esp_netif_get_handle_from_ifkey", P(put_str("WIFI_STA_DEF"))) == second);
+    CHECK(C1("esp_netif_get_handle_from_ifkey", P(put_str("nope"))) == 0);
+
+    /* the dongle pulled out: its number answers nothing; a new interface
+     * gets a slot never used, not the gone one's; back, it has its number */
+    fake_nif[0].live = false;
+    CHECK(C2("esp_netif_get_ip_info", first, P(ii)) == ESP_ERR_INVALID_ARG);
+    CHECK(C2("esp_netif_get_all_ip6", first, P(six)) == 0);
+    CHECK(C1("feckless_box_netif_next", 0) == second);
+    CHECK(C1("feckless_box_netif_next", first) == 0);                 /* gone: nothing after it */
+    fake_nif[2].live = true;
+    const uint32_t third = C1("feckless_box_netif_next", second);
+    CHECK(third && third != second);
+    fake_nif[0].live = true;                                          /* back: its old number */
+    CHECK(C1("feckless_box_netif_next", 0) == first);
+
+    feckless_box_calls_end();                                          /* the numbers go with the app */
+    fake_nif[2].live = false;
+    CHECK(C1("feckless_box_netif_next", 0) != 0);
+}
+
 int main(int argc, char **argv)
 {
     mem = mmap(NULL, MEM, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT, -1, 0);
@@ -1873,6 +1940,7 @@ int main(int argc, char **argv)
     test_jpeg();
     test_net();                         /* u-feckless-0071 */
     test_http();                        /* u-feckless-0073 */
+    test_netif();                       /* u-feckless-0076 */
     printf(failed ? "%d FAILED\n" : "box_calls: all passed (%u calls)\n", failed ? failed : (int)ncalls);
     return failed != 0;
 }

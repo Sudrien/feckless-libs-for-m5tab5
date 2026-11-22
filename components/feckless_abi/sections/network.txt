@@ -94,6 +94,9 @@ lwip_socket
 select
 
 # ---- esp_netif, esp_wifi -----------------------------------------------
+# u-feckless-0076: in a box, esp_netif_find_if is the app's own
+# (feckless_box_libc), and an interface is a number the box looks up again
+# at each use.
 esp_netif_dhcps_option
 esp_netif_dhcps_start
 esp_netif_dhcps_stop

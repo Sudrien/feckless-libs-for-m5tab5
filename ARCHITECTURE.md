@@ -4949,3 +4949,53 @@ that the loop ends on 0. box_calls_test, box_storage_test, leaselock_test,
 feckless_umode's tests and the ABI tests pass. The in-app file was
 compiled for rv32imac with clang: one `.init_array` entry. *Not checked:*
 the board.
+
+### u-feckless-0076 -- esp_netif's interfaces for a boxed app, as numbers
+
+Defeatist's remote only lets in browsers on the player's own network. It
+checks the peer against the interface the connection came in on:
+`esp_netif_find_if(peer_match, &f)`, whose predicate reads that
+interface's IPv4 address and mask, or its IPv6 addresses. The box
+answered none of it, so the stand-in found no interface, and every peer
+would have been refused.
+
+- **An interface is a number in the app's hands** (`"NIF\0"` + slot, up
+  to 8), the same number for the same interface while it lasts.
+  - The box never hands out a pointer. Every call finds the interface
+    again inside the launcher's `esp_netif_find_if()`, which holds the
+    list, and reads it there.
+  - A USB dongle pulled out leaves a number that answers
+    ESP_ERR_INVALID_ARG (or 0 addresses), not a freed netif.
+  - A new interface gets a slot never used before a dead one's, so the
+    old number keeps meaning nothing while there is room. A returning
+    interface gets its own number back.
+- **`esp_netif_find_if()` is the app's own**, in `feckless_box_libc`
+  (src/box_netif.c; inapp.txt). Its predicate is the app's code, so it is
+  called in the app for each number `feckless_box_netif_next(prev)` gives
+  (new in sections/box.txt). No callback, and it works from the callback
+  loop's own thread too, where Defeatist's `open_fn` and handlers run
+  (u-feckless-0075, 0077). The list is read afresh at each step, not held
+  for the whole search: an interface that comes or goes mid-search is
+  seen or missed, as it would be a moment either side.
+- **Answered**, in box_netif.c: `esp_netif_get_ip_info`,
+  `esp_netif_get_all_ip6` (up to `LWIP_IPV6_NUM_ADDRESSES`, into the
+  app's array) and `esp_netif_get_handle_from_ifkey`. The DHCP server and
+  the DNS setters change interfaces the launcher owns, and stay
+  unanswered.
+
+*Tested:* box_calls_test's `test_netif`, against an interface list in
+fake_net.c:
+- the numbers are stable;
+- the app's find_if loop with a predicate that matches, and one that
+  doesn't;
+- IPv4 info and IPv6 addresses, out-of-box pointers, a number never
+  given, lookup by key;
+- a dongle pulled out (its number answers nothing; next() after it ends),
+  a new interface getting an unused slot, the old one back with its
+  number;
+- the app's end.
+
+The in-app file was compiled for rv32imac with clang; `make nonet` builds
+box_netif.c without the network. *Not checked:* the board, or against
+ESP-IDF's own esp_netif.h, which this tree doesn't have (the calls used
+are `esp_netif_find_if`, `get_ip_info`, `get_all_ip6` and `get_ifkey`).

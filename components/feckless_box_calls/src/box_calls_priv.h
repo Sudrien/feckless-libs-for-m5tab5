@@ -123,3 +123,8 @@ esp_err_t box_upcall_start(win_t *w, uint32_t stack, int prio);
 bool box_upcall_ready(void);
 esp_err_t box_upcall(uint32_t fn, const uint32_t args[4], uint32_t *ret);
 void box_upcall_end(void);
+
+/* u-feckless-0076: esp_netif's handles by number (box_netif.c). */
+extern const feckless_umode_call_t box_netif_calls[];
+extern const uint32_t box_netif_calls_n;
+void box_netif_end(void);
