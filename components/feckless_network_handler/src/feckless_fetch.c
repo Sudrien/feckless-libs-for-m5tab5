@@ -296,6 +296,22 @@ static void set_ready(int64_t r)
     unlock();
 }
 
+/* u-feckless-0070: READY, with the card not leased. What was told last,
+ * so a megabyte is told once; zeroed where s_ready starts a run. Only
+ * the writer task and then, after it has finished, the download's own
+ * call this, so it needs no lock of its own. */
+static int64_t s_ready_told;
+
+static void ready_event(const char *part)
+{
+    lock();
+    const int64_t r = s_ready;
+    unlock();
+    if (r <= s_ready_told) return;
+    s_ready_told = r;
+    event(FECKLESS_FETCH_EV_READY, NULL, NULL, part, NULL, 0, r);
+}
+
 static void remove_part(const char *part)
 {
     remove(part);
@@ -466,6 +482,7 @@ static bool wr_out(int seg, const uint8_t *p, int len, int64_t off)
         s_wr.t_lease += t1 - t0;
         s_wr.t_write += t2 - t1;
         if (put != (size_t)n) { s_wr.err_no = errno; s_wr.err = true; return false; }
+        ready_event(s_wr.part);                         /* u-feckless-0070 */
         s_wr.put += n;
         done += n;
     }
@@ -999,6 +1016,7 @@ static void dl_task(void *arg)
     s_total = id_total;
     s_got = have;
     s_ready = ready_of(seg, nseg, front);           /* what an earlier run left, synced */
+    s_ready_told = 0;                               /* u-feckless-0070: told again */
     unlock();
 
     /* One segment appends; a map writes in place. */
@@ -1152,6 +1170,7 @@ static void dl_task(void *arg)
         id_write(part, s_wr.val, s_wr.total, s_wr.seg, s_wr.nseg, s_wr.front, s_wr.stripe);
         storage_io_release();
         set_ready(ready_of(s_wr.seg, s_wr.nseg, s_wr.front));
+        ready_event(part);                          /* u-feckless-0070: the writer is done */
     }
     {
         const int64_t span = esp_timer_get_time() - t_start;

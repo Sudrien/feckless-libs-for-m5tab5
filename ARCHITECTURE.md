@@ -4642,3 +4642,40 @@ one `feckless_box_checkin` is box_heap.c's -- add, compare with 0x4000,
 zero, a tail call to `xTaskGetTickCount` -- with four call sites from the
 image handler. `box_image.c` compiles for the ESP32-P4. *Not checked:* a
 board.
+
+### u-feckless-0070 -- feckless_fetch says when more of the part file can be read
+
+`FECKLESS_FETCH_EV_READY`: the callback is told, with `ev->size`, each
+time `ready` -- feckless_fetch_live()'s bytes from the start that are on
+the card with no gap -- grows: a megabyte at a time (DL_MAP_EVERY), and
+once more when the run stops, whole, paused or failed (not on a cancel).
+For Defeatist's podcasts: an MP3's seek table built from its frame
+headers as the file arrives, so the episode's `.rgcache` has it by the
+time the download is done, instead of a 20-30 s scan at the first play.
+
+- Appended to the enum, so the other events keep their values.
+- On the writer task, after `wr_out()` lets go of the card, so the
+  callback may take it to read; the last on the download's own task once
+  the writer has finished. Never two at once, larger each time within a
+  run, all before VERIFY. A resumed run starts the count again
+  (`s_ready_told` zeroed beside `s_ready`), so its first READY covers
+  what the earlier run left.
+- While the callback runs the writer waits; the header says to keep it
+  to about a megabyte's work. The connections keep reading into the
+  queue meanwhile.
+- `ev->url` and `ev->path` are NULL: the part file is what may be read.
+
+A `switch` on the event kind without a `default` -- Defeatist's poddl.c
+has one -- warns under `-Wswitch` (and fails at `-Werror=all`) until it
+names READY; the app's patch that moves to this commit adds the case.
+
+*Tested:* `make run-fetch` and `make run-fetch-tsan` in
+feckless_network_handler/test, both passing, no ThreadSanitizer report.
+fetchtest records READY apart from the ordered events and checks, in
+every case that downloads: each larger than the last, none after VERIFY,
+no lease held, `url`/`path` NULL; the 100 KB stream gets exactly one, at
+its length; the 20 MB three-stripe download 20, the last at its length,
+and before each one the part file's bytes up to it are already the
+body's (read under the lease, as a caller would); a pause tells what it
+kept, and the resumed run tells again from the start to the end.
+wifistore, netlink and redirect tests pass. *Not checked:* a board.

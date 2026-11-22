@@ -51,6 +51,19 @@
  *   CANCELLED  the part file and its .id are gone -- on the download's
  *              task after a cancel while running, on the caller's for a
  *              cancel of a paused or failed one.
+ *   READY      (u-feckless-0070) the part file may be read from its start
+ *              up to ev->size bytes -- feckless_fetch_live()'s `ready`,
+ *              told when it grows: a megabyte at a time, and once more
+ *              when the run stops (whole, paused or failed; not on a
+ *              cancel). ev->part is the part file; ev->url and ev->path
+ *              are NULL. On the writer task, or the download's own for
+ *              the last one; never two at once, larger each time within
+ *              a run, and every one before VERIFY. A run that resumes
+ *              tells again from the start, so its first may cover what
+ *              an earlier run left. For a caller that reads the file as
+ *              it arrives -- a seek index built by the time it is whole.
+ *              The return is ignored; while it runs the writer waits, so
+ *              keep it to about a megabyte's worth of work.
  *
  * Sockets: a download holds up to `conns` at once. An app that counts
  * its lwIP sockets (CONFIG_LWIP_MAX_SOCKETS) counts these.
@@ -91,6 +104,7 @@ typedef enum {
     FECKLESS_FETCH_EV_VERIFY,
     FECKLESS_FETCH_EV_DONE,
     FECKLESS_FETCH_EV_CANCELLED,
+    FECKLESS_FETCH_EV_READY,    /* u-feckless-0070; last, so the others keep their values */
 } feckless_fetch_ev_kind_t;
 
 typedef struct {

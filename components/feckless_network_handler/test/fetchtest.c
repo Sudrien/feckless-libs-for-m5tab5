@@ -21,6 +21,7 @@
 #include <unistd.h>
 
 #include "fake/fetchfake.h"
+#include "storage_io.h"            /* u-feckless-0070: the READY check reads under the lease */
 #include "feckless_fetch.h"
 
 static int  s_fail;
@@ -102,10 +103,40 @@ static struct {
     const char *rename_ext;
     int64_t verified_size;
     bool    id_beside_at_verify;
+    /* u-feckless-0070: READY, apart from `kinds` so the order checks
+     * above stay as they were. `want` is the body, when a case sets it:
+     * the part file up to each READY must already be those bytes. */
+    int     readys;
+    int64_t ready_last;
+    bool    ready_bad;              /* smaller than the last, leased, or after VERIFY */
+    bool    ready_wrong;            /* the bytes before it not yet the body's */
+    bool    verified;
+    const uint8_t *want;
 } s_ev;
+
+static void on_ready(const feckless_fetch_ev_t *ev)
+{
+    s_ev.readys++;
+    if (ev->size <= s_ev.ready_last || s_ev.verified || fake_lease_holders() != 0 ||
+        ev->url || ev->path || !ev->part) {
+        s_ev.ready_bad = true;
+    }
+    s_ev.ready_last = ev->size;
+    if (!s_ev.want) return;
+    storage_io_acquire(STORAGE_IO_BACKGROUND);      /* as a caller would, to read it */
+    FILE *f = fopen(ev->part, "rb");
+    uint8_t *got = malloc((size_t)ev->size);
+    const bool ok = f && got && fread(got, 1, (size_t)ev->size, f) == (size_t)ev->size &&
+                    memcmp(got, s_ev.want, (size_t)ev->size) == 0;
+    if (f) fclose(f);
+    storage_io_release();
+    free(got);
+    if (!ok) s_ev.ready_wrong = true;
+}
 
 static bool cb(feckless_fetch_ev_t *ev)
 {
+    if (ev->kind == FECKLESS_FETCH_EV_READY) { on_ready(ev); return true; }   /* u-feckless-0070 */
     if (s_ev.n < 16) s_ev.kinds[s_ev.n++] = ev->kind;
     if (ev->kind == FECKLESS_FETCH_EV_HEADERS && s_ev.rename_ext) {
         char p[FECKLESS_FETCH_PATH_MAX];
@@ -113,6 +144,7 @@ static bool cb(feckless_fetch_ev_t *ev)
         snprintf(ev->path, ev->path_size, "%s", p);
     }
     if (ev->kind == FECKLESS_FETCH_EV_VERIFY) {
+        s_ev.verified = true;
         s_ev.verified_size = ev->size;
         char id[FECKLESS_FETCH_PATH_MAX + 8];
         snprintf(id, sizeof(id), "%s.id", ev->part);
@@ -158,6 +190,7 @@ static void small_one_stream(void)
     CHECK(s_ev.n == 4 && s_ev.kinds[0] == FECKLESS_FETCH_EV_START && s_ev.kinds[1] == FECKLESS_FETCH_EV_HEADERS &&
           s_ev.kinds[2] == FECKLESS_FETCH_EV_VERIFY && s_ev.kinds[3] == FECKLESS_FETCH_EV_DONE);
     CHECK(s_ev.verified_size == len && s_ev.id_beside_at_verify);
+    CHECK(s_ev.readys == 1 && s_ev.ready_last == len && !s_ev.ready_bad);   /* u-feckless-0070 */
     int64_t id = 0, got = 0, total = 0;
     char sp[300];
     feckless_fetch_state(&id, &got, &total, sp, sizeof(sp), NULL);
@@ -177,12 +210,18 @@ static void striped(void)
     path_in(p, sizeof(p), "big.bin");
     fake_stats_reset();
     ev_reset();
+    s_ev.want = b;
     CHECK(start("https://h/big", p, 3));
     CHECK(wait_done() == FECKLESS_FETCH_DONE);
     CHECK(same_as(p, b, len));
+    /* u-feckless-0070: told as it grew, each time the bytes before it
+     * already right, and last the whole file, before VERIFY. */
+    CHECK(s_ev.readys >= 3 && s_ev.ready_last == len && !s_ev.ready_bad && !s_ev.ready_wrong);
+    printf("  %d READY events\n", s_ev.readys);
     CHECK(fake_max_concurrent() >= 2);
     CHECK(fake_bytes_served() == len);              /* nothing asked for twice */
     printf("  %d requests, at most %d connections at once\n", fake_requests(), fake_max_concurrent());
+    s_ev.want = NULL;
     free(b);
     after_each("three connections in stripes");
 }
@@ -277,23 +316,34 @@ static void pause_and_resume(int conns)
     snprintf(part, sizeof(part), "%s.part", p);
     snprintf(id, sizeof(id), "%s.part.id", p);
     fake_read_delay(40);
+    ev_reset();
+    s_ev.want = b;
     CHECK(start("https://h/pr", p, conns));
     wait_got(4 * 1024 * 1024);
     feckless_fetch_pause();
     CHECK(wait_done() == FECKLESS_FETCH_PAUSED);
     CHECK(exists(part) && exists(id) && !exists(p));
+    /* u-feckless-0070: a pause tells what it kept, and no VERIFY */
+    CHECK(s_ev.readys >= 1 && !s_ev.ready_bad && !s_ev.ready_wrong && !s_ev.verified);
+    const int64_t told_paused = s_ev.ready_last;
     int64_t had = 0;
     feckless_fetch_state(NULL, &had, NULL, NULL, 0, NULL);
     fake_read_delay(0);
     fake_stats_reset();
+    ev_reset();
+    s_ev.want = b;
     CHECK(start("https://h/pr", p, conns));         /* the same part file: a resume */
     CHECK(wait_done() == FECKLESS_FETCH_DONE);
     CHECK(same_as(p, b, len));
+    /* and the resumed run tells again from the start, up to all of it */
+    CHECK(s_ev.readys >= 1 && s_ev.ready_last == len && !s_ev.ready_bad && !s_ev.ready_wrong);
+    printf("  READY: %lld when paused; %d on the resume\n", (long long)told_paused, s_ev.readys);
     CHECK(fake_first_range_from() > 0);             /* it asked for the rest */
     CHECK(fake_bytes_served() < len);               /* and not for all of it again */
     printf("  paused at %lld, then served %lld of %lld\n", (long long)had,
            (long long)fake_bytes_served(), (long long)len);
     CHECK(!exists(part) && !exists(id));
+    s_ev.want = NULL;
     free(b);
     after_each(conns > 1 ? "pause and resume, in stripes" : "pause and resume, one stream");
 }
