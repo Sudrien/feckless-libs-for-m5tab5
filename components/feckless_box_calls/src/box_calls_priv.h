@@ -128,3 +128,11 @@ void box_upcall_end(void);
 extern const feckless_umode_call_t box_netif_calls[];
 extern const uint32_t box_netif_calls_n;
 void box_netif_end(void);
+
+/* u-feckless-0077: esp_http_server and feckless_https (box_httpd.c).
+ * box_httpd_lends(): fd is a session of one of the app's servers. */
+extern const feckless_umode_call_t box_httpd_calls[];
+extern const uint32_t box_httpd_calls_n;
+bool box_httpd_lends(int fd);
+void box_httpd_end(void);
+void box_httpd_reap(void *arg);

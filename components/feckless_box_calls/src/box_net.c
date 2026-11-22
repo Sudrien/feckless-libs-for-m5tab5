@@ -475,7 +475,9 @@ typedef int (*name_fn)(int, struct sockaddr *, socklen_t *);
 static int name_of(win_t *w, const uint32_t a[7], name_fn fn)
 {
     socklen_t room;
-    if (!sock_get((int)a[0], NULL)) return fail(w, EBADF);
+    /* u-feckless-0077: or a socket of one of the app's HTTP servers, whose
+     * handlers judge a peer by both ends' addresses */
+    if (!sock_get((int)a[0], NULL) && !box_httpd_lends((int)a[0])) return fail(w, EBADF);
     if (!a[1] || !addr_out_ok(w, a[1], a[2], &room)) return fail(w, EFAULT);
     struct sockaddr_storage ss;
     socklen_t l = sizeof ss;

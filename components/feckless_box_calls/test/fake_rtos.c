@@ -281,3 +281,18 @@ bool feckless_umode_app_stopping(const feckless_umode_app_t *a)
     (void)a;
     return fake_stopping;
 }
+
+/* u-feckless-0077: feckless_umode_app_where(), for the stubs a test names */
+uint32_t fake_stub_at[4];
+const char *fake_stub_name[4];
+int feckless_umode_app_where(uintptr_t addr, uint32_t *link, const char **call)
+{
+    (void)link;
+    for (int i = 0; i < 4; i++) {
+        if (fake_stub_at[i] && fake_stub_at[i] == addr) {
+            if (call) *call = fake_stub_name[i];
+            return FECKLESS_UMODE_WHERE_STUB;
+        }
+    }
+    return FECKLESS_UMODE_WHERE_NONE;
+}

@@ -17,3 +17,4 @@ const char *esp_err_to_name(esp_err_t e);
 /* u-feckless-0062 */
 #define ESP_ERR_NOT_SUPPORTED 0x106
 #define ESP_ERR_NOT_FOUND 0x105
+#define ESP_ERR_INVALID_SIZE 0x104

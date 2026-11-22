@@ -46,7 +46,12 @@ void esp_log_write(esp_log_level_t l, const char *tag, const char *f, ...)
 uint32_t esp_log_timestamp(void) { return 1234; }
 void esp_rom_delay_us(uint32_t us) { rec("esp_rom_delay_us", NULL, 1, (int)us); }
 int64_t esp_timer_get_time(void) { return 0x123456789abLL; }
+#ifdef FAKE_REAL_SEMS
+#include <unistd.h>
+void vTaskDelay(TickType_t t) { usleep((useconds_t)t * 1000); }   /* u-feckless-0077: really waits */
+#else
 void vTaskDelay(TickType_t t) { rec("vTaskDelay", NULL, 1, (int)t); }
+#endif
 esp_err_t tab5io_init(void) { rec("tab5io_init", NULL, 0); return ESP_OK; }
 i2c_master_bus_handle_t tab5io_bus(void) { return host_bus; }
 esp_err_t lcd_init(esp_lcd_panel_handle_t *out) { rec("lcd_init", NULL, 0); *out = host_panel; return ESP_OK; }

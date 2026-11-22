@@ -4999,3 +4999,98 @@ The in-app file was compiled for rv32imac with clang; `make nonet` builds
 box_netif.c without the network. *Not checked:* the board, or against
 ESP-IDF's own esp_netif.h, which this tree doesn't have (the calls used
 are `esp_netif_find_if`, `get_ip_info`, `get_all_ip6` and `get_ifkey`).
+
+### u-feckless-0077 -- a boxed app's HTTP server: esp_http_server, WebSockets, feckless_https
+
+Defeatist's remote control is an HTTPS server on port 443, a redirecting
+one on port 80, twenty handlers, a WebSocket, an `open_fn` that judges
+each peer, and work queued to push state to the page. **box_httpd.c**
+answers all of sections/network.txt's esp_http_server and feckless_https
+names.
+
+- **The server is the launcher's**: its task, its sockets, its TLS (the
+  certificate stays the launcher's, 8073). The app holds a number for it
+  (`"HSV\0"` + slot, three at once).
+  - `httpd_start` and `feckless_https_start` copy the app's
+    `httpd_config_t`.
+  - They refuse binding to an interface, a transport context, or a
+    `uri_match_fn` of the app's own (which would be one callback per
+    handler per request).
+  - The app's `global_user_ctx` is not kept, because the launcher's is how
+    the callbacks find their server.
+- **Callbacks go through u-feckless-0075's loop.** URI handlers, WebSocket
+  frames, `open_fn`, `close_fn` and queued work are the app's code. The
+  server's task asks the loop to run each one and waits for it.
+  - The first start spawns the loop with the server's stack (at least
+    12 KB) and priority.
+  - Handlers run one at a time, as on httpd's one task.
+  - `close_fn` is the app's to run, but the socket isn't one the box gave
+    the app, so the launcher closes it afterwards, as IDF asks of a
+    `close_fn`.
+- **Recognised by stub** (`feckless_umode_app_where()`):
+  - a handler that is the app's stub for `feckless_https_redirect` becomes
+    the launcher's function itself, with no callback, so port 80 never
+    wakes the app;
+  - a `uri_match_fn` that is `httpd_uri_match_wildcard`'s, likewise.
+- **A request reaches the app as one `httpd_req_t` per server, in its
+  box.**
+  - It is filled for each request with handle (the number), method, uri,
+    `content_len` and the app's own `user_ctx`.
+  - Calls that take a request match it by address to the one the
+    launcher holds. Once the handler returns, the address answers
+    ESP_ERR_INVALID_ARG.
+  - `sess_ctx` is NULL each time and not kept; `aux` is not the app's.
+- **Strings and data.**
+  - Strings the server holds until the response goes (status, type,
+    headers) are copied and freed when the handler returns.
+  - Bodies, chunks, `req_recv` and WebSocket payloads are read and
+    written in place, checked against the box, at most 64 KB a call.
+  - Headers, queries and cookies go into the app's buffers.
+  - `httpd_get_client_list` copies out; `httpd_query_key_value` and
+    `httpd_uri_match_wildcard` work on the app's strings.
+- **Waiting.**
+  - The calls that send or receive are unlocked, and so are `httpd_stop`
+    and `feckless_https_stop`: they wait for the server's task, which may
+    be waiting for a callback that needs the app's lock.
+  - While any socket call is in flight, a 100 ms timer watches for the
+    app's stop and shuts its sockets down.
+  - A handler abandoned to the stop doesn't get its request freed under
+    a call: the server's task shuts the socket down and waits for that
+    call to return first.
+- **box_net.c**: `getsockname`/`getpeername` also accept a session socket
+  of one of the app's servers (`box_httpd_lends()`). The remote judges a
+  peer by both ends' addresses, with u-feckless-0076's interfaces.
+- The app's end stops its servers before its sockets are closed.
+
+*Tested:* httpd_test, new, is end to end with real threads. The app's main
+thread and callback loop make host calls on their own windows; this file
+plays httpd's task against fake_httpd.c. As in IDF, the fake keeps the
+status, type and header pointers until the response is sent, so a copy
+freed early would be a use-after-free under ASan. It checks:
+- no server before the loop is announced;
+- the refused configs;
+- the TLS server's config, with trampolines, the wildcard matcher
+  recognised and the context replaced;
+- handlers with an out-of-box function, or a number never given, are
+  refused;
+- `open_fn` judging the peer with `getpeername` on the server's socket;
+- a page whose status, type and header buffers the app overwrites before
+  sending;
+- the request refused once its handler returned;
+- a post: body, Origin, a cookie, the socket, chunks;
+- a query and an error reply;
+- a WebSocket handshake and a frame (asking the length, then the payload;
+  more room than the box refused);
+- queued work sending to every WebSocket;
+- the fingerprint, and an open the app refuses by asking for the close;
+- port 80's redirect answered with no callback, then that server stopped;
+- the `close_fn`;
+- the stop while a handler blocks in `httpd_req_recv`: its socket is shut
+  down, the call returns 0, then the server's task is let go and the loop
+  ends;
+- the app's end.
+
+box_calls_test, box_storage_test, upcall_test and leaselock_test pass,
+`make nonet` builds box_httpd.c without the network, and box_httpd.c was
+built against ESP-IDF 6.1's own esp_http_server.h. *Not checked:* the
+board.
