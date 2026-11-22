@@ -57,14 +57,16 @@ static bool make(void)
                       done = xSemaphoreCreateBinary();
     if (!turn || !go || !done) goto fail;
     xSemaphoreGive(turn);
+    /* Published before the task exists: on the other core it runs at once
+     * and takes s_go before xTaskCreatePinnedToCore() has returned. */
+    s_turn = turn;
+    s_go = go;
+    s_done = done;
     TaskHandle_t t = NULL;
     /* internal RAM by default: xTaskCreatePinnedToCore()'s stack is never PSRAM */
     if (xTaskCreatePinnedToCore(flash_task, "box_flash", FLASH_STACK, NULL, FLASH_PRIO, &t, tskNO_AFFINITY) !=
         pdPASS)
         goto fail;
-    s_turn = turn;
-    s_go = go;
-    s_done = done;
     (void)t;
     portENTER_CRITICAL(&s_mux);
     s_made = true;
@@ -72,6 +74,7 @@ static bool make(void)
     return true;
 fail:
     ESP_LOGE("box_flash", "no task for flash work (internal RAM?)");
+    s_turn = s_go = s_done = NULL;
     if (turn) vSemaphoreDelete(turn);
     if (go) vSemaphoreDelete(go);
     if (done) vSemaphoreDelete(done);
