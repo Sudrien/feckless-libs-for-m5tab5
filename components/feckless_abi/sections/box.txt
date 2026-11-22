@@ -24,3 +24,8 @@ feckless_box_upcall_next
 # u-feckless-0076: the interfaces one by one, as numbers, for
 # feckless_box_libc's esp_netif_find_if().
 feckless_box_netif_next
+
+# u-feckless-0082: the launcher's own heap by capability, which
+# feckless_box_libc's heap_caps_get_info() and its siblings answer for
+# internal and DMA memory.
+feckless_box_host_heap

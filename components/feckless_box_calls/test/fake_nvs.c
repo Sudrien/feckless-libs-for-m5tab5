@@ -40,7 +40,17 @@ bool nvsh_ready(void) { return true; }
 esp_err_t nvsh_get_blob(const char *ns, const char *k, void *b, size_t *l) { return get(ns, k, b, l, 0); }
 esp_err_t nvsh_get_str(const char *ns, const char *k, char *b, size_t *l) { return get(ns, k, b, l, 0); }
 esp_err_t nvsh_set_blob(const char *ns, const char *k, const void *b, size_t l) { return put(ns, k, b, l); }
+#ifdef FAKE_REAL_SEMS
+#include <pthread.h>
+unsigned long fake_nvs_thread;              /* u-feckless-0082: the task the last write ran on */
+esp_err_t nvsh_set_str(const char *ns, const char *k, const char *s)
+{
+    fake_nvs_thread = (unsigned long)pthread_self();
+    return put(ns, k, s, strlen(s) + 1);
+}
+#else
 esp_err_t nvsh_set_str(const char *ns, const char *k, const char *s) { return put(ns, k, s, strlen(s) + 1); }
+#endif
 esp_err_t nvsh_get_u8(const char *ns, const char *k, uint8_t *o) { return get(ns, k, o, NULL, 1); }
 esp_err_t nvsh_get_u32(const char *ns, const char *k, uint32_t *o) { return get(ns, k, o, NULL, 4); }
 esp_err_t nvsh_get_i32(const char *ns, const char *k, int32_t *o) { return get(ns, k, o, NULL, 4); }

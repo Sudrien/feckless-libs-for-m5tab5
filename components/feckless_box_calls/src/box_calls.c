@@ -18,6 +18,7 @@
 #include <time.h>
 
 #include "esp_err.h"
+#include "esp_heap_caps.h"     /* u-feckless-0082 */
 #include "esp_log.h"
 #include "esp_random.h"        /* u-feckless-0048 */
 #include "esp_rom_sys.h"
@@ -617,6 +618,34 @@ H(c_esp_restart)
     return false;
 }
 
+/* u-feckless-0082: (caps, stats *) -- the launcher's own heap for those
+ * caps, in feckless_box_libc's box_heap_stats_t: what the app's
+ * heap_caps_get_info(MALLOC_CAP_INTERNAL) and the like are answered with,
+ * since the box's heap is PSRAM whatever the caps, and the internal RAM
+ * that runs out is the launcher's. */
+typedef struct {
+    uint32_t total, free, largest, min_free, blocks, free_blocks;
+} host_heap_t;
+
+H(c_feckless_box_host_heap)
+{
+    *ret = 0;
+    if (!ok_ptr(w, a[1], sizeof(host_heap_t))) return true;
+    multi_heap_info_t i;
+    heap_caps_get_info(&i, a[0]);
+    const host_heap_t h = {
+        .total = (uint32_t)(i.total_free_bytes + i.total_allocated_bytes),
+        .free = (uint32_t)i.total_free_bytes,
+        .largest = (uint32_t)i.largest_free_block,
+        .min_free = (uint32_t)i.minimum_free_bytes,
+        .blocks = (uint32_t)i.allocated_blocks,
+        .free_blocks = (uint32_t)i.free_blocks,
+    };
+    memcpy((void *)(uintptr_t)a[1], &h, sizeof h);
+    *ret = 1;
+    return true;
+}
+
 /* ---- the table ----------------------------------------------------------- */
 
 static const uint32_t s_abi_v1 = FECKLESS_ABI_VERSION;
@@ -640,7 +669,7 @@ static const feckless_umode_call_t s_own[] = {
     FNU(asinh), FNU(exp), FNU(log), FNU(log10), FNU(floor), FNU(ceil), FNU(round), FNU(fabs),
     FNU(atan2), FNU(pow), FNU(fmod), FNU(ldexp), FNU(lround),
     FN(putchar), FN(puts), FNU(vTaskDelay), FNU(esp_timer_get_time), FNU(esp_log_timestamp),
-    FNU(esp_rom_delay_us), FNU(time), FNU(gettimeofday), FNU(feckless_box_log),
+    FNU(esp_rom_delay_us), FNU(time), FNU(gettimeofday), FNU(feckless_box_log), FNU(feckless_box_host_heap),
     FN(xTaskCreatePinnedToCore), FN(esp_err_to_name),
     FN(_esp_error_check_failed), FN(abort), FN(__assert_func), FN(esp_log_level_get),
     FN(esp_log_level_set),
@@ -747,6 +776,7 @@ const feckless_umode_call_t *feckless_box_calls_v1(uint32_t *n)
             table[k++] = box_fetch_calls[i];
         }
         count = k;
+        box_flash_init();                   /* u-feckless-0082: before any host call can want it */
     }
     *n = count;
     return table;

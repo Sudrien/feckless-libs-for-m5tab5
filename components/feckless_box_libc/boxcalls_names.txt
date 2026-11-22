@@ -59,6 +59,7 @@ esp_rom_delay_us
 time
 gettimeofday
 feckless_box_log
+feckless_box_host_heap
 xTaskCreatePinnedToCore
 esp_err_to_name
 _esp_error_check_failed

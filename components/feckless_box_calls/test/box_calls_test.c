@@ -1933,6 +1933,17 @@ static void test_crypto(void)
     CHECK(marks == 2);
 }
 
+/* ---- u-feckless-0082: the launcher's heap, by caps ---- */
+
+static void test_host_heap(void)
+{
+    extern unsigned fake_heap_caps_asked;
+    uint32_t *st = bx(24);
+    CHECK(C2("feckless_box_host_heap", 1u << 11, P(st)) == 1 && fake_heap_caps_asked == 1u << 11);
+    CHECK(st[1] == 2459 && st[2] == 1800 && st[3] == 52 && st[0] == 402459 && st[4] == 300 && st[5] == 12);
+    CHECK(C2("feckless_box_host_heap", 1u << 11, P(mem) + MEM - 8) == 0);   /* out of the box */
+}
+
 int main(int argc, char **argv)
 {
     mem = mmap(NULL, MEM, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT, -1, 0);
@@ -1973,6 +1984,7 @@ int main(int argc, char **argv)
     test_http();                        /* u-feckless-0073 */
     test_netif();                       /* u-feckless-0076 */
     test_crypto();                      /* u-feckless-0078 */
+    test_host_heap();                   /* u-feckless-0082 */
     printf(failed ? "%d FAILED\n" : "box_calls: all passed (%u calls)\n", failed ? failed : (int)ncalls);
     return failed != 0;
 }

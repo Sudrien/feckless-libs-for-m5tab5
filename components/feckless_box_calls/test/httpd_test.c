@@ -400,6 +400,8 @@ int main(void)
     CHECK(dcall(&w, "feckless_https_start", P(hout), P(c), 443, 0) == ESP_OK);
     s_tok = *hout;
     httpd_handle_t real = fake_httpd_last;
+    extern unsigned long fake_https_thread;
+    CHECK(fake_https_thread && fake_https_thread != (unsigned long)pthread_self());   /* u-feckless-0082: on box_flash's task */
     CHECK(s_tok >= 0x48535600u && s_tok < 0x48535603u && fake_httpd_is_tls(real));
     const httpd_config_t *rc = fake_httpd_cfg(real);
     CHECK(rc->uri_match_fn == httpd_uri_match_wildcard);                 /* the launcher's own */
@@ -611,6 +613,23 @@ int main(void)
     pthread_join(lt, NULL);
     CHECK(fake_httpd_open(real) == -1);                                /* open_fn refused while stopping */
     printf("  the stop ended a handler blocked in recv by shutting its socket; the loop ended\n");
+
+    /* u-feckless-0082: NVS on box_flash.c's task, not the caller's (whose
+     * stack may be in PSRAM); the answer comes back all the same */
+    {
+        extern unsigned long fake_nvs_thread;
+        static const char *const ns[] = { "defeatist" };
+        CHECK(feckless_box_calls_nvs(ns, 1));
+        fake_stopping = false;
+        CHECK(dcall(&w, "nvsh_set_str", P(bstr("defeatist")), P(bstr("k")), P(bstr("v")), 0) == ESP_OK);
+        CHECK(fake_nvs_thread && fake_nvs_thread != (unsigned long)pthread_self());
+        char *v = bx(8);
+        size_t *vl = bx(sizeof *vl);
+        *vl = 8;
+        CHECK(dcall(&w, "nvsh_get_str", P(bstr("defeatist")), P(bstr("k")), P(v), P(vl)) == ESP_OK && !strcmp(v, "v"));
+        fake_stopping = true;
+        printf("  NVS and the TLS server's start ran on the flash task, answers back to the caller\n");
+    }
 
     /* the app's end: its servers stopped, its download paused */
     extern int fake_fetch_pauses;

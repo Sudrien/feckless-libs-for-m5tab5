@@ -84,6 +84,7 @@ BaseType_t xTaskCreatePinnedToCore(TaskFunction_t fn, const char *name, uint32_t
         pthread_t th;
         pthread_create(&th, NULL, fake_thr, t);
         pthread_detach(th);
+        if (out) *out = (TaskHandle_t)(uintptr_t)th;
         fake_tasks++;
         return pdPASS;
     }
@@ -319,3 +320,6 @@ int feckless_umode_app_where(uintptr_t addr, uint32_t *link, const char **call)
     }
     return FECKLESS_UMODE_WHERE_NONE;
 }
+
+multi_heap_info_t fake_heap_info = { 2459, 400000, 1800, 52, 300, 12, 312 };
+unsigned fake_heap_caps_asked;

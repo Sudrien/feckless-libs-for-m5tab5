@@ -146,3 +146,17 @@ extern const uint32_t box_crypto_calls_n;
 extern const feckless_umode_call_t box_fetch_calls[];
 extern const uint32_t box_fetch_calls_n;
 void box_fetch_end(void);
+
+/* u-feckless-0082: flash work on a task with an internal stack (box_flash.c),
+ * for host tasks whose stacks are in PSRAM. box_flash_run(): fn(arg) there,
+ * waited for; false only if the task could not be made. box_flash_call(): a
+ * whole handler run there. */
+typedef void (*box_flash_fn_t)(void *arg);
+void box_flash_init(void);
+bool box_flash_run(box_flash_fn_t fn, void *arg);
+bool box_flash_call(feckless_umode_call_fn fn, win_t *w, const uint32_t a[7], uint32_t *ret);
+/* A table entry whose handler runs on the flash task: FLASHU(name) is
+ * FNU(name) through box_flash_call(). */
+#define FLASH_WRAP(n) \
+    static bool f_##n(win_t *w, const uint32_t a[7], uint32_t *ret) { return box_flash_call(c_##n, w, a, ret); }
+#define FLASHU(n) { #n, f_##n, NULL, 0, FECKLESS_UMODE_CALL_UNLOCKED }

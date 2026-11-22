@@ -14,3 +14,13 @@ static inline void *heap_caps_aligned_alloc(size_t align, size_t n, unsigned cap
 extern unsigned fake_caps_last;
 static inline void *heap_caps_malloc(size_t n, unsigned caps) { fake_caps_last = caps; return malloc(n); }
 static inline void heap_caps_free(void *p) { free(p); }
+/* u-feckless-0082: the launcher's heap by capability, as the test sets it */
+#include <stddef.h>
+#include <stdint.h>
+typedef struct {
+    size_t total_free_bytes, total_allocated_bytes, largest_free_block, minimum_free_bytes;
+    size_t allocated_blocks, free_blocks, total_blocks;
+} multi_heap_info_t;
+extern multi_heap_info_t fake_heap_info;
+extern unsigned fake_heap_caps_asked;
+static inline void heap_caps_get_info(multi_heap_info_t *i, uint32_t caps) { fake_heap_caps_asked = caps; *i = fake_heap_info; }

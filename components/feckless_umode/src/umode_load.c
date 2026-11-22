@@ -45,6 +45,26 @@ static const char *TAG = "feckless_umode";
 #define TLS_BYTES 16u               /* a thread's errno, and room */
 #define HOST_STACK 8192u            /* a thread's host task: the run loop and the host calls */
 
+/* u-feckless-0082: the host tasks' stacks in PSRAM, where the Kconfig says.
+ * Such a task never touches flash itself (Kconfig's help says who does it
+ * instead). A WithCaps task deletes itself with vTaskDeleteWithCaps(). */
+#if CONFIG_FECKLESS_UMODE_HOST_STACK_PSRAM
+#define HOST_CAPS (MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
+static BaseType_t host_task(TaskFunction_t fn, const char *name, uint32_t stack, void *arg, UBaseType_t prio,
+                            TaskHandle_t *out, BaseType_t core)
+{
+    return xTaskCreatePinnedToCoreWithCaps(fn, name, stack, arg, prio, out, core, HOST_CAPS);
+}
+static void host_task_end(void) { vTaskDeleteWithCaps(NULL); }
+#else
+static BaseType_t host_task(TaskFunction_t fn, const char *name, uint32_t stack, void *arg, UBaseType_t prio,
+                            TaskHandle_t *out, BaseType_t core)
+{
+    return xTaskCreatePinnedToCore(fn, name, stack, arg, prio, out, core);
+}
+static void host_task_end(void) { vTaskDelete(NULL); }
+#endif
+
 /* u-feckless-0023: one of the app's threads. In host memory (the app struct
  * is internal RAM): the window holds the thread's registers, and the program
  * must not reach it. */
@@ -341,7 +361,7 @@ static void thread_main(void *arg)
     t->running = false;
     xSemaphoreGiveRecursive(a->lock);
     xSemaphoreGive(a->ended);
-    vTaskDelete(NULL);
+    host_task_end();
 }
 
 esp_err_t feckless_umode_app_spawn(feckless_umode_app_t *a, uint32_t fn, uint32_t arg,
@@ -387,8 +407,8 @@ esp_err_t feckless_umode_app_spawn(feckless_umode_app_t *a, uint32_t fn, uint32_
     char name[configMAX_TASK_NAME_LEN];
     snprintf(name, sizeof name, "box_t%d", (int)(t - a->th) + 1);
     t->running = true;
-    if (xTaskCreatePinnedToCore(thread_main, name, HOST_STACK, t, (UBaseType_t)prio, &t->task,
-                                core == tskNO_AFFINITY ? tskNO_AFFINITY : (BaseType_t)core) != pdPASS) {
+    if (host_task(thread_main, name, HOST_STACK, t, (UBaseType_t)prio, &t->task,
+                  core == tskNO_AFFINITY ? tskNO_AFFINITY : (BaseType_t)core) != pdPASS) {
         t->running = false;
         t->task = NULL;
         goto undo;
@@ -657,7 +677,7 @@ static void run_on_task(void *arg)
     run_on_t *r = arg;
     r->end = feckless_umode_app_run(r->app);
     xSemaphoreGive(r->done);
-    vTaskDelete(NULL);
+    host_task_end();
 }
 
 /* u-feckless-0043. The inverse of esp_elf_map_sym(): the loader copies the
@@ -694,8 +714,8 @@ feckless_umode_end_t feckless_umode_app_run_on(feckless_umode_app_t *a, int core
 {
     run_on_t r = { .app = a, .done = xSemaphoreCreateBinary() };
     if (r.done && (core == 0 || core == 1) &&
-        xTaskCreatePinnedToCore(run_on_task, "box_main", FECKLESS_UMODE_APP_STACK, &r,
-                                uxTaskPriorityGet(NULL), NULL, core) == pdPASS) {
+        host_task(run_on_task, "box_main", FECKLESS_UMODE_APP_STACK, &r, uxTaskPriorityGet(NULL), NULL,
+                  core) == pdPASS) {
         ESP_LOGI(TAG, "app_main on core %d", core);
         xSemaphoreTake(r.done, portMAX_DELAY);
         vSemaphoreDelete(r.done);

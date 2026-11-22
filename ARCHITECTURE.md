@@ -5219,3 +5219,66 @@ fake_fetch.c. It checks:
 - the app's end pausing a running download.
 
 The other host tests and the ABI tests pass. *Not checked:* the board.
+
+### u-feckless-0082 -- a boxed app's host stacks in PSRAM; the launcher's internal RAM visible to it
+
+Defeatist's first boxed podcast download finished, but with the
+launcher's internal heap at `min 52` bytes. The AES engine kept failing
+for want of DMA descriptors (`esp-aes: Failed to allocate memory for the
+array of DMA descriptors`), and each segment was retried. The trusted
+build had about 96 KB free during the same download (Defeatist's 8035
+note). Most of the difference was the box's own: every app thread runs on
+a host task with an 8 KB internal stack, and app_main's has 16 KB. With
+nine threads that is 88 KB, while the threads' own stacks sit in PSRAM in
+the box.
+
+- **feckless_umode**: `CONFIG_FECKLESS_UMODE_HOST_STACK_PSRAM` (default y;
+  needs SPIRAM and FREERTOS_TASK_CREATE_ALLOW_EXT_MEM). The threads' host
+  tasks and `box_main` are made with `xTaskCreatePinnedToCoreWithCaps()`
+  in PSRAM and end with `vTaskDeleteWithCaps(NULL)`.
+- **Flash.** A task with a PSRAM stack must never touch flash itself: a
+  flash operation turns the cache off, PSRAM with it, and ESP-IDF asserts.
+  Two kinds of host call reach flash:
+  - NVS, reads as well as writes, since both are flash operations;
+  - `feckless_https_start()`, which reads the device's certificate from
+    NVS, or the first time makes one and keeps it there.
+
+  Both now run on **box_flash.c**'s one task: an internal 8 KB stack,
+  made when the table is first built, which runs each piece of work while
+  the caller waits, one at a time. box_nvs.c's calls are wrapped whole
+  (`FLASH_WRAP`/`FLASHU`; `nvsh_ready` only reads a flag), and
+  box_httpd.c hands its start to it. Without the option, the work runs
+  where it is asked, as before. I found nothing else the box answers
+  that reaches flash:
+  - FatFs is on the card or USB;
+  - the certificate bundle and app description are read through the
+    cache;
+  - `wifistore_count` is a cached number;
+  - `feckless_https_fingerprint` is a cached string.
+
+  A path I missed would show as ESP-IDF's cache-disabled stack assert,
+  not as corruption.
+- **`feckless_box_host_heap(caps, stats *)`**, new in sections/box.txt,
+  answers with the launcher's own `heap_caps_get_info()`.
+  feckless_box_libc's `heap_caps_get_free_size`, `_minimum_free_size`,
+  `_largest_free_block`, `_total_size`, `_get_info` and
+  `_print_heap_info` use it when asked about internal or DMA-capable
+  memory (and not PSRAM). Everything else is still the box's heap. Before
+  this, Defeatist's heap map read 10 MB of "internal free", the box's
+  PSRAM, while the launcher's was gone. The printout now names which heap
+  it is.
+
+*Tested:*
+- httpd_test is now built with the option on. An NVS write and the TLS
+  server's start run on a thread other than the caller's, and an NVS read
+  brings its answer back to the caller.
+- box_calls_test's `test_host_heap` checks the call, the caps passed
+  through, and a pointer outside the box.
+- libc48_test checks internal and DMA queries going to the launcher, and
+  plain or PSRAM queries going to the box.
+- The other host tests and the ABI tests pass.
+
+*Not checked:* the board; umode_load.c isn't in the host tests. Look for
+the heap map's internal line showing the launcher's real figure, and
+feckless_fetch's `internal free` during a download in the tens of KB
+rather than hundreds of bytes.

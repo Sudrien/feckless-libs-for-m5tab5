@@ -31,4 +31,25 @@ menu "feckless_umode"
         default 5
         range 1 60
 
+    config FECKLESS_UMODE_HOST_STACK_PSRAM
+        bool "Host tasks' stacks in PSRAM"
+        depends on SPIRAM && FREERTOS_TASK_CREATE_ALLOW_EXT_MEM
+        default y
+        help
+            u-feckless-0082. Each of a boxed app's threads, and app_main,
+            runs on a host task of its own: 8 KB of stack each (16 KB for
+            app_main), which was internal RAM -- nine threads were 88 KB of
+            it, and Defeatist's podcast download then ran the internal heap
+            down to 52 bytes, with the AES engine failing for want of DMA
+            descriptors. With this on those stacks come from PSRAM, as the
+            app's own stacks in the box already do.
+
+            A task whose stack is in PSRAM must not touch flash itself: a
+            flash operation turns the cache off, PSRAM with it, and ESP-IDF
+            asserts. So a host call that reaches flash has to run it on a
+            task with an internal stack -- feckless_box_calls does, for NVS
+            and the first feckless_https_start() (box_flash.c). A launcher
+            with host calls of its own that touch flash turns this off, or
+            does the same.
+
 endmenu

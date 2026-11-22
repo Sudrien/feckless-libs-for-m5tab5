@@ -70,8 +70,10 @@ static esp_err_t start(httpd_handle_t *out, const httpd_config_t *c, bool tls)
     return ESP_OK;
 }
 esp_err_t httpd_start(httpd_handle_t *out, const httpd_config_t *c) { return start(out, c, false); }
+unsigned long fake_https_thread;             /* u-feckless-0082: the task the start ran on */
 esp_err_t feckless_https_start(httpd_handle_t *out, const httpd_config_t *c, uint16_t port)
 {
+    fake_https_thread = (unsigned long)pthread_self();
     if (port == 1) return ESP_FAIL;         /* a port the test says is taken */
     return start(out, c, true);
 }

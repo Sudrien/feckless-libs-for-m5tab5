@@ -218,11 +218,27 @@ H(c_nvsh_erase_ns)
 /* NVS is up and the app has a namespace in it */
 H(c_nvsh_ready) { (void)w; (void)a; *ret = nvsh_ready() && s_ns_n; return true; }
 
+/* u-feckless-0082: NVS is flash, and a host task's stack may be in PSRAM:
+ * every call that reaches it runs on box_flash.c's task. nvsh_ready() reads
+ * a flag. */
+FLASH_WRAP(nvsh_get_u8)
+FLASH_WRAP(nvsh_get_u32)
+FLASH_WRAP(nvsh_get_i32)
+FLASH_WRAP(nvsh_set_u8)
+FLASH_WRAP(nvsh_set_u32)
+FLASH_WRAP(nvsh_set_i32)
+FLASH_WRAP(nvsh_get_str)
+FLASH_WRAP(nvsh_get_blob)
+FLASH_WRAP(nvsh_set_str)
+FLASH_WRAP(nvsh_set_blob)
+FLASH_WRAP(nvsh_erase_key)
+FLASH_WRAP(nvsh_erase_ns)
+
 const feckless_umode_call_t box_nvs_calls[] = {
     { "feckless_abi_nvs_v1", NULL, &s_nvs_v1, sizeof s_nvs_v1, 0 },
-    FNU(nvsh_get_u8), FNU(nvsh_get_u32), FNU(nvsh_get_i32),
-    FNU(nvsh_set_u8), FNU(nvsh_set_u32), FNU(nvsh_set_i32),
-    FNU(nvsh_get_str), FNU(nvsh_get_blob), FNU(nvsh_set_str), FNU(nvsh_set_blob),
-    FNU(nvsh_erase_key), FNU(nvsh_erase_ns), FNU(nvsh_ready),
+    FLASHU(nvsh_get_u8), FLASHU(nvsh_get_u32), FLASHU(nvsh_get_i32),
+    FLASHU(nvsh_set_u8), FLASHU(nvsh_set_u32), FLASHU(nvsh_set_i32),
+    FLASHU(nvsh_get_str), FLASHU(nvsh_get_blob), FLASHU(nvsh_set_str), FLASHU(nvsh_set_blob),
+    FLASHU(nvsh_erase_key), FLASHU(nvsh_erase_ns), FNU(nvsh_ready),
 };
 const uint32_t box_nvs_calls_n = sizeof box_nvs_calls / sizeof box_nvs_calls[0];

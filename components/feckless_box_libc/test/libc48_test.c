@@ -71,6 +71,14 @@ int feckless_box_heap_stats(stats_t *out)
     *out = (stats_t){ 1000000, 600000, 400000, 350000, 12, 3 };
     return 1;
 }
+/* u-feckless-0082: the launcher's heap, by the caps asked */
+static uint32_t s_host_caps;
+int feckless_box_host_heap(uint32_t caps, stats_t *out)
+{
+    s_host_caps = caps;
+    *out = (stats_t){ 400000, 2459, 1800, 52, 300, 12 };
+    return 1;
+}
 
 static int ulps(double a, double b)
 {
@@ -242,7 +250,11 @@ static void on_failed(size_t size, uint32_t caps, const char *fn) { (void)caps; 
 
 static void test_heap(void)
 {
-    CHECK(heap_caps_get_free_size(0) == 600000 && heap_caps_get_largest_free_block(1 << 11) == 400000);
+    CHECK(heap_caps_get_free_size(0) == 600000 && heap_caps_get_largest_free_block(1 << 10) == 400000);
+    /* u-feckless-0082: internal or DMA memory is the launcher's */
+    CHECK(heap_caps_get_free_size(1 << 11) == 2459 && s_host_caps == 1u << 11);
+    CHECK(heap_caps_get_minimum_free_size((1 << 3) | (1 << 2)) == 52 && s_host_caps == ((1u << 3) | (1u << 2)));
+    CHECK(heap_caps_get_largest_free_block((1 << 11) | (1 << 10)) == 400000);   /* PSRAM asked too: the box */
     CHECK(heap_caps_get_minimum_free_size(0) == 350000 && heap_caps_get_total_size(0) == 1000000);
     multi_heap_info_t i;
     heap_caps_get_info(&i, 0);

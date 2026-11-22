@@ -366,6 +366,20 @@ static esp_err_t plain_start(httpd_handle_t *h, const httpd_config_t *c, uint16_
     return httpd_start(h, c);
 }
 
+typedef struct {
+    start_fn fn;
+    httpd_handle_t *h;
+    const httpd_config_t *c;
+    uint16_t port;
+    esp_err_t e;
+} start_job_t;
+
+static void start_job(void *arg)
+{
+    start_job_t *j = arg;
+    j->e = j->fn(j->h, j->c, j->port);
+}
+
 /* (handle *out, config *, port, tls) */
 static uint32_t start(win_t *w, uint32_t out, uint32_t cfg, uint16_t port, bool tls)
 {
@@ -402,7 +416,12 @@ static uint32_t start(win_t *w, uint32_t out, uint32_t cfg, uint16_t port, bool 
 #else
     const start_fn fn = plain_start;
 #endif
-    e = fn(&s->h, &c, port);
+    /* u-feckless-0082: on box_flash.c's task -- feckless_https_start()
+     * reads the certificate from NVS, and makes and keeps one the first
+     * time, and this host task's stack may be in PSRAM */
+    start_job_t job = { fn, &s->h, &c, port, ESP_FAIL };
+    if (!box_flash_run(start_job, &job)) job.e = ESP_ERR_NO_MEM;
+    e = job.e;
     if (e != ESP_OK) goto fail;
     *(uint32_t *)(uintptr_t)out = tok_of(s);
     return ESP_OK;

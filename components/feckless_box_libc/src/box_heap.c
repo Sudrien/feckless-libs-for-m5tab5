@@ -11,6 +11,7 @@
  * offset. A boxed app that wants one gets an import the box does not
  * answer, and the load says so.
  */
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -85,9 +86,9 @@ void heap_caps_free(void *ptr)
 }
 
 /* ---- u-feckless-0048: what the heap looks like ---------------------------
- * The box's own heap, whatever the caps: free bytes, the largest block one
- * allocation could take, the least free there has been. One host call
- * (feckless_umode's heap_stats) answers them all. */
+ * The box's own heap: free bytes, the largest block one allocation could
+ * take, the least free there has been. One host call (feckless_umode's
+ * heap_stats) answers them all -- but for internal and DMA memory, below. */
 
 typedef struct {
     uint32_t total, free, largest, min_free, blocks, free_blocks;
@@ -95,23 +96,39 @@ typedef struct {
 
 int feckless_box_heap_stats(box_heap_stats_t *out);
 
-static box_heap_stats_t stats(void)
+/* u-feckless-0082: asked about internal or DMA-capable memory -- and not
+ * PSRAM -- the answer is the launcher's own, which is what runs out: the
+ * box's heap is PSRAM whatever the caps, and was answering 10 MB of
+ * "internal free" while the launcher's internal RAM was down to 52 bytes.
+ * IDF's values, which this file does not include the header for. */
+#define BOX_CAP_DMA      (1u << 3)
+#define BOX_CAP_SPIRAM   (1u << 10)
+#define BOX_CAP_INTERNAL (1u << 11)
+
+int feckless_box_host_heap(uint32_t caps, box_heap_stats_t *out);
+
+static bool host_caps(uint32_t caps)
+{
+    return (caps & (BOX_CAP_DMA | BOX_CAP_INTERNAL)) && !(caps & BOX_CAP_SPIRAM);
+}
+
+static box_heap_stats_t stats(uint32_t caps)
 {
     box_heap_stats_t st;
     memset(&st, 0, sizeof st);
-    feckless_box_heap_stats(&st);
+    if (host_caps(caps)) feckless_box_host_heap(caps, &st);
+    else feckless_box_heap_stats(&st);
     return st;
 }
 
-size_t heap_caps_get_free_size(uint32_t caps) { (void)caps; return stats().free; }
-size_t heap_caps_get_minimum_free_size(uint32_t caps) { (void)caps; return stats().min_free; }
-size_t heap_caps_get_largest_free_block(uint32_t caps) { (void)caps; return stats().largest; }
-size_t heap_caps_get_total_size(uint32_t caps) { (void)caps; return stats().total; }
+size_t heap_caps_get_free_size(uint32_t caps) { return stats(caps).free; }
+size_t heap_caps_get_minimum_free_size(uint32_t caps) { return stats(caps).min_free; }
+size_t heap_caps_get_largest_free_block(uint32_t caps) { return stats(caps).largest; }
+size_t heap_caps_get_total_size(uint32_t caps) { return stats(caps).total; }
 
 void heap_caps_get_info(multi_heap_info_t *info, uint32_t caps)
 {
-    (void)caps;
-    const box_heap_stats_t st = stats();
+    const box_heap_stats_t st = stats(caps);
     memset(info, 0, sizeof *info);
     info->total_free_bytes = st.free;
     info->total_allocated_bytes = st.total - st.free;
@@ -124,9 +141,8 @@ void heap_caps_get_info(multi_heap_info_t *info, uint32_t caps)
 
 void heap_caps_print_heap_info(uint32_t caps)
 {
-    (void)caps;
-    const box_heap_stats_t st = stats();
-    printf("Heap summary for the box:\n");
+    const box_heap_stats_t st = stats(caps);
+    printf(host_caps(caps) ? "Heap summary for the launcher's internal RAM:\n" : "Heap summary for the box:\n");
     printf("  %u bytes free, %u allocated in %u blocks; largest free block %u; least free %u\n",
            (unsigned)st.free, (unsigned)(st.total - st.free), (unsigned)st.blocks,
            (unsigned)st.largest, (unsigned)st.min_free);
