@@ -17,6 +17,7 @@ idf_component_register(
          "src/box_crypto.c"  # u-feckless-0078
          "src/box_fetch.c"   # u-feckless-0081
          "src/box_flash.c"   # u-feckless-0082
+         "src/box_wifi.c"    # u-feckless-0083
     INCLUDE_DIRS "include"
     REQUIRES feckless_umode
     PRIV_REQUIRES feckless_abi feckless_drivers feckless_graphics_handler

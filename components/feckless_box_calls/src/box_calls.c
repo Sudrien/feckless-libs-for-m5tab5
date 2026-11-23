@@ -717,10 +717,11 @@ static const feckless_umode_call_t s_own[] = {
 #define HTTPD_MAX 32                        /* u-feckless-0077 */
 #define CRYPTO_MAX 4                        /* u-feckless-0078 */
 #define FETCH_MAX 8                         /* u-feckless-0081 */
+#define WIFI_MAX 8                          /* u-feckless-0083 */
 
 const feckless_umode_call_t *feckless_box_calls_v1(uint32_t *n)
 {
-    static feckless_umode_call_t table[HEAP_MAX + OWN_N + STORAGE_MAX + AUDIO_MAX + RTOS_MAX + CODEC_MAX + IMAGE_MAX + NVS_MAX + CAMERA_MAX + DRIVERS_MAX + NET_MAX + HTTP_MAX + UPCALL_MAX + NETIF_MAX + HTTPD_MAX + CRYPTO_MAX + FETCH_MAX];
+    static feckless_umode_call_t table[HEAP_MAX + OWN_N + STORAGE_MAX + AUDIO_MAX + RTOS_MAX + CODEC_MAX + IMAGE_MAX + NVS_MAX + CAMERA_MAX + DRIVERS_MAX + NET_MAX + HTTP_MAX + UPCALL_MAX + NETIF_MAX + HTTPD_MAX + CRYPTO_MAX + FETCH_MAX + WIFI_MAX];
     static uint32_t count;
     if (!count) {
         uint32_t k = 0;
@@ -775,6 +776,9 @@ const feckless_umode_call_t *feckless_box_calls_v1(uint32_t *n)
         for (uint32_t i = 0; i < box_fetch_calls_n && i < FETCH_MAX; i++) {
             table[k++] = box_fetch_calls[i];
         }
+        for (uint32_t i = 0; i < box_wifi_calls_n && i < WIFI_MAX; i++) {
+            table[k++] = box_wifi_calls[i];
+        }
         count = k;
         box_flash_init();                   /* u-feckless-0082: before any host call can want it */
     }
@@ -793,6 +797,7 @@ void feckless_box_calls_end(void)
     box_camera_end();
     box_drivers_end();
     box_fetch_end();                        /* u-feckless-0081: no callbacks; its download paused */
+    box_wifi_end();                         /* u-feckless-0083: the launcher's hooks back */
     box_httpd_end();                        /* u-feckless-0077: its servers, before the sockets */
     box_http_end();                         /* u-feckless-0073: before its sockets go */
     box_net_end();                          /* u-feckless-0071 */

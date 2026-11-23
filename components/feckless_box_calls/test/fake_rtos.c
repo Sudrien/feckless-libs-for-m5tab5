@@ -36,6 +36,7 @@ uint32_t fake_stack_lo[16], fake_stack_hi[16];
 bool fake_stopping;
 
 struct fake_q {
+    bool owns;                          /* store is calloc'd here (u-feckless-0083) */
     uint32_t len, item, count, head;
     uint8_t type;
     uint8_t *store;
@@ -143,10 +144,18 @@ QueueHandle_t xQueueCreateCountingSemaphoreStatic(UBaseType_t max, UBaseType_t i
 /* u-feckless-0060: a semaphore of the kernel's own */
 QueueHandle_t xQueueGenericCreate(UBaseType_t len, UBaseType_t item, uint8_t type)
 {
-    if (item) abort();                      /* semaphores only */
-    return q_new(len, 0, type, 0, NULL);
+    if (!item) return q_new(len, 0, type, 0, NULL);
+    /* u-feckless-0083: a queue of items, its store its own */
+    struct fake_q *q = q_new(len, item, type, 0, calloc(len, item));
+    q->owns = true;
+    return q;
 }
-void vQueueDelete(QueueHandle_t q) { free(q); fake_live--; }
+void vQueueDelete(QueueHandle_t q)
+{
+    if (q->owns) free(q->store);
+    free(q);
+    fake_live--;
+}
 
 static bool q_mutex(const struct fake_q *q)
 {

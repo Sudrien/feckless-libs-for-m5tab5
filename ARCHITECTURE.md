@@ -5282,3 +5282,72 @@ the box.
 the heap map's internal line showing the launcher's real figure, and
 feckless_fetch's `internal free` during a download in the tens of KB
 rather than hundreds of bytes.
+
+### u-feckless-0083 -- the radio's control for a boxed app: Wi-Fi and NTP
+
+Defeatist in a box ran on a cable only. Its scan, join, saved networks
+and the Wi-Fi and NTP switches were stand-ins (its `absent.c`), because
+the radio's control asks the app's policy through
+`feckless_net_set_hooks()`, and the launcher's network calls those hooks
+from its own tasks: the worker, the event loop, and lwIP's SNTP callback.
+A box never runs app code there.
+
+- **box_wifi.c** (feckless_box_calls), in the network section:
+  - `wifi_scan_list`: at most 64 networks, copied out.
+  - `wifi_join`: its timeout capped at 60 s.
+  - `wifi_psk` and `wifistore_save`: on the flash task (u-feckless-0082).
+  - `esp_wifi_get_mac`.
+  - Two new box-section calls, `feckless_box_net_hooks` and
+    `feckless_box_wifi_apply`.
+- **The hooks never wait for the app.** A synchronous callback could
+  deadlock two ways:
+  - an app thread holding a lock of its own calls
+    `wifi_apply_settings()`, whose `wifi_enabled()` then waits for the
+    callback loop, which needs that lock;
+  - the SNTP callback, on lwIP's thread, waits for an app that is itself
+    in a socket call waiting for lwIP's thread.
+
+  So:
+  - **The yes/no hooks are answers.** feckless_box_libc's new box_wifi.c
+    is the app's `feckless_net_set_hooks()`, `wifi_apply_settings()`,
+    `wifi_request_apply()` and `wifi_request_restart()`. Each asks
+    `wifi_enabled`, `ntp_enabled` and `portal_running` on the calling
+    thread, and passes the answers to the host with the request. The
+    launcher's hooks, box_wifi.c's, read the answers last given.
+  - **heap_note, online and ntp_reply are notes.** They are queued, at
+    most 8, and a short launcher task delivers them through the callback
+    loop (u-feckless-0075). `ntp_reply` is taken as yes: the clock has
+    already moved, and the app's own gate still runs. So
+    `wifi_ntp_synced()` can say synced for a reply the app found
+    implausible.
+  - `portal_stop` is a note too, sent only while the app says its portal
+    runs.
+  - `usb_register_class` stays the launcher's.
+- **At the app's end** the launcher's earlier hooks come back and queued
+  notes are dropped. The radio stays as the app left it.
+- `wifi_auth_name()` moved into feckless_box_libc too: it returns a host
+  string the app couldn't read.
+- **Not here:** the setup portal's access point (`wifi_ap_*`) and the
+  DHCP server.
+- **Can't be cut short:** a scan (behind a join, up to about 30 s) and a
+  join. The app's stop waits for them.
+
+*Tested:*
+- box_calls_test's `test_wifi` checks:
+  - the hooks' answers, and `usb_register_class` kept;
+  - each of the three requests reading the answers it was given;
+  - the scan's copy and its cap;
+  - the join's strings and timeout cap, and a missing secret passed as
+    NULL;
+  - the PSK, the save and the MAC, with pointers outside the box refused;
+  - the launcher's hooks back at the end.
+- The fake FreeRTOS gained item queues.
+- boxcalls_names.txt was regenerated.
+- The ABI tests and feckless_box_libc's tests pass.
+
+*Not checked:*
+- Note delivery: the host fake's queues aren't threaded.
+- The board.
+
+Look for the player's Wi-Fi switch bringing the radio up, a join, and
+`NTP sync:` in the log, all in a box.

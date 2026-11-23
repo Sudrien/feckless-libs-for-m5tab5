@@ -427,3 +427,10 @@ feckless_fetch_why
 feckless_fetch_live
 feckless_fetch_part
 feckless_fetch_discard
+feckless_box_net_hooks
+feckless_box_wifi_apply
+wifi_scan_list
+wifi_join
+wifi_psk
+wifistore_save
+esp_wifi_get_mac

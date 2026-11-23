@@ -147,6 +147,11 @@ extern const feckless_umode_call_t box_fetch_calls[];
 extern const uint32_t box_fetch_calls_n;
 void box_fetch_end(void);
 
+/* u-feckless-0083: the radio's control and the app's network hooks (box_wifi.c). */
+extern const feckless_umode_call_t box_wifi_calls[];
+extern const uint32_t box_wifi_calls_n;
+void box_wifi_end(void);
+
 /* u-feckless-0082: flash work on a task with an internal stack (box_flash.c),
  * for host tasks whose stacks are in PSRAM. box_flash_run(): fn(arg) there,
  * waited for; false only if the task could not be made. box_flash_call(): a

@@ -29,3 +29,9 @@ feckless_box_netif_next
 # feckless_box_libc's heap_caps_get_info() and its siblings answer for
 # internal and DMA memory.
 feckless_box_host_heap
+# u-feckless-0083: the app's network hooks, asked in the app by
+# feckless_box_libc's feckless_net_set_hooks() and its wifi_apply_settings(),
+# wifi_request_apply() and wifi_request_restart(), and handed over as
+# answers with the request; the notes by address, for the callback loop.
+feckless_box_net_hooks
+feckless_box_wifi_apply

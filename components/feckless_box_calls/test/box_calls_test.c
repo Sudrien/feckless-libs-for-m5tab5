@@ -1944,6 +1944,78 @@ static void test_host_heap(void)
     CHECK(C2("feckless_box_host_heap", 1u << 11, P(mem) + MEM - 8) == 0);   /* out of the box */
 }
 
+/* ---- u-feckless-0083: the radio's control and the app's hooks ---- */
+
+#include "feckless_net.h"
+#include "wifi.h"
+
+extern int fake_set_hooks_calls, fake_apply_calls, fake_request_apply_calls, fake_restart_calls;
+extern int fake_scan_found, fake_scan_max_asked;
+extern bool fake_apply_saw_wifi, fake_join_secret_null, fake_saved_psk;
+extern char fake_restart_why[64], fake_join_ssid[40], fake_join_secret[80], fake_saved_ssid[40], fake_saved_secret[80];
+extern uint32_t fake_join_timeout;
+
+static esp_err_t launcher_usb(const char *name, feckless_net_usb_class_fn fn) { (void)name; (void)fn; return ESP_OK; }
+
+static void test_wifi(void)
+{
+    /* the launcher's hooks: only its USB owner, as feckless_net_start() leaves them */
+    feckless_net_set_hooks(&(feckless_net_hooks_t){ .usb_register_class = launcher_usb });
+    const feckless_net_hooks_t *h = feckless_net_hooks();
+
+    /* the app's: no notes, so no loop; NTP wanted, the radio not */
+    CHECK(call("feckless_box_net_hooks", 0, 0, 0, 0, 2, 0, 0, 0) == ESP_OK);
+    h = feckless_net_hooks();
+    CHECK(h->wifi_enabled && !h->wifi_enabled() && h->ntp_enabled && h->ntp_enabled());
+    CHECK(h->portal_running && !h->portal_running() && h->portal_stop && h->portal_stop() == ESP_OK);
+    CHECK(!h->heap_note && !h->online && !h->ntp_reply);
+    CHECK(h->usb_register_class == launcher_usb);                      /* never the app's */
+    CHECK(call("feckless_box_net_hooks", P(mem) + MEM - 2, 0, 0, 0, 2, 0, 0, 0) == ESP_ERR_INVALID_ARG);
+    CHECK(call("feckless_box_net_hooks", 0, 0, 0, 0, 2, 0, 0, 0) == ESP_OK);
+
+    /* the switch: the answers first, then the request reads them */
+    CHECK(call("feckless_box_wifi_apply", 1, 0, 0, 0, 0, 0, 0, 0) == ESP_OK);
+    CHECK(fake_apply_calls == 1 && fake_apply_saw_wifi);
+    CHECK(call("feckless_box_wifi_apply", 0, 1, 0, 0, 0, 0, 0, 0) == ESP_OK);
+    CHECK(fake_request_apply_calls == 1 && !feckless_net_hooks()->wifi_enabled());
+    CHECK(call("feckless_box_wifi_apply", 1, 2, P(put_str("link dead")), 0, 0, 0, 0, 0) == ESP_OK);
+    CHECK(fake_restart_calls == 1 && !strcmp(fake_restart_why, "link dead"));
+    CHECK(call("feckless_box_wifi_apply", 1, 2, P(mem) + MEM - 1, 0, 0, 0, 0, 0) == ESP_OK);
+    CHECK(fake_restart_calls == 2 && !strcmp(fake_restart_why, ""));   /* a bad string: no reason, still asked */
+    CHECK(call("feckless_box_wifi_apply", 1, 9, 0, 0, 0, 0, 0, 0) == ESP_ERR_INVALID_ARG);
+
+    /* the scan, copied out; at most 64; a box too small refuses */
+    wifi_seen_t *seen = bx(64 * sizeof *seen);
+    CHECK(sret(C2("wifi_scan_list", P(seen), 5)) == 3 && fake_scan_max_asked == 5);
+    CHECK(seen[0].ssid[0] == 'A' && seen[2].rssi == -42 && seen[2].channel == 3 && seen[3].ssid[0] == 0);
+    CHECK(sret(C2("wifi_scan_list", P(seen), 1000)) == 3 && fake_scan_max_asked == 64);
+    CHECK(sret(C2("wifi_scan_list", P(seen), 0)) == -1);
+    CHECK(sret(C2("wifi_scan_list", P(mem) + MEM - sizeof *seen, 2)) == -1);
+
+    /* the join: strings copied, the timeout capped, no secret is NULL */
+    CHECK(call("wifi_join", P(put_str("home")), P(put_str("hunter22")), 90000, 0, 0, 0, 0, 0) == ESP_OK);
+    CHECK(!strcmp(fake_join_ssid, "home") && !strcmp(fake_join_secret, "hunter22") && fake_join_timeout == 60000);
+    CHECK(call("wifi_join", P(put_str("cafe")), 0, 15000, 0, 0, 0, 0, 0) == ESP_OK);
+    CHECK(fake_join_secret_null && fake_join_timeout == 15000);
+    CHECK(call("wifi_join", P(put_str("an ssid much longer than thirty-two")), 0, 1, 0, 0, 0, 0, 0) == ESP_ERR_INVALID_ARG);
+
+    /* the PSK, the saved network, the MAC */
+    uint8_t *key = bx(32);
+    CHECK(call("wifi_psk", P(put_str("h")), P(put_str("p")), P(key), 0, 0, 0, 0, 0) == ESP_OK);
+    CHECK(key[0] == 'h' + 'p' && key[31] == 'h' + 'p' + 31);
+    CHECK(call("wifi_psk", P(put_str("h")), P(put_str("p")), P(mem) + MEM - 8, 0, 0, 0, 0, 0) == ESP_ERR_INVALID_ARG);
+    CHECK(call("wifistore_save", P(put_str("home")), P(put_str("hunter22")), 1, 0, 0, 0, 0, 0) == ESP_OK);
+    CHECK(!strcmp(fake_saved_ssid, "home") && !strcmp(fake_saved_secret, "hunter22") && fake_saved_psk);
+    uint8_t *mac = bx(6);
+    CHECK(C2("esp_wifi_get_mac", 1, P(mac)) == ESP_OK && mac[0] == 0x10 && mac[5] == 0x15);
+    CHECK(C2("esp_wifi_get_mac", 0, P(mem) + MEM - 3) == ESP_ERR_INVALID_ARG);
+
+    /* the end: the launcher's hooks back */
+    feckless_box_calls_end();
+    h = feckless_net_hooks();
+    CHECK(!h->wifi_enabled && !h->ntp_enabled && !h->portal_running && h->usb_register_class == launcher_usb);
+}
+
 int main(int argc, char **argv)
 {
     mem = mmap(NULL, MEM, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT, -1, 0);
@@ -1985,6 +2057,7 @@ int main(int argc, char **argv)
     test_netif();                       /* u-feckless-0076 */
     test_crypto();                      /* u-feckless-0078 */
     test_host_heap();                   /* u-feckless-0082 */
+    test_wifi();                        /* u-feckless-0083 */
     printf(failed ? "%d FAILED\n" : "box_calls: all passed (%u calls)\n", failed ? failed : (int)ncalls);
     return failed != 0;
 }

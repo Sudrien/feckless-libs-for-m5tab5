@@ -15,6 +15,10 @@ QueueHandle_t xQueueGenericCreateStatic(UBaseType_t len, UBaseType_t item, uint8
 QueueHandle_t xQueueCreateMutexStatic(uint8_t type, StaticQueue_t *ctl);
 QueueHandle_t xQueueCreateCountingSemaphoreStatic(UBaseType_t max, UBaseType_t init, StaticQueue_t *ctl);
 void vQueueDelete(QueueHandle_t q);
+/* u-feckless-0083: a queue of items, allocated */
+QueueHandle_t xQueueGenericCreate(UBaseType_t len, UBaseType_t item, uint8_t type);
+#define xQueueCreate(len, item) xQueueGenericCreate((len), (item), queueQUEUE_TYPE_BASE)
+#define xQueueSend(q, item, t) xQueueGenericSend((q), (item), (t), queueSEND_TO_BACK)
 BaseType_t xQueueGenericSend(QueueHandle_t q, const void *item, TickType_t t, BaseType_t pos);
 BaseType_t xQueueSemaphoreTake(QueueHandle_t q, TickType_t t);
 BaseType_t xQueueReceive(QueueHandle_t q, void *buf, TickType_t t);
