@@ -184,8 +184,11 @@ static void mdns_up(const char *name, uint16_t port)
         ESP_LOGW(TAG, "mDNS did not start (%d): %s.local will not resolve by itself", (int)err, name);
         return;
     }
-    /* Already added by an earlier server on the same port: not an error. */
-    (void)mdns_service_add(NULL, "_https", "_tcp", port, NULL, 0);
+    /* An earlier server's record -- the remote restarted when its network
+     * came back -- is kept and pointed at this port. Adding it again was
+     * harmless but logged "Service already exists" as an error. */
+    if (mdns_service_exists("_https", "_tcp", NULL)) (void)mdns_service_port_set("_https", "_tcp", port);
+    else (void)mdns_service_add(NULL, "_https", "_tcp", port, NULL, 0);
     ESP_LOGI(TAG, "answering mDNS as %s.local", name);
 }
 
