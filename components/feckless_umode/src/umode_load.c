@@ -347,7 +347,12 @@ static void thread_main(void *arg)
     feckless_umode_app_t *a = t->app;
     t->end = feckless_umode_run_default(&t->win);
     note_end(a, &t->end);
-    if (t->end.reason != FECKLESS_UMODE_END_EXIT) {
+    /* KILLED is a host call's answer -- esp_restart(), or the app's stop
+     * reaching a thread -- and that call said why: the thread's end is
+     * news, not an error. A fault, a stack overrun or a refusal is. */
+    if (t->end.reason == FECKLESS_UMODE_END_KILLED) {
+        ESP_LOGI(TAG, "thread %d stopped with the app (at 0x%08x)", (int)(t - a->th) + 1, (unsigned)t->end.pc);
+    } else if (t->end.reason != FECKLESS_UMODE_END_EXIT) {
         ESP_LOGE(TAG, "thread %d ended: reason %d, %s at 0x%08x", (int)(t - a->th) + 1,
                  (int)t->end.reason,
                  t->end.reason == FECKLESS_UMODE_END_FAULT ? feckless_umode_cause_name(t->end.mcause) : "-",
