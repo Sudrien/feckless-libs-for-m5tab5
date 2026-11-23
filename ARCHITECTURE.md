@@ -5351,3 +5351,43 @@ A box never runs app code there.
 
 Look for the player's Wi-Fi switch bringing the radio up, a join, and
 `NTP sync:` in the log, all in a box.
+
+### u-feckless-0084 -- a hotspot: the access point with WPA2, and in a box
+
+The access point was the setup portal's: open, and up for minutes. An
+app's hotspot stays up, so it needs a password.
+
+- **wifi.c:**
+  - `wifi_ap_begin_secure(ssid, pass)` is `wifi_ap_begin()` with
+    WPA2-PSK when given a password of 8 to 63 characters, with PMF
+    offered but not required, for older phones. Without a password it's
+    open, as before.
+  - `wifi_ap_begin()` now calls it.
+  - `wifi_ap_ip()` gives the AP's own address, so an app's servers can
+    say where they are. They listen on every interface already.
+  - The AP's netif brings its DHCP server, so phones get an address with
+    nothing more.
+- **box_wifi.c** answers `wifi_ap_begin_secure`, `wifi_ap_begin`,
+  `wifi_ap_end`, `wifi_ap_clients` and `wifi_ap_ip`. The password is
+  copied and wiped. WIFI_MAX goes to 16.
+- **feckless_box_libc's box_wifi.c** gives `wifi_ap_netif()` app-side:
+  the box's own number for "WIFI_AP_DEF" (u-feckless-0076) while the AP
+  has an address, so the app never holds a host pointer.
+- **Still unanswered:** the DHCP server's options and the DNS setters.
+  Only the setup portal's captive DNS used them.
+- **network.txt** gains `wifi_ap_begin_secure` and `wifi_ap_ip`. Adding
+  names is compatible.
+
+*Tested:* box_calls_test checks:
+- a short password refused, with nothing started;
+- WPA2 with the strings copied;
+- the clients count;
+- the address copied, and cut to fit a short buffer;
+- a pointer outside the box refused;
+- the AP ended, with no address and no clients after;
+- an open AP;
+- a bad password pointer refused.
+
+boxcalls_names.txt was regenerated.
+
+*Not checked:* the board. wifi.c doesn't build on a host.

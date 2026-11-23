@@ -5,6 +5,7 @@
  */
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "esp_wifi.h"
@@ -85,4 +86,26 @@ esp_err_t esp_wifi_get_mac(wifi_interface_t ifx, uint8_t mac[6])
 {
     for (int i = 0; i < 6; i++) mac[i] = (uint8_t)(0x10 * (int)ifx + i);
     return ESP_OK;
+}
+
+/* u-feckless-0084: the access point */
+char fake_ap_ssid[40], fake_ap_pass[80];
+bool fake_ap_on, fake_ap_secure;
+esp_err_t wifi_ap_begin_secure(const char *ssid, const char *pass)
+{
+    if (pass && (strlen(pass) < 8 || strlen(pass) > 63)) return ESP_ERR_INVALID_ARG;
+    strncpy(fake_ap_ssid, ssid, sizeof fake_ap_ssid - 1);
+    strncpy(fake_ap_pass, pass ? pass : "", sizeof fake_ap_pass - 1);
+    fake_ap_secure = pass != NULL;
+    fake_ap_on = true;
+    return ESP_OK;
+}
+esp_err_t wifi_ap_begin(const char *ssid) { return wifi_ap_begin_secure(ssid, NULL); }
+esp_err_t wifi_ap_end(void) { fake_ap_on = false; return ESP_OK; }
+int wifi_ap_clients(void) { return fake_ap_on ? 2 : 0; }
+bool wifi_ap_ip(char *out, size_t n)
+{
+    if (!fake_ap_on) { if (n) out[0] = 0; return false; }
+    snprintf(out, n, "192.168.4.1");
+    return true;
 }

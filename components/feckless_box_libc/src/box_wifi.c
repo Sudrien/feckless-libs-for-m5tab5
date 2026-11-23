@@ -21,10 +21,16 @@
  *
  * wifi_auth_name() is here too: a host string the app could not read.
  *
+ * u-feckless-0084: and wifi_ap_netif(), a host pointer the app could not
+ * hold: the box's own number for the AP's netif, from
+ * esp_netif_get_handle_from_ifkey("WIFI_AP_DEF") (u-feckless-0076), while
+ * wifi_ap_ip() says the AP is up; NULL otherwise, as the host's.
+ *
  * Linked only into an ELF that calls one of these: the linker takes this
  * file for those names.
  */
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 typedef int esp_err_t;
@@ -46,6 +52,9 @@ typedef struct {
 esp_err_t feckless_box_net_hooks(uint32_t heap_note, uint32_t online, uint32_t ntp_reply, uint32_t portal_stop,
                                  uint32_t answers);
 esp_err_t feckless_box_wifi_apply(uint32_t answers, uint32_t how, const char *why);
+/* the host's (the network section) */
+bool wifi_ap_ip(char *out, size_t out_size);
+void *esp_netif_get_handle_from_ifkey(const char *if_key);
 
 #define ANS_WIFI   1u
 #define ANS_NTP    2u
@@ -90,4 +99,11 @@ const char *wifi_auth_name(uint8_t auth)
     case 8:  return "WAPI";
     default: return "?";
     }
+}
+
+/* wifi.h's struct esp_netif_obj *, opaque here */
+void *wifi_ap_netif(void)
+{
+    char ip[16];
+    return wifi_ap_ip(ip, sizeof ip) ? esp_netif_get_handle_from_ifkey("WIFI_AP_DEF") : 0;
 }

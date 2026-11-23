@@ -648,11 +648,18 @@ bool wifi_sta_ssid(char *out, size_t out_size)
     return out[0] != '\0';
 }
 
-esp_err_t wifi_ap_begin(const char *ssid)
+esp_err_t wifi_ap_begin(const char *ssid) { return wifi_ap_begin_secure(ssid, NULL); }
+
+/* u-feckless-0084: the same AP with WPA2-PSK when there is a password --
+ * an app's hotspot, which stays up, where the portal's open one lasted
+ * minutes. */
+esp_err_t wifi_ap_begin_secure(const char *ssid, const char *pass)
 {
     if (!s_up) return ESP_ERR_INVALID_STATE;
     if (s_ap_on) return ESP_OK;
     if (!ssid || !*ssid || strlen(ssid) > 32) return ESP_ERR_INVALID_ARG;
+    const size_t pl = pass ? strlen(pass) : 0;
+    if (pass && (pl < 8 || pl > 63)) return ESP_ERR_INVALID_ARG;
 
     if (!s_ap_netif) {
         s_ap_netif = esp_netif_create_default_wifi_ap();
@@ -678,7 +685,11 @@ esp_err_t wifi_ap_begin(const char *ssid)
     const size_t sl = strlen(ssid);
     memcpy(ap.ap.ssid, ssid, sl);
     ap.ap.ssid_len = (uint8_t)sl;
-    ap.ap.authmode = WIFI_AUTH_OPEN;
+    ap.ap.authmode = pl ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
+    if (pl) {
+        memcpy(ap.ap.password, pass, pl);
+        ap.ap.pmf_cfg.capable = true;       /* offered, not required: older phones */
+    }
     ap.ap.max_connection = 4;
     ap.ap.channel = 1;          /* follows the STA's channel if it joins */
     err = esp_wifi_set_config(WIFI_IF_AP, &ap);
@@ -690,7 +701,7 @@ esp_err_t wifi_ap_begin(const char *ssid)
 
     s_ap_clients = 0;
     s_ap_on = true;
-    ESP_LOGI(TAG, "APSTA up: %s is broadcasting", ssid);
+    ESP_LOGI(TAG, "APSTA up: %s is broadcasting%s", ssid, pl ? " (WPA2)" : " (open)");
     return ESP_OK;
 }
 
@@ -708,6 +719,18 @@ esp_err_t wifi_ap_end(void)
 int wifi_ap_clients(void) { return s_ap_on ? s_ap_clients : 0; }
 
 esp_netif_t *wifi_ap_netif(void) { return s_ap_on ? s_ap_netif : NULL; }
+
+/* u-feckless-0084: the AP's own address, for an app serving on it. */
+bool wifi_ap_ip(char *out, size_t out_size)
+{
+    if (!out || !out_size) return false;
+    out[0] = '\0';
+    esp_netif_t *nif = wifi_ap_netif();
+    esp_netif_ip_info_t ip = { 0 };
+    if (!nif || esp_netif_get_ip_info(nif, &ip) != ESP_OK || ip.ip.addr == 0) return false;
+    snprintf(out, out_size, IPSTR, IP2STR(&ip.ip));
+    return true;
+}
 
 /*
  * Per-channel dwell for wifi_scan_list(). ESP-IDF's default active scan

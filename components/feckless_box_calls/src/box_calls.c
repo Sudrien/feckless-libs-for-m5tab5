@@ -717,7 +717,7 @@ static const feckless_umode_call_t s_own[] = {
 #define HTTPD_MAX 32                        /* u-feckless-0077 */
 #define CRYPTO_MAX 4                        /* u-feckless-0078 */
 #define FETCH_MAX 8                         /* u-feckless-0081 */
-#define WIFI_MAX 8                          /* u-feckless-0083 */
+#define WIFI_MAX 16                         /* u-feckless-0083, 0084 */
 
 const feckless_umode_call_t *feckless_box_calls_v1(uint32_t *n)
 {

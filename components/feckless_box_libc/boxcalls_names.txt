@@ -434,3 +434,8 @@ wifi_join
 wifi_psk
 wifistore_save
 esp_wifi_get_mac
+wifi_ap_begin_secure
+wifi_ap_begin
+wifi_ap_end
+wifi_ap_clients
+wifi_ap_ip

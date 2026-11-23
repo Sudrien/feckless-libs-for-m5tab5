@@ -2010,6 +2010,27 @@ static void test_wifi(void)
     CHECK(C2("esp_wifi_get_mac", 1, P(mac)) == ESP_OK && mac[0] == 0x10 && mac[5] == 0x15);
     CHECK(C2("esp_wifi_get_mac", 0, P(mem) + MEM - 3) == ESP_ERR_INVALID_ARG);
 
+    /* u-feckless-0084: the access point -- WPA2 with a password, open
+     * without; a short password refused; its address copied, cut to fit */
+    extern char fake_ap_ssid[40], fake_ap_pass[80];
+    extern bool fake_ap_on, fake_ap_secure;
+    CHECK(call("wifi_ap_begin_secure", P(put_str("Defeatist-2f08")), P(put_str("short")), 0, 0, 0, 0, 0, 0) ==
+          ESP_ERR_INVALID_ARG && !fake_ap_on);
+    CHECK(call("wifi_ap_begin_secure", P(put_str("Defeatist-2f08")), P(put_str("k4m9q2x7wd")), 0, 0, 0, 0, 0, 0) ==
+          ESP_OK);
+    CHECK(fake_ap_on && fake_ap_secure && !strcmp(fake_ap_ssid, "Defeatist-2f08") && !strcmp(fake_ap_pass, "k4m9q2x7wd"));
+    CHECK(C1("wifi_ap_clients", 0) == 2);
+    char *ip = bx(16);
+    CHECK(C2("wifi_ap_ip", P(ip), 16) == 1 && !strcmp(ip, "192.168.4.1"));
+    CHECK(C2("wifi_ap_ip", P(ip), 8) == 1 && !strcmp(ip, "192.168"));
+    CHECK(C2("wifi_ap_ip", P(mem) + MEM - 4, 16) == 0);
+    CHECK(C1("wifi_ap_end", 0) == ESP_OK && !fake_ap_on);
+    CHECK(C2("wifi_ap_ip", P(ip), 16) == 0 && ip[0] == 0);
+    CHECK(C1("wifi_ap_clients", 0) == 0);
+    CHECK(C1("wifi_ap_begin", P(put_str("open-one"))) == ESP_OK && fake_ap_on && !fake_ap_secure);
+    CHECK(call("wifi_ap_begin_secure", P(put_str("x")), P(mem) + MEM - 1, 0, 0, 0, 0, 0, 0) == ESP_ERR_INVALID_ARG);
+    (void)C1("wifi_ap_end", 0);
+
     /* the end: the launcher's hooks back */
     feckless_box_calls_end();
     h = feckless_net_hooks();

@@ -2,8 +2,15 @@
  *
  * The radio's control for a boxed app (u-feckless-0083): the station's
  * scan, join and saved networks, the switch, and the app's network hooks,
- * so Wi-Fi and NTP work in a box as they do in a trusted build. The setup
- * portal's access point (wifi_ap_*, the DHCP server) is not here yet.
+ * so Wi-Fi and NTP work in a box as they do in a trusted build.
+ *
+ * u-feckless-0084: and the access point -- wifi_ap_begin, its WPA2 form
+ * wifi_ap_begin_secure, wifi_ap_end, wifi_ap_clients, wifi_ap_ip -- for an
+ * app's hotspot. The AP's netif brings its DHCP server, so nothing about
+ * the DHCP server need be answered. wifi_ap_netif() is the app's, in
+ * feckless_box_libc: the box's own number for "WIFI_AP_DEF"
+ * (u-feckless-0076), never a host pointer. The DHCP server's options and
+ * the DNS setters (the setup portal's captive DNS) stay unanswered.
  *
  * THE HOOKS
  * feckless_net_set_hooks() takes the app's policy as functions: whether
@@ -344,6 +351,70 @@ H(c_wifistore_save)
     return true;
 }
 
+/* ---- the access point (u-feckless-0084) ------------------------------- */
+
+#define AP_PASS_MAX 63
+
+/* (ssid, pass or 0) */
+H(c_wifi_ap_begin_secure)
+{
+    const char *s = str(w, a[0], SSID_MAX);
+    const char *p = a[1] ? str(w, a[1], AP_PASS_MAX) : NULL;
+    if (!s || (a[1] && !p)) {
+        *ret = (uint32_t)ESP_ERR_INVALID_ARG;
+        return true;
+    }
+    char ssid[SSID_MAX + 1], pass[AP_PASS_MAX + 1];
+    strlcpy(ssid, s, sizeof ssid);
+    strlcpy(pass, p ? p : "", sizeof pass);
+    *ret = (uint32_t)wifi_ap_begin_secure(ssid, p ? pass : NULL);
+    memset(pass, 0, sizeof pass);
+    return true;
+}
+
+/* (ssid) */
+H(c_wifi_ap_begin)
+{
+    const char *s = str(w, a[0], SSID_MAX);
+    if (!s) {
+        *ret = (uint32_t)ESP_ERR_INVALID_ARG;
+        return true;
+    }
+    char ssid[SSID_MAX + 1];
+    strlcpy(ssid, s, sizeof ssid);
+    *ret = (uint32_t)wifi_ap_begin(ssid);
+    return true;
+}
+
+H(c_wifi_ap_end)
+{
+    (void)w; (void)a;
+    *ret = (uint32_t)wifi_ap_end();
+    return true;
+}
+
+H(c_wifi_ap_clients)
+{
+    (void)w; (void)a;
+    *ret = (uint32_t)wifi_ap_clients();
+    return true;
+}
+
+/* (out, size) -> bool */
+H(c_wifi_ap_ip)
+{
+    *ret = 0;
+    if (!a[1] || !ok_ptr(w, a[0], a[1])) return true;
+    char ip[16];
+    if (!wifi_ap_ip(ip, sizeof ip)) {
+        *(char *)(uintptr_t)a[0] = '\0';
+        return true;
+    }
+    strlcpy((char *)(uintptr_t)a[0], ip, a[1]);
+    *ret = 1;
+    return true;
+}
+
 /* (ifx, mac[6]) */
 H(c_esp_wifi_get_mac)
 {
@@ -364,6 +435,7 @@ const feckless_umode_call_t box_wifi_calls[] = {
     FN(feckless_box_net_hooks), FNU(feckless_box_wifi_apply),
     FNU(wifi_scan_list), FNU(wifi_join), FLASHU(wifi_psk), FLASHU(wifistore_save),
     FNU(esp_wifi_get_mac),
+    FNU(wifi_ap_begin_secure), FNU(wifi_ap_begin), FNU(wifi_ap_end), FNU(wifi_ap_clients), FNU(wifi_ap_ip),
 };
 const uint32_t box_wifi_calls_n = sizeof box_wifi_calls / sizeof box_wifi_calls[0];
 

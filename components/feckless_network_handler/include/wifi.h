@@ -390,6 +390,20 @@ esp_err_t wifi_ap_end(void);
 int wifi_ap_clients(void);
 struct esp_netif_obj *wifi_ap_netif(void);
 
+/*
+ * u-feckless-0084: an app's hotspot. wifi_ap_begin() with WPA2-PSK when
+ * pass is given (8 to 63 characters; ESP_ERR_INVALID_ARG otherwise), PMF
+ * offered and not required; open as wifi_ap_begin() when it is NULL. The
+ * AP's netif brings its DHCP server, so phones get an address with
+ * nothing more. Not from ui_task, as above.
+ *
+ * wifi_ap_ip() is the AP's address (192.168.4.1 unless changed), false
+ * while it is down: for an app's servers, which listen on every
+ * interface, to say where they are.
+ */
+esp_err_t wifi_ap_begin_secure(const char *ssid, const char *pass);
+bool wifi_ap_ip(char *out, size_t out_size);
+
 /* One scanned network, copied out. `auth` is a wifi_auth_mode_t. A
  * hidden network has `hidden` set and an empty `ssid`. `bssid` is the
  * access point's MAC: what tells two networks of one name apart, and

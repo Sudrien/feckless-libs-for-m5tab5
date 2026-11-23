@@ -33,8 +33,10 @@ net_online
 net_probe
 net_route_describe
 wifi_ap_begin
+wifi_ap_begin_secure
 wifi_ap_clients
 wifi_ap_end
+wifi_ap_ip
 wifi_ap_netif
 wifi_apply_settings
 wifi_auth_name
