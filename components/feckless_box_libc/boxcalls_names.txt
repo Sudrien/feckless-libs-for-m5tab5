@@ -442,5 +442,6 @@ wifi_ap_clients
 wifi_ap_ip
 wifi_ap_stations
 wifi_ap_kick
+wifi_ap_leases
 hid_init
 hid_present

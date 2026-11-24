@@ -5471,3 +5471,15 @@ player started from M5Launcher couldn't power off.
 
 *Tested:* box_calls_test checks NONE before any wish, a wish taken once,
 an out-of-range value ignored, and a second wish taken.
+
+### u-feckless-0088 -- the AP's leases
+
+`wifi_ap_leases()` lists the phones on now, as `wifi_ap_stations()`
+does, each with the IPv4 address the AP's DHCP server leased it
+(`esp_netif_dhcps_get_clients_by_mac`, network order; 0 for no lease
+yet). It's for an app that has allowed a phone onto its hotspot, and so
+need not ask about that phone's browser again (Defeatist
+u-defeatist-0053). The box answers it, copying at most 8 out.
+
+*Tested:* box_calls_test checks two leases copied, and a buffer outside
+the box refused. boxcalls_names.txt was regenerated.

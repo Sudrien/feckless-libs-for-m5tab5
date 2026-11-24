@@ -418,6 +418,15 @@ bool wifi_ap_ip(char *out, size_t out_size);
 int wifi_ap_stations(uint8_t (*macs)[6], int max);
 esp_err_t wifi_ap_kick(const uint8_t mac[6]);
 
+/*
+ * u-feckless-0088: the phones on now, as wifi_ap_stations(), each with the
+ * IPv4 address the AP's DHCP server leased it (network order, as lwIP's
+ * ip4_addr_t; 0 for one with no lease yet). For an app that has allowed
+ * a phone onto its hotspot and so need not ask again about that phone's
+ * browser.
+ */
+int wifi_ap_leases(uint8_t (*macs)[6], uint32_t *ips, int max);
+
 /* One scanned network, copied out. `auth` is a wifi_auth_mode_t. A
  * hidden network has `hidden` set and an empty `ssid`. `bssid` is the
  * access point's MAC: what tells two networks of one name apart, and

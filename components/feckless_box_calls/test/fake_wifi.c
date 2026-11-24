@@ -133,3 +133,11 @@ int fake_hid_inits;
 bool fake_hid_on;
 esp_err_t hid_init(hid_button_cb_t cb) { fake_hid_cb = cb; fake_hid_inits++; return ESP_OK; }
 bool hid_present(void) { return fake_hid_on; }
+
+/* u-feckless-0088 */
+int wifi_ap_leases(uint8_t (*macs)[6], uint32_t *ips, int max)
+{
+    const int n = wifi_ap_stations(macs, max);
+    for (int i = 0; i < n; i++) ips[i] = 0x0204a8c0u + (uint32_t)i * 0x01000000u;   /* 192.168.4.2, .3 */
+    return n;
+}

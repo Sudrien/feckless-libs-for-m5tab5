@@ -431,6 +431,25 @@ H(c_wifi_ap_stations)
     return true;
 }
 
+/* (macs[max][6], ips[max], max) -> count (u-feckless-0088) */
+H(c_wifi_ap_leases)
+{
+    *ret = 0;
+    const int32_t max = (int32_t)a[2];
+    if (max <= 0) return true;
+    const int n = max > 8 ? 8 : max;
+    if (!ok_ptr(w, a[0], (uint32_t)n * 6) || !ok_ptr(w, a[1], (uint32_t)n * 4)) return true;
+    uint8_t macs[8][6];
+    uint32_t ips[8];
+    const int got = wifi_ap_leases(macs, ips, n);
+    if (got > 0) {
+        memcpy((void *)(uintptr_t)a[0], macs, (size_t)got * 6);
+        memcpy((void *)(uintptr_t)a[1], ips, (size_t)got * 4);
+    }
+    *ret = (uint32_t)got;
+    return true;
+}
+
 /* (mac[6]) */
 H(c_wifi_ap_kick)
 {
@@ -465,7 +484,7 @@ const feckless_umode_call_t box_wifi_calls[] = {
     FNU(wifi_scan_list), FNU(wifi_join), FLASHU(wifi_psk), FLASHU(wifistore_save),
     FNU(esp_wifi_get_mac),
     FNU(wifi_ap_begin_secure), FNU(wifi_ap_begin), FNU(wifi_ap_end), FNU(wifi_ap_clients), FNU(wifi_ap_ip),
-    FNU(wifi_ap_stations), FNU(wifi_ap_kick),
+    FNU(wifi_ap_stations), FNU(wifi_ap_kick), FNU(wifi_ap_leases),
 };
 const uint32_t box_wifi_calls_n = sizeof box_wifi_calls / sizeof box_wifi_calls[0];
 

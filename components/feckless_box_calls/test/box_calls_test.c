@@ -2043,6 +2043,12 @@ static void test_wifi(void)
     CHECK(C1("wifi_ap_kick", P(macs)) == ESP_OK && fake_kicked[0] == 0xaa && fake_kicked[5] == 5);
     CHECK(C1("wifi_ap_kick", P(mem) + MEM - 3) == ESP_ERR_INVALID_ARG);
 
+    /* u-feckless-0088: each with its lease */
+    uint32_t *ips = bx(8 * 4);
+    CHECK(call("wifi_ap_leases", P(macs), P(ips), 8, 0, 0, 0, 0, 0) == 2 && macs[6] == 0xbb &&
+          ips[0] == 0x0204a8c0u && ips[1] == 0x0304a8c0u);
+    CHECK(call("wifi_ap_leases", P(macs), P(mem) + MEM - 4, 2, 0, 0, 0, 0, 0) == 0);
+
     /* u-feckless-0086: hid_init needs the app's callback loop, which this
      * app has not declared: refused, and hid.c not touched; hid_present
      * reads the driver's flag */

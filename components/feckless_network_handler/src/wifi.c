@@ -775,6 +775,25 @@ int wifi_ap_stations(uint8_t (*macs)[6], int max)
     return n;
 }
 
+/* u-feckless-0088: the address the AP's DHCP server gave each phone on */
+int wifi_ap_leases(uint8_t (*macs)[6], uint32_t *ips, int max)
+{
+    if (!macs || !ips || max <= 0 || !s_ap_on || !s_ap_netif) return 0;
+    if (max > AP_STA_MAX) max = AP_STA_MAX;
+    esp_netif_pair_mac_ip_t pairs[AP_STA_MAX];
+    const int n = wifi_ap_stations(macs, max);
+    for (int i = 0; i < n; i++) {
+        memcpy(pairs[i].mac, macs[i], 6);
+        pairs[i].ip.addr = 0;
+    }
+    if (n > 0 && esp_netif_dhcps_get_clients_by_mac(s_ap_netif, n, pairs) == ESP_OK) {
+        for (int i = 0; i < n; i++) ips[i] = pairs[i].ip.addr;
+    } else {
+        for (int i = 0; i < n; i++) ips[i] = 0;
+    }
+    return n;
+}
+
 esp_err_t wifi_ap_kick(const uint8_t mac[6])
 {
     if (!mac) return ESP_ERR_INVALID_ARG;
