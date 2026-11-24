@@ -2043,6 +2043,27 @@ static void test_wifi(void)
     CHECK(C1("wifi_ap_kick", P(macs)) == ESP_OK && fake_kicked[0] == 0xaa && fake_kicked[5] == 5);
     CHECK(C1("wifi_ap_kick", P(mem) + MEM - 3) == ESP_ERR_INVALID_ARG);
 
+    /* u-feckless-0086: hid_init needs the app's callback loop, which this
+     * app has not declared: refused, and hid.c not touched; hid_present
+     * reads the driver's flag */
+    extern int fake_hid_inits;
+    extern bool fake_hid_on;
+    CHECK(C1("hid_init", 0) == ESP_ERR_INVALID_ARG && fake_hid_inits == 0);
+    CHECK(C1("hid_init", P(mem) + 64) == ESP_ERR_NO_MEM && fake_hid_inits == 0);
+    CHECK(C1("hid_present", 0) == 0);
+    fake_hid_on = true;
+    CHECK(C1("hid_present", 0) == 1);
+    fake_hid_on = false;
+
+    /* u-feckless-0087: the end wish, taken once; out of range ignored */
+    CHECK(feckless_box_calls_wish() == FECKLESS_BOX_WISH_NONE);
+    CHECK(C1("feckless_box_end_wish", FECKLESS_BOX_WISH_POWER_OFF) == 0);
+    CHECK(C1("feckless_box_end_wish", 99) == 0);
+    CHECK(feckless_box_calls_wish() == FECKLESS_BOX_WISH_POWER_OFF);
+    CHECK(feckless_box_calls_wish() == FECKLESS_BOX_WISH_NONE);
+    CHECK(C1("feckless_box_end_wish", FECKLESS_BOX_WISH_LAUNCHER) == 0);
+    CHECK(feckless_box_calls_wish() == FECKLESS_BOX_WISH_LAUNCHER);
+
     /* the end: the launcher's hooks back */
     feckless_box_calls_end();
     h = feckless_net_hooks();

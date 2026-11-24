@@ -5425,3 +5425,49 @@ boxcalls_names.txt was regenerated, and the ABI tests pass.
 *Not checked:* the board, including whether esp_wifi_remote over
 ESP-Hosted carries `esp_wifi_deauth_sta`. If it doesn't, the kick logs
 "the deauth failed".
+
+### u-feckless-0086 -- a headset's and keyboard's media keys in a box
+
+`hid_init()` and `hid_present()` were the last USB pieces a boxed
+Defeatist lacked: "no USB remote support this boot". hid.c calls its
+callback on its polling task, which owns the URB and must not block. A
+box never runs app code there, and waiting there for the app's callback
+loop could stall the port.
+
+- **box_hid.c** answers the app's `hid_init(cb)` by calling `hid_init()`
+  with its own callback, once (hid.c registers for good).
+  - That callback only queues the button: at most 8, and a full queue
+    drops the press.
+  - A short launcher task delivers each press, in order, through the
+    callback loop (u-feckless-0075) to the app's `cb` by its box
+    address.
+  - `hid_present()` reads the driver's flag.
+- **Ordering** is the trusted build's. `hid_init()` comes before the
+  port starts, and in a box the app starts it (box_audio.c's
+  `usbhost_start`).
+- **At the app's end** its `cb` is forgotten, and presses are dropped
+  until the next app's `hid_init()`.
+
+*Tested:* box_calls_test checks a NULL callback refused; an app with no
+callback loop refused, with hid.c untouched; and `hid_present()` both
+ways. boxcalls_names.txt was regenerated.
+
+*Not checked:* delivery, because the host fake's queues aren't threaded.
+Nor the board.
+
+### u-feckless-0087 -- what a boxed app wants done once it has ended
+
+A boxed app can't power the board down or switch the boot partition, so
+it ends (`esp_restart()`, answered by ending it). Defeatist's power off
+and its Exit to Launcher therefore ended alike. The launcher guessed:
+back to M5Launcher whenever one was installed, otherwise power off. A
+player started from M5Launcher couldn't power off.
+
+- **`feckless_box_end_wish(wish)`**, in the box section, is how an app
+  says what it meant first: power off, the launcher's menu, or itself
+  again. Out-of-range values are ignored.
+- **`feckless_box_calls_wish()`** is how the launcher reads it after the
+  app has ended. It's taken once, and is NONE if the app said nothing.
+
+*Tested:* box_calls_test checks NONE before any wish, a wish taken once,
+an out-of-range value ignored, and a second wish taken.

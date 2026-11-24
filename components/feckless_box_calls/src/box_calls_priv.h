@@ -147,6 +147,11 @@ extern const feckless_umode_call_t box_fetch_calls[];
 extern const uint32_t box_fetch_calls_n;
 void box_fetch_end(void);
 
+/* u-feckless-0086: a headset's and keyboard's media keys (box_hid.c). */
+extern const feckless_umode_call_t box_hid_calls[];
+extern const uint32_t box_hid_calls_n;
+void box_hid_end(void);
+
 /* u-feckless-0083: the radio's control and the app's network hooks (box_wifi.c). */
 extern const feckless_umode_call_t box_wifi_calls[];
 extern const uint32_t box_wifi_calls_n;

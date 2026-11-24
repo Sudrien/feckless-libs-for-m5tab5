@@ -11,14 +11,14 @@ CFLAGS := -std=gnu11 -g -O1 -Wall -Wextra -Werror \
           -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer \
           -Ifake -I../include -I$(U)/include -I../../feckless_network_handler/include
 LDFLAGS := -fsanitize=address,undefined -lm
-SRC := box_calls_test.c fake_net.c fake_wifi.c fake_http.c fake_httpd.c fake_fetch.c fake_board.c fake_storage.c fake_audio.c fake_rtos.c fake_drivers.c fake_codec.c fake_nvs.c fake_camera.c fake_periph.c ../src/box_calls.c ../src/box_storage.c ../src/box_audio.c ../src/box_rtos.c ../src/box_codec.c ../src/box_nvs.c ../src/box_camera.c ../src/box_drivers.c ../src/box_image.c ../src/box_net.c ../src/box_http.c ../src/box_upcall.c ../src/box_netif.c ../src/box_httpd.c ../src/box_crypto.c ../src/box_fetch.c ../src/box_flash.c ../src/box_wifi.c $(U)/src/umode_calls.c $(U)/src/umode_box.c $(U)/src/umode_run.c
+SRC := box_calls_test.c fake_net.c fake_wifi.c fake_http.c fake_httpd.c fake_fetch.c fake_board.c fake_storage.c fake_audio.c fake_rtos.c fake_drivers.c fake_codec.c fake_nvs.c fake_camera.c fake_periph.c ../src/box_calls.c ../src/box_storage.c ../src/box_audio.c ../src/box_rtos.c ../src/box_codec.c ../src/box_nvs.c ../src/box_camera.c ../src/box_drivers.c ../src/box_image.c ../src/box_net.c ../src/box_http.c ../src/box_upcall.c ../src/box_netif.c ../src/box_httpd.c ../src/box_crypto.c ../src/box_fetch.c ../src/box_flash.c ../src/box_wifi.c ../src/box_hid.c $(U)/src/umode_calls.c $(U)/src/umode_box.c $(U)/src/umode_run.c
 
 all: run
 
 box_calls_test: $(SRC) $(wildcard fake/*.h fake/freertos/*.h fake/driver/*.h fake/lwip/*.h) ../src/box_pins.h ../src/box_calls_priv.h ../include/feckless_box_calls.h
 	$(CC) $(CFLAGS) -o $@ $(SRC) $(LDFLAGS)
 
-SSRC := box_storage_test.c fake_net.c fake_wifi.c fake_http.c fake_httpd.c fake_fetch.c fake_board.c fake_storage.c fake_audio.c fake_rtos.c fake_drivers.c fake_codec.c fake_nvs.c fake_camera.c fake_periph.c ../src/box_calls.c ../src/box_storage.c ../src/box_audio.c ../src/box_rtos.c ../src/box_codec.c ../src/box_nvs.c ../src/box_camera.c ../src/box_drivers.c ../src/box_image.c ../src/box_net.c ../src/box_http.c ../src/box_upcall.c ../src/box_netif.c ../src/box_httpd.c ../src/box_crypto.c ../src/box_fetch.c ../src/box_flash.c ../src/box_wifi.c $(U)/src/umode_calls.c $(U)/src/umode_box.c $(U)/src/umode_run.c
+SSRC := box_storage_test.c fake_net.c fake_wifi.c fake_http.c fake_httpd.c fake_fetch.c fake_board.c fake_storage.c fake_audio.c fake_rtos.c fake_drivers.c fake_codec.c fake_nvs.c fake_camera.c fake_periph.c ../src/box_calls.c ../src/box_storage.c ../src/box_audio.c ../src/box_rtos.c ../src/box_codec.c ../src/box_nvs.c ../src/box_camera.c ../src/box_drivers.c ../src/box_image.c ../src/box_net.c ../src/box_http.c ../src/box_upcall.c ../src/box_netif.c ../src/box_httpd.c ../src/box_crypto.c ../src/box_fetch.c ../src/box_flash.c ../src/box_wifi.c ../src/box_hid.c $(U)/src/umode_calls.c $(U)/src/umode_box.c $(U)/src/umode_run.c
 
 box_storage_test: $(SSRC) $(wildcard fake/*.h fake/freertos/*.h fake/driver/*.h fake/lwip/*.h) ../src/box_pins.h ../src/box_calls_priv.h ../include/feckless_box_calls.h
 	$(CC) $(CFLAGS) -o $@ $(SSRC) $(LDFLAGS)

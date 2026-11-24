@@ -125,3 +125,11 @@ esp_err_t wifi_ap_kick(const uint8_t mac[6])
     memcpy(fake_kicked, mac, 6);
     return ESP_OK;
 }
+
+/* u-feckless-0086: feckless_drivers' hid.c */
+#include "hid.h"
+hid_button_cb_t fake_hid_cb;
+int fake_hid_inits;
+bool fake_hid_on;
+esp_err_t hid_init(hid_button_cb_t cb) { fake_hid_cb = cb; fake_hid_inits++; return ESP_OK; }
+bool hid_present(void) { return fake_hid_on; }

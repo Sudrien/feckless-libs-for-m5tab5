@@ -610,6 +610,25 @@ H(c_settimeofday)
 /* A boxed app restarts by ending: the launcher is what comes back, and
  * can run it again. Rebooting the board on an app's say-so is not the
  * box's to allow. */
+/* u-feckless-0087: what the app wants done once it has ended, taken by
+ * the launcher with feckless_box_calls_wish(). */
+static volatile uint32_t s_wish;
+
+H(c_feckless_box_end_wish)
+{
+    (void)w;
+    if (a[0] <= FECKLESS_BOX_WISH_RESTART) s_wish = a[0];
+    *ret = 0;
+    return true;
+}
+
+feckless_box_wish_t feckless_box_calls_wish(void)
+{
+    const uint32_t v = s_wish;
+    s_wish = FECKLESS_BOX_WISH_NONE;
+    return (feckless_box_wish_t)v;
+}
+
 H(c_esp_restart)
 {
     (void)a;
@@ -695,6 +714,7 @@ static const feckless_umode_call_t s_own[] = {
     FN(lcd_backlight_set_counts), FN(touch_swallow),
     /* u-feckless-0048 */
     FNU(esp_random), FNU(esp_fill_random), FN(settimeofday), FN(esp_restart),
+    FN(feckless_box_end_wish),              /* u-feckless-0087 */
     /* u-feckless-0059: gfx_px reads the size gfx_set_rotation() changes, so
      * locked as that is; gfx_rotation reads one value, as gfx_w does. */
     FN(gfx_px), FNU(gfx_rotation),
@@ -718,10 +738,11 @@ static const feckless_umode_call_t s_own[] = {
 #define CRYPTO_MAX 4                        /* u-feckless-0078 */
 #define FETCH_MAX 8                         /* u-feckless-0081 */
 #define WIFI_MAX 16                         /* u-feckless-0083, 0084 */
+#define HID_MAX 2                           /* u-feckless-0086 */
 
 const feckless_umode_call_t *feckless_box_calls_v1(uint32_t *n)
 {
-    static feckless_umode_call_t table[HEAP_MAX + OWN_N + STORAGE_MAX + AUDIO_MAX + RTOS_MAX + CODEC_MAX + IMAGE_MAX + NVS_MAX + CAMERA_MAX + DRIVERS_MAX + NET_MAX + HTTP_MAX + UPCALL_MAX + NETIF_MAX + HTTPD_MAX + CRYPTO_MAX + FETCH_MAX + WIFI_MAX];
+    static feckless_umode_call_t table[HEAP_MAX + OWN_N + STORAGE_MAX + AUDIO_MAX + RTOS_MAX + CODEC_MAX + IMAGE_MAX + NVS_MAX + CAMERA_MAX + DRIVERS_MAX + NET_MAX + HTTP_MAX + UPCALL_MAX + NETIF_MAX + HTTPD_MAX + CRYPTO_MAX + FETCH_MAX + WIFI_MAX + HID_MAX];
     static uint32_t count;
     if (!count) {
         uint32_t k = 0;
@@ -779,6 +800,9 @@ const feckless_umode_call_t *feckless_box_calls_v1(uint32_t *n)
         for (uint32_t i = 0; i < box_wifi_calls_n && i < WIFI_MAX; i++) {
             table[k++] = box_wifi_calls[i];
         }
+        for (uint32_t i = 0; i < box_hid_calls_n && i < HID_MAX; i++) {
+            table[k++] = box_hid_calls[i];
+        }
         count = k;
         box_flash_init();                   /* u-feckless-0082: before any host call can want it */
     }
@@ -798,6 +822,7 @@ void feckless_box_calls_end(void)
     box_drivers_end();
     box_fetch_end();                        /* u-feckless-0081: no callbacks; its download paused */
     box_wifi_end();                         /* u-feckless-0083: the launcher's hooks back */
+    box_hid_end();                          /* u-feckless-0086: presses to no one */
     box_httpd_end();                        /* u-feckless-0077: its servers, before the sockets */
     box_http_end();                         /* u-feckless-0073: before its sockets go */
     box_net_end();                          /* u-feckless-0071 */

@@ -55,6 +55,23 @@ bool feckless_box_calls_nvs(const char *const *ns, uint32_t n);
 typedef bool (*feckless_box_write_filter_t)(const char *path);
 void feckless_box_calls_write_filter(feckless_box_write_filter_t f);
 
+/*
+ * u-feckless-0087: what the app wanted done once it ended. A boxed app
+ * cannot power the board down or switch the boot partition, so it ends
+ * (esp_restart(), answered by ending it), and before that it says which of
+ * those it meant with feckless_box_end_wish(), an import in the box
+ * section: Defeatist's power off and its Exit to Launcher end alike
+ * otherwise, and the launcher had to guess. Taken once: the launcher reads
+ * it after the app has ended; NONE if the app said nothing.
+ */
+typedef enum {
+    FECKLESS_BOX_WISH_NONE = 0,
+    FECKLESS_BOX_WISH_POWER_OFF,
+    FECKLESS_BOX_WISH_LAUNCHER,             /* back to the launcher's own menu */
+    FECKLESS_BOX_WISH_RESTART,              /* the app again */
+} feckless_box_wish_t;
+feckless_box_wish_t feckless_box_calls_wish(void);
+
 /* The longest string the table reads from an app (a gfx paragraph). */
 #define FECKLESS_BOX_STR_MAX  65536u
 

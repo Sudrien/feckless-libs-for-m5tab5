@@ -116,6 +116,7 @@ esp_random
 esp_fill_random
 settimeofday
 esp_restart
+feckless_box_end_wish
 gfx_px
 gfx_rotation
 feckless_abi_storage_v2
@@ -441,3 +442,5 @@ wifi_ap_clients
 wifi_ap_ip
 wifi_ap_stations
 wifi_ap_kick
+hid_init
+hid_present

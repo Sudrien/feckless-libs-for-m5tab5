@@ -35,3 +35,6 @@ feckless_box_host_heap
 # answers with the request; the notes by address, for the callback loop.
 feckless_box_net_hooks
 feckless_box_wifi_apply
+# u-feckless-0087: what the app wants done once it has ended -- power off,
+# the launcher's menu, or itself again -- for the launcher to do.
+feckless_box_end_wish
