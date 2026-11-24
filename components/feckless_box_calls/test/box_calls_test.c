@@ -2031,6 +2031,18 @@ static void test_wifi(void)
     CHECK(call("wifi_ap_begin_secure", P(put_str("x")), P(mem) + MEM - 1, 0, 0, 0, 0, 0, 0) == ESP_ERR_INVALID_ARG);
     (void)C1("wifi_ap_end", 0);
 
+    /* u-feckless-0085: who is on, cut to what fits; one sent away */
+    extern uint8_t fake_kicked[6];
+    uint8_t *macs = bx(8 * 6);
+    CHECK(C2("wifi_ap_stations", P(macs), 8) == 2 && macs[0] == 0xaa && macs[6] == 0xbb && macs[11] == 10);
+    memset(macs, 0, 12);
+    CHECK(C2("wifi_ap_stations", P(macs), 1) == 1 && macs[0] == 0xaa && macs[6] == 0);
+    CHECK(C2("wifi_ap_stations", P(macs), 0) == 0);
+    CHECK(C2("wifi_ap_stations", P(mem) + MEM - 6, 2) == 0);
+    CHECK(C1("wifi_ap_kick", P(macs + 6)) == ESP_ERR_NOT_FOUND);    /* zeros: not on */
+    CHECK(C1("wifi_ap_kick", P(macs)) == ESP_OK && fake_kicked[0] == 0xaa && fake_kicked[5] == 5);
+    CHECK(C1("wifi_ap_kick", P(mem) + MEM - 3) == ESP_ERR_INVALID_ARG);
+
     /* the end: the launcher's hooks back */
     feckless_box_calls_end();
     h = feckless_net_hooks();

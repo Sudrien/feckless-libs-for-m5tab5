@@ -16,6 +16,7 @@
  * lwip's ip_event_t, so both components are required. esp_sntp.h is the
  * older lower-level interface and declares none of this. */
 #include "esp_netif_sntp.h"
+#include "esp_mac.h"             /* MACSTR (u-feckless-0085) */
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -163,6 +164,22 @@ static esp_netif_t *s_ap_netif;
 static volatile bool     s_connected;
 static volatile bool     s_ap_on;
 static volatile uint8_t  s_ap_clients;
+/*
+ * u-feckless-0085: who is on the AP, from its events: each phone's MAC and
+ * the association id the AP gave it, which is what esp_wifi_deauth_sta()
+ * takes. Under a spinlock: written on the event task, read anywhere.
+ * AP_STA_MAX is the AP's max_connection.
+ */
+#define AP_STA_MAX 4
+static struct { uint8_t mac[6]; uint16_t aid; bool used; } s_ap_sta[AP_STA_MAX];
+static portMUX_TYPE s_ap_sta_mux = portMUX_INITIALIZER_UNLOCKED;
+
+static void ap_sta_clear(void)
+{
+    portENTER_CRITICAL(&s_ap_sta_mux);
+    memset(s_ap_sta, 0, sizeof s_ap_sta);
+    portEXIT_CRITICAL(&s_ap_sta_mux);
+}
 static volatile uint16_t s_join_reason;
 /*
  * The joined SSID, under its own short lock. It used to share s_join_lock,
@@ -437,8 +454,32 @@ static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
         if (feckless_net_hooks()->online) feckless_net_hooks()->online();
     } else if (base == WIFI_EVENT && id == WIFI_EVENT_AP_STACONNECTED) {
         if (s_ap_clients < 255) s_ap_clients++;
+        const wifi_event_ap_staconnected_t *e = data;
+        if (e) {
+            portENTER_CRITICAL(&s_ap_sta_mux);
+            int at = -1;
+            for (int i = 0; i < AP_STA_MAX; i++) {
+                if (s_ap_sta[i].used && !memcmp(s_ap_sta[i].mac, e->mac, 6)) { at = i; break; }
+                if (!s_ap_sta[i].used && at < 0) at = i;
+            }
+            if (at >= 0) {
+                memcpy(s_ap_sta[at].mac, e->mac, 6);
+                s_ap_sta[at].aid = e->aid;
+                s_ap_sta[at].used = true;
+            }
+            portEXIT_CRITICAL(&s_ap_sta_mux);
+            ESP_LOGI(TAG, "AP: " MACSTR " joined (aid %u)", MAC2STR(e->mac), (unsigned)e->aid);
+        }
     } else if (base == WIFI_EVENT && id == WIFI_EVENT_AP_STADISCONNECTED) {
         if (s_ap_clients > 0) s_ap_clients--;
+        const wifi_event_ap_stadisconnected_t *e = data;
+        if (e) {
+            portENTER_CRITICAL(&s_ap_sta_mux);
+            for (int i = 0; i < AP_STA_MAX; i++)
+                if (s_ap_sta[i].used && !memcmp(s_ap_sta[i].mac, e->mac, 6)) s_ap_sta[i].used = false;
+            portEXIT_CRITICAL(&s_ap_sta_mux);
+            ESP_LOGI(TAG, "AP: " MACSTR " left", MAC2STR(e->mac));
+        }
     }
 }
 
@@ -700,6 +741,7 @@ esp_err_t wifi_ap_begin_secure(const char *ssid, const char *pass)
     }
 
     s_ap_clients = 0;
+    ap_sta_clear();
     s_ap_on = true;
     ESP_LOGI(TAG, "APSTA up: %s is broadcasting%s", ssid, pl ? " (WPA2)" : " (open)");
     return ESP_OK;
@@ -710,6 +752,7 @@ esp_err_t wifi_ap_end(void)
     if (!s_ap_on) return ESP_OK;
     s_ap_on = false;
     s_ap_clients = 0;
+    ap_sta_clear();
     if (!s_up) return ESP_OK;
     const esp_err_t err = esp_wifi_set_mode(WIFI_MODE_STA);
     ESP_LOGI(TAG, "back to STA%s", err == ESP_OK ? "" : " (mode change failed)");
@@ -719,6 +762,33 @@ esp_err_t wifi_ap_end(void)
 int wifi_ap_clients(void) { return s_ap_on ? s_ap_clients : 0; }
 
 esp_netif_t *wifi_ap_netif(void) { return s_ap_on ? s_ap_netif : NULL; }
+
+/* u-feckless-0085 */
+int wifi_ap_stations(uint8_t (*macs)[6], int max)
+{
+    if (!macs || max <= 0 || !s_ap_on) return 0;
+    int n = 0;
+    portENTER_CRITICAL(&s_ap_sta_mux);
+    for (int i = 0; i < AP_STA_MAX && n < max; i++)
+        if (s_ap_sta[i].used) memcpy(macs[n++], s_ap_sta[i].mac, 6);
+    portEXIT_CRITICAL(&s_ap_sta_mux);
+    return n;
+}
+
+esp_err_t wifi_ap_kick(const uint8_t mac[6])
+{
+    if (!mac) return ESP_ERR_INVALID_ARG;
+    if (!s_ap_on || !s_up) return ESP_ERR_INVALID_STATE;
+    int aid = -1;
+    portENTER_CRITICAL(&s_ap_sta_mux);
+    for (int i = 0; i < AP_STA_MAX; i++)
+        if (s_ap_sta[i].used && !memcmp(s_ap_sta[i].mac, mac, 6)) aid = s_ap_sta[i].aid;
+    portEXIT_CRITICAL(&s_ap_sta_mux);
+    if (aid < 0) return ESP_ERR_NOT_FOUND;
+    const esp_err_t err = esp_wifi_deauth_sta((uint16_t)aid);
+    ESP_LOGI(TAG, "AP: " MACSTR " sent away%s", MAC2STR(mac), err == ESP_OK ? "" : " -- the deauth failed");
+    return err;
+}
 
 /* u-feckless-0084: the AP's own address, for an app serving on it. */
 bool wifi_ap_ip(char *out, size_t out_size)
@@ -1043,6 +1113,7 @@ esp_err_t wifi_stop(void)
     s_connected = false;
     s_ap_on = false;
     s_ap_clients = 0;
+    ap_sta_clear();
 
     /* 5099: a cable still up keeps it; lwIP's SNTP follows the default
      * route, not an interface. */

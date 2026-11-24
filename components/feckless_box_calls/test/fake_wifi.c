@@ -109,3 +109,19 @@ bool wifi_ap_ip(char *out, size_t n)
     snprintf(out, n, "192.168.4.1");
     return true;
 }
+
+/* u-feckless-0085: two phones on, one kicked */
+uint8_t fake_kicked[6];
+int wifi_ap_stations(uint8_t (*macs)[6], int max)
+{
+    static const uint8_t on[2][6] = { { 0xaa, 1, 2, 3, 4, 5 }, { 0xbb, 6, 7, 8, 9, 10 } };
+    int n = 0;
+    for (; n < 2 && n < max; n++) memcpy(macs[n], on[n], 6);
+    return n;
+}
+esp_err_t wifi_ap_kick(const uint8_t mac[6])
+{
+    if (mac[0] != 0xaa && mac[0] != 0xbb) return ESP_ERR_NOT_FOUND;
+    memcpy(fake_kicked, mac, 6);
+    return ESP_OK;
+}

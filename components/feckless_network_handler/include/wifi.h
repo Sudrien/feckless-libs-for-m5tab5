@@ -404,6 +404,20 @@ struct esp_netif_obj *wifi_ap_netif(void);
 esp_err_t wifi_ap_begin_secure(const char *ssid, const char *pass);
 bool wifi_ap_ip(char *out, size_t out_size);
 
+/*
+ * u-feckless-0085: who is on the AP, and sending one away -- for an app
+ * whose open hotspot asks on its own screen before a phone may stay.
+ *
+ * wifi_ap_stations() copies up to max MACs of the phones associated now
+ * (at most 4, the AP's max_connection), from the AP's join and leave
+ * events; 0 while the AP is down. wifi_ap_kick() deauthenticates one by
+ * MAC: ESP_ERR_NOT_FOUND if it is not on, ESP_ERR_INVALID_STATE with the
+ * AP down. A phone sent away may come straight back: whether to send it
+ * away again is the app's. Not from ui_task, as above.
+ */
+int wifi_ap_stations(uint8_t (*macs)[6], int max);
+esp_err_t wifi_ap_kick(const uint8_t mac[6]);
+
 /* One scanned network, copied out. `auth` is a wifi_auth_mode_t. A
  * hidden network has `hidden` set and an empty `ssid`. `bssid` is the
  * access point's MAC: what tells two networks of one name apart, and

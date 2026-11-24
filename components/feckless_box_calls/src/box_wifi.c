@@ -7,7 +7,8 @@
  * u-feckless-0084: and the access point -- wifi_ap_begin, its WPA2 form
  * wifi_ap_begin_secure, wifi_ap_end, wifi_ap_clients, wifi_ap_ip -- for an
  * app's hotspot. The AP's netif brings its DHCP server, so nothing about
- * the DHCP server need be answered. wifi_ap_netif() is the app's, in
+ * the DHCP server need be answered. u-feckless-0085: wifi_ap_stations and
+ * wifi_ap_kick, for an open hotspot that asks before a phone may stay. wifi_ap_netif() is the app's, in
  * feckless_box_libc: the box's own number for "WIFI_AP_DEF"
  * (u-feckless-0076), never a host pointer. The DHCP server's options and
  * the DNS setters (the setup portal's captive DNS) stay unanswered.
@@ -415,6 +416,34 @@ H(c_wifi_ap_ip)
     return true;
 }
 
+/* (macs[max][6], max) -> count (u-feckless-0085) */
+H(c_wifi_ap_stations)
+{
+    *ret = 0;
+    const int32_t max = (int32_t)a[1];
+    if (max <= 0) return true;
+    const int n = max > 8 ? 8 : max;
+    if (!ok_ptr(w, a[0], (uint32_t)n * 6)) return true;
+    uint8_t macs[8][6];
+    const int got = wifi_ap_stations(macs, n);
+    if (got > 0) memcpy((void *)(uintptr_t)a[0], macs, (size_t)got * 6);
+    *ret = (uint32_t)got;
+    return true;
+}
+
+/* (mac[6]) */
+H(c_wifi_ap_kick)
+{
+    if (!ok_ptr(w, a[0], 6)) {
+        *ret = (uint32_t)ESP_ERR_INVALID_ARG;
+        return true;
+    }
+    uint8_t mac[6];
+    memcpy(mac, (const void *)(uintptr_t)a[0], 6);
+    *ret = (uint32_t)wifi_ap_kick(mac);
+    return true;
+}
+
 /* (ifx, mac[6]) */
 H(c_esp_wifi_get_mac)
 {
@@ -436,6 +465,7 @@ const feckless_umode_call_t box_wifi_calls[] = {
     FNU(wifi_scan_list), FNU(wifi_join), FLASHU(wifi_psk), FLASHU(wifistore_save),
     FNU(esp_wifi_get_mac),
     FNU(wifi_ap_begin_secure), FNU(wifi_ap_begin), FNU(wifi_ap_end), FNU(wifi_ap_clients), FNU(wifi_ap_ip),
+    FNU(wifi_ap_stations), FNU(wifi_ap_kick),
 };
 const uint32_t box_wifi_calls_n = sizeof box_wifi_calls / sizeof box_wifi_calls[0];
 

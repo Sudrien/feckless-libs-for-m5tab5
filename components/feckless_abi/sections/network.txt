@@ -37,7 +37,9 @@ wifi_ap_begin_secure
 wifi_ap_clients
 wifi_ap_end
 wifi_ap_ip
+wifi_ap_kick
 wifi_ap_netif
+wifi_ap_stations
 wifi_apply_settings
 wifi_auth_name
 wifi_connected

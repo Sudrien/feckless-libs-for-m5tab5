@@ -5391,3 +5391,37 @@ app's hotspot stays up, so it needs a password.
 boxcalls_names.txt was regenerated.
 
 *Not checked:* the board. wifi.c doesn't build on a host.
+
+### u-feckless-0085 -- who is on the access point, and sending one away
+
+For an open hotspot that asks on the app's own screen before a phone may
+stay (Defeatist u-defeatist-0050).
+
+- **wifi.c** keeps a table of up to four phones, the AP's
+  `max_connection`: each one's MAC and the association id the AP gave
+  it, filled from `WIFI_EVENT_AP_STACONNECTED` and
+  `WIFI_EVENT_AP_STADISCONNECTED` under a spinlock. It's cleared when
+  the AP starts or ends and when the radio stops. Each join and leave is
+  logged with its MAC.
+  - `wifi_ap_stations()` copies the MACs of the phones on now.
+  - `wifi_ap_kick()` sends one away by MAC with
+    `esp_wifi_deauth_sta(aid)`. A phone sent away may come straight
+    back; whether to send it away again is the app's call.
+- **box_wifi.c** answers both: at most 8 MACs copied out, and the MAC
+  for a kick copied in.
+- **network.txt** gains `wifi_ap_stations` and `wifi_ap_kick`.
+
+*Tested:* box_calls_test checks:
+- two phones listed;
+- the list cut to fit a smaller buffer;
+- an asked-for count of zero;
+- a buffer outside the box refused;
+- a MAC that isn't on given ESP_ERR_NOT_FOUND;
+- a kick reaching the fake with the right MAC;
+- a pointer outside the box refused.
+
+boxcalls_names.txt was regenerated, and the ABI tests pass.
+
+*Not checked:* the board, including whether esp_wifi_remote over
+ESP-Hosted carries `esp_wifi_deauth_sta`. If it doesn't, the kick logs
+"the deauth failed".

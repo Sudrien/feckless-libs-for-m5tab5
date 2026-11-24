@@ -30,3 +30,5 @@ esp_err_t wifi_ap_begin_secure(const char *ssid, const char *pass);
 esp_err_t wifi_ap_end(void);
 int wifi_ap_clients(void);
 bool wifi_ap_ip(char *out, size_t out_size);
+int wifi_ap_stations(uint8_t (*macs)[6], int max);
+esp_err_t wifi_ap_kick(const uint8_t mac[6]);

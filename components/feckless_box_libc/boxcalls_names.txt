@@ -439,3 +439,5 @@ wifi_ap_begin
 wifi_ap_end
 wifi_ap_clients
 wifi_ap_ip
+wifi_ap_stations
+wifi_ap_kick
